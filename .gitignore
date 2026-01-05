@@ -27,3 +27,7 @@ Saved/*
 Intermediate/*
 Plugins/**/Intermediate/*
 DerivedDataCache/*
+
+Content/**
+!Content/TeamShare/
+!Content/TeamShare/**
