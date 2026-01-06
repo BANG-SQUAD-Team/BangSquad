@@ -4,8 +4,9 @@
 
 AMageCharacter::AMageCharacter()
 {
-	// 마법사 특화 설정
 	GetCharacterMovement()->MaxWalkSpeed = 500.f;
+	JumpCooldownTimer = 1.0f;   // 1초 쿨타임
+	
 }
 
 void AMageCharacter::Skill1()

@@ -32,6 +32,7 @@ public:
 	// 입력과 함수를 연결(바인딩)하기 위한 설정
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
+
 protected:
 	/* ===== 카메라 컴포넌트 ===== */
 
@@ -82,4 +83,18 @@ protected:
 	virtual void Skill1() {}
 	virtual void Skill2() {}
 	virtual void JobAbility() {} // 직업 능력
+
+protected:
+	/** 엔진 기본 Jump를 오버라이드하여 제어 로직 추가 */
+	virtual void Jump() override;
+
+	/** 점프 가능 상태 플래그 */
+	bool bCanJump = true;
+
+	/** 점프 후 다음 점프까지의 대기 시간 (메이지는 1.33초 설정 예정) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement")
+	float JumpCooldownTimer = 0.0f;
+
+	/** 점프 제한을 해제하는 함수 */
+	void ResetJump();
 };
