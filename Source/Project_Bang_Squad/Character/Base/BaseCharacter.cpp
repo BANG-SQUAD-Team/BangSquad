@@ -16,7 +16,6 @@ ABaseCharacter::ABaseCharacter()
 	PrimaryActorTick.bCanEverTick = true;
 
 	/* ===== 캐릭터 회전 및 이동 기본 설정 ===== */
-
 	// 컨트롤러(마우스) 회전값이 캐릭터 자체의 회전에 직접 영향을 주지 않도록 설정 (3인칭 기본)
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationYaw = false;
@@ -31,7 +30,6 @@ ABaseCharacter::ABaseCharacter()
 	MoveComp->MaxWalkSpeed = 600.f;
 
 	/* ===== SpringArm (카메라 지지대) 설정 ===== */
-
 	SpringArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("SpringArm"));
 	SpringArm->SetupAttachment(GetRootComponent());
 	SpringArm->TargetArmLength = 450.f;          // 캐릭터와의 거리
@@ -39,13 +37,17 @@ ABaseCharacter::ABaseCharacter()
 	SpringArm->bEnableCameraLag = true;           // 카메라가 캐릭터를 부드럽게 따라오도록 지연 효과
 	SpringArm->CameraLagSpeed = 10.f;             // 지연 속도
 
-	/* ===== Camera 설정 ===== */
 
+	/* ===== Camera 설정 ===== */
 	Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
 	// 카메라를 지지대 끝에 부착
 	Camera->SetupAttachment(SpringArm);
+
 	// 지지대가 회전하므로 카메라 자체는 컨트롤러 회전을 직접 따라갈 필요 없음
 	Camera->bUsePawnControlRotation = false;
+
+	// 게임 시작 시 기본적으로 1스테이지 상태로 시작
+	UnlockedStageLevel = 1;
 }
 
 void ABaseCharacter::BeginPlay()
@@ -170,4 +172,20 @@ void ABaseCharacter::Jump()
 void ABaseCharacter::ResetJump()
 {
 	bCanJump = true;
+}
+
+/**
+ * 스킬이 현재 해금된 상태인지 확인하는 함수
+ * RequiredStage가 0이면 직업 능력(JobAbility)이므로 항상 true를 반환
+ */
+bool ABaseCharacter::IsSkillUnlocked(int32 RequiredStage)
+{
+	// 0번 스테이지 요구 스킬(직업 능력)은 언제나 사용 가능
+	if (RequiredStage == 0)
+	{
+		return true;
+	}
+
+	// 현재 캐릭터의 해금 레벨이 요구 스테이지보다 크거나 같으면 해금된 것으로 판단
+	return UnlockedStageLevel >= RequiredStage;
 }
