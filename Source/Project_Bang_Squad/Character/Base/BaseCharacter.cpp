@@ -98,10 +98,25 @@ void ABaseCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 	if (JumpAction)
 	{
 		// 키를 눌렀을 때 (Started) 엔진 기본 Jump 함수 실행
-		EIC->BindAction(JumpAction, ETriggerEvent::Started, this, &ACharacter::Jump);
+		EIC->BindAction(JumpAction, ETriggerEvent::Started, this, &ABaseCharacter::Jump);
 
 		// 키에서 손을 뗐을 때 (Completed) 엔진 기본 StopJumping 함수 실행
-		EIC->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
+		EIC->BindAction(JumpAction, ETriggerEvent::Completed, this, &ABaseCharacter::StopJumping);
+	}
+
+	if (Skill1Action)
+	{
+		EIC->BindAction(Skill1Action, ETriggerEvent::Started, this, &ABaseCharacter::Skill1);
+	}
+
+	if (Skill2Action)
+	{
+		EIC->BindAction(Skill2Action, ETriggerEvent::Started, this, &ABaseCharacter::Skill2);
+	}
+
+	if (JobAbilityAction)
+	{
+		EIC->BindAction(JobAbilityAction, ETriggerEvent::Started, this, &ABaseCharacter::JobAbility);
 	}
 }
 
@@ -132,4 +147,27 @@ void ABaseCharacter::Look(const FInputActionValue& Value)
 
 	// 상하(Pitch)는 반전
 	AddControllerPitchInput(-Input.Y);
+}
+
+void ABaseCharacter::Jump()
+{
+	// 1. 현재 점프가 가능한 상태인지, 그리고 공중에 떠 있지 않은지 확인
+	if (bCanJump && !GetCharacterMovement()->IsFalling())
+	{
+		Super::Jump();
+
+		// 2. 쿨타임이 설정되어 있다면 입력을 잠금
+		if (JumpCooldownTimer > 0.0f)
+		{
+			bCanJump = false;
+
+			FTimerHandle JumpTimerHandle;
+			GetWorldTimerManager().SetTimer(JumpTimerHandle, this, &ABaseCharacter::ResetJump, JumpCooldownTimer, false);
+		}
+	}
+}
+
+void ABaseCharacter::ResetJump()
+{
+	bCanJump = true;
 }
