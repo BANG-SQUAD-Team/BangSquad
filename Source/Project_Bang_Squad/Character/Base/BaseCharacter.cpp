@@ -98,10 +98,25 @@ void ABaseCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 	if (JumpAction)
 	{
 		// 키를 눌렀을 때 (Started) 엔진 기본 Jump 함수 실행
-		EIC->BindAction(JumpAction, ETriggerEvent::Started, this, &ACharacter::Jump);
+		EIC->BindAction(JumpAction, ETriggerEvent::Started, this, &ABaseCharacter::Jump);
 
 		// 키에서 손을 뗐을 때 (Completed) 엔진 기본 StopJumping 함수 실행
-		EIC->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
+		EIC->BindAction(JumpAction, ETriggerEvent::Completed, this, &ABaseCharacter::StopJumping);
+	}
+
+	if (Skill1Action)
+	{
+		EIC->BindAction(Skill1Action, ETriggerEvent::Started, this, &ABaseCharacter::Skill1);
+	}
+
+	if (Skill2Action)
+	{
+		EIC->BindAction(Skill2Action, ETriggerEvent::Started, this, &ABaseCharacter::Skill2);
+	}
+
+	if (JobAbilityAction)
+	{
+		EIC->BindAction(JobAbilityAction, ETriggerEvent::Started, this, &ABaseCharacter::JobAbility);
 	}
 }
 

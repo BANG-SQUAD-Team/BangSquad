@@ -61,10 +61,25 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
 	UInputAction* JumpAction;
 
+	/* ===== 스킬 공통 입력 액션 ===== */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+	UInputAction* Skill1Action; //1번 키
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+	UInputAction* Skill2Action; //2번 키
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+	UInputAction* JobAbilityAction; // 우클릭 (직업 능력)
+
 protected:
 	// 실제 이동 로직을 처리할 함수
 	void Move(const FInputActionValue& Value);
 
 	// 실제 카메라 회전 로직을 처리할 함수
 	void Look(const FInputActionValue& Value);
+
+	// 자식 클래스에서 실제 내용 채울 가상 함수
+	virtual void Skill1() {}
+	virtual void Skill2() {}
+	virtual void JobAbility() {} // 직업 능력
 };
