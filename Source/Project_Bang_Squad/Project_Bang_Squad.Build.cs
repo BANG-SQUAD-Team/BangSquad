@@ -8,8 +8,18 @@ public class Project_Bang_Squad : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
-        PublicDependencyModuleNames.AddRange(
-    new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput" }
+        PublicDependencyModuleNames.AddRange(new string[] {
+	    "Core", 
+	    "CoreUObject",
+	    "Engine",
+	    "InputCore",
+	    "EnhancedInput",
+	    "UMG",
+	    "Slate",
+	    "SlateCore",
+	    "OnlineSubsystem",
+	    "OnlineSubsystemUtils"
+    }
 );
 
         // Uncomment if you are using Slate UI
