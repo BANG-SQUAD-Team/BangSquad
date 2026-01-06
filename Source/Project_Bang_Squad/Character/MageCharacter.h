@@ -25,4 +25,7 @@ protected:
 private:
 	/** 데이터 테이블에서 행을 찾아 로그를 찍거나 기능을 실행하는 함수*/
 	void ProcessSkill(FName SkillRowName);
+
+
+
 };

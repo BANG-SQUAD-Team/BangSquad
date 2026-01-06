@@ -148,3 +148,26 @@ void ABaseCharacter::Look(const FInputActionValue& Value)
 	// 상하(Pitch)는 반전
 	AddControllerPitchInput(-Input.Y);
 }
+
+void ABaseCharacter::Jump()
+{
+	// 1. 현재 점프가 가능한 상태인지, 그리고 공중에 떠 있지 않은지 확인
+	if (bCanJump && !GetCharacterMovement()->IsFalling())
+	{
+		Super::Jump();
+
+		// 2. 쿨타임이 설정되어 있다면 입력을 잠금
+		if (JumpCooldownTimer > 0.0f)
+		{
+			bCanJump = false;
+
+			FTimerHandle JumpTimerHandle;
+			GetWorldTimerManager().SetTimer(JumpTimerHandle, this, &ABaseCharacter::ResetJump, JumpCooldownTimer, false);
+		}
+	}
+}
+
+void ABaseCharacter::ResetJump()
+{
+	bCanJump = true;
+}
