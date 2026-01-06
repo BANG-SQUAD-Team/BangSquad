@@ -57,6 +57,10 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
 	UInputAction* LookAction;
 
+	// 점프 액션 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+	UInputAction* JumpAction;
+
 protected:
 	// 실제 이동 로직을 처리할 함수
 	void Move(const FInputActionValue& Value);

@@ -93,29 +93,43 @@ void ABaseCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 	{
 		EIC->BindAction(LookAction, ETriggerEvent::Triggered, this, &ABaseCharacter::Look);
 	}
+
+	// 점프 액션 바인딩
+	if (JumpAction)
+	{
+		// 키를 눌렀을 때 (Started) 엔진 기본 Jump 함수 실행
+		EIC->BindAction(JumpAction, ETriggerEvent::Started, this, &ACharacter::Jump);
+
+		// 키에서 손을 뗐을 때 (Completed) 엔진 기본 StopJumping 함수 실행
+		EIC->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
+	}
 }
 
 void ABaseCharacter::Move(const FInputActionValue& Value)
 {
-	// IA_Move에서 설정한 Vector2D 값(WASD)을 가져옴
 	const FVector2D Input = Value.Get<FVector2D>();
 
-	if (Controller)
-	{
-		// 주의: 현재 캐릭터의 앞/오른쪽 방향으로 이동
-		
-		AddMovementInput(GetActorForwardVector(), Input.Y); // W, S (앞뒤)
-		AddMovementInput(GetActorRightVector(), Input.X);  // A, D (좌우)
-	}
+	if (!Controller) return;
+
+	// 카메라(컨트롤러)가 바라보는 방향
+	const FRotator ControlRot = Controller->GetControlRotation();
+	const FRotator YawRot(0.f, ControlRot.Yaw, 0.f);
+
+	// 카메라 기준 방향 벡터
+	const FVector ForwardDir = FRotationMatrix(YawRot).GetUnitAxis(EAxis::X);
+	const FVector RightDir = FRotationMatrix(YawRot).GetUnitAxis(EAxis::Y);
+
+	AddMovementInput(ForwardDir, Input.Y);
+	AddMovementInput(RightDir, Input.X);
 }
 
 void ABaseCharacter::Look(const FInputActionValue& Value)
 {
-	// IA_Look에서 설정한 Vector2D 값(마우스 이동)을 가져옴
 	const FVector2D Input = Value.Get<FVector2D>();
 
-	// 마우스 X축 이동 -> Yaw(좌우 회전) 반영
+	// 좌우(Yaw)는 그대로
 	AddControllerYawInput(Input.X);
-	// 마우스 Y축 이동 -> Pitch(상하 회전) 반영
-	AddControllerPitchInput(Input.Y);
+
+	// 상하(Pitch)는 반전
+	AddControllerPitchInput(-Input.Y);
 }
