@@ -13,26 +13,47 @@ public:
 	ATitanCharacter();
 
 protected:
+	virtual void BeginPlay() override;
+	virtual void Tick(float DeltaTime) override;
+
+	/** 직업 능력 및 스킬 */
+	virtual void JobAbility() override;
 	virtual void Skill1() override;
 	virtual void Skill2() override;
-	virtual void JobAbility() override;
 
-	/** 타이탄 전용 데이터 테이블 */
-	UPROPERTY(EditDefaultsOnly, Category = "Data")
-	class UDataTable* SkillDataTable;
+	/** 실시간 하이라이트 업데이트 */
+	void UpdateHoverHighlight();
 
 private:
-	/** 스킬 실행 공통 로직 */
-	void ProcessSkill(FName SkillRowName);
-
-	/* --- 직업 능력(잡기/던지기) 관련 변수 --- */
-	UPROPERTY()
-	AActor* GrabbedActor;
-
+	// --- 상태 변수 ---
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	bool bIsGrabbing = false;
-	FTimerHandle GrabTimerHandle;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
+	bool bIsCooldown = false;
+
+	UPROPERTY()
+	AActor* GrabbedActor = nullptr;
+
+	UPROPERTY()
+	AActor* HoveredActor = nullptr;
+
+	// --- 타이머 핸들 ---
+	FTimerHandle GrabTimerHandle;
+	FTimerHandle CooldownTimerHandle;
+
+	// --- 설정값 ---
+	float ThrowForce = 3500.f;
+	float GrabMaxDuration = 5.0f;
+	float ThrowCooldownTime = 3.0f;
+
+	// --- 핵심 로직 함수 ---
 	void TryGrab();
 	void ThrowTarget();
-	void ReleaseGrab(); // 5초 시간 초과 시 자동 해제용
+	void ResetCooldown();
+	void SetHighlight(AActor* Target, bool bEnable);
+
+	UFUNCTION()
+	void RecoverCharacter(ACharacter* Victim);
+
 };
