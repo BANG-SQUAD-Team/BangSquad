@@ -7,25 +7,23 @@
 UCLASS()
 class PROJECT_BANG_SQUAD_API AMageCharacter : public ABaseCharacter
 {
-	GENERATED_BODY()
+    GENERATED_BODY()
 
 public:
-	AMageCharacter();
+    AMageCharacter();
 
 protected:
-	/** ºÎ¸ğÀÇ ±â´ÉÀ» ¸¶¹ı»ç Àü¿ëÀ¸·Î ÀçÁ¤ÀÇ*/
-	virtual void Skill1() override;
-	virtual void Skill2() override;
-	virtual void JobAbility() override;
+    /** ë¶€ëª¨ì˜ ê¸°ëŠ¥ì„ ë§ˆë²•ì‚¬ ì „ìš©ìœ¼ë¡œ ì¬ì •ì˜ */
+    virtual void Skill1() override;
+    virtual void Skill2() override;
+    virtual void JobAbility() override;
 
-	/** ¸¶¹ı»ç ½ºÅ³¿ë µ¥ÀÌÅÍ Å×ÀÌºí*/
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Data")
-	class UDataTable* SkillDataTable;
+    /** ë§ˆë²•ì‚¬ ìŠ¤í‚¬ìš© ë°ì´í„° í…Œì´ë¸” */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Data")
+    class UDataTable* SkillDataTable;
 
 private:
-	/** µ¥ÀÌÅÍ Å×ÀÌºí¿¡¼­ ÇàÀ» Ã£¾Æ ·Î±×¸¦ Âï°Å³ª ±â´ÉÀ» ½ÇÇàÇÏ´Â ÇÔ¼ö*/
-	void ProcessSkill(FName SkillRowName);
-
-
+    /** ë°ì´í„° í…Œì´ë¸”ì—ì„œ í–‰ì„ ì°¾ì•„ ë¡œê·¸ë¥¼ ì°ê±°ë‚˜ ê¸°ëŠ¥ì„ ì‹¤í–‰í•˜ëŠ” í•¨ìˆ˜ */
+    void ProcessSkill(FName SkillRowName);
 
 };

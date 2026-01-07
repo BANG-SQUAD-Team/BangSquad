@@ -1,191 +1,190 @@
-
 #include "BaseCharacter.h" 
 
 #include "Camera/CameraComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 
-// Enhanced Input »ç¿ëÀ» À§ÇÑ ÇÊ¼ö Çì´õµé
+// Enhanced Input ì‚¬ìš©ì„ ìœ„í•œ í•„ìˆ˜ í—¤ë”ë“¤
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
 
 ABaseCharacter::ABaseCharacter()
 {
-	// ¸Å ÇÁ·¹ÀÓ Tick ÇÔ¼ö¸¦ È£ÃâÇÒÁö ¿©ºÎ (ÇÊ¿ä ¾øÀ¸¸é false·Î ¼º´É ÃÖÀûÈ­ °¡´É)
-	PrimaryActorTick.bCanEverTick = true;
+    // ë§¤ í”„ë ˆì„ë§ˆë‹¤ Tick í•¨ìˆ˜ë¥¼ í˜¸ì¶œí• ì§€ ì—¬ë¶€ (í•„ìš” ì—†ìœ¼ë©´ falseë¡œ ì„±ëŠ¥ ìµœì í™” ê°€ëŠ¥)
+    PrimaryActorTick.bCanEverTick = true;
 
-	/* ===== Ä³¸¯ÅÍ È¸Àü ¹× ÀÌµ¿ ±âº» ¼³Á¤ ===== */
-	// ÄÁÆ®·Ñ·¯(¸¶¿ì½º) È¸Àü°ªÀÌ Ä³¸¯ÅÍ ÀÚÃ¼ÀÇ È¸Àü¿¡ Á÷Á¢ ¿µÇâÀ» ÁÖÁö ¾Êµµ·Ï ¼³Á¤ (3ÀÎÄª ±âº»)
-	bUseControllerRotationPitch = false;
-	bUseControllerRotationYaw = false;
-	bUseControllerRotationRoll = false;
+    /* ===== ìºë¦­í„° íšŒì „ ë° ì´ë™ ê¸°ë³¸ ì„¤ì • ===== */
+    // ì»¨íŠ¸ë¡¤ëŸ¬(ë§ˆìš°ìŠ¤) íšŒì „ê°’ì´ ìºë¦­í„° ìì²´ì˜ íšŒì „ì— ì§ì ‘ ì˜í–¥ì„ ì£¼ì§€ ì•Šë„ë¡ ì„¤ì • (3ì¸ì¹­ ê¸°ë³¸)
+    bUseControllerRotationPitch = false;
+    bUseControllerRotationYaw = false;
+    bUseControllerRotationRoll = false;
 
-	UCharacterMovementComponent* MoveComp = GetCharacterMovement();
-	// ÀÌµ¿ÇÏ´Â ¹æÇâÀ¸·Î Ä³¸¯ÅÍ ¸öÃ¼°¡ ºÎµå·´°Ô È¸ÀüÇÏµµ·Ï ¼³Á¤
-	MoveComp->bOrientRotationToMovement = true;
-	// È¸Àü ¼Óµµ ¼³Á¤
-	MoveComp->RotationRate = FRotator(0.f, 720.f, 0.f);
-	// ±âº» °È±â ¼Óµµ
-	MoveComp->MaxWalkSpeed = 600.f;
+    UCharacterMovementComponent* MoveComp = GetCharacterMovement();
+    // ì´ë™í•˜ëŠ” ë°©í–¥ìœ¼ë¡œ ìºë¦­í„° ëª¸ì²´ê°€ ë¶€ë“œëŸ½ê²Œ íšŒì „í•˜ë„ë¡ ì„¤ì •
+    MoveComp->bOrientRotationToMovement = true;
+    // íšŒì „ ì†ë„ ì„¤ì •
+    MoveComp->RotationRate = FRotator(0.f, 720.f, 0.f);
+    // ê¸°ë³¸ ê±·ê¸° ì†ë„
+    MoveComp->MaxWalkSpeed = 600.f;
 
-	/* ===== SpringArm (Ä«¸Ş¶ó ÁöÁö´ë) ¼³Á¤ ===== */
-	SpringArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("SpringArm"));
-	SpringArm->SetupAttachment(GetRootComponent());
-	SpringArm->TargetArmLength = 450.f;          // Ä³¸¯ÅÍ¿ÍÀÇ °Å¸®
-	SpringArm->bUsePawnControlRotation = true;    // ¸¶¿ì½º ÀÔ·Â¿¡ µû¶ó ÁöÁö´ë°¡ È¸ÀüÇÔ
-	SpringArm->bEnableCameraLag = true;           // Ä«¸Ş¶ó°¡ Ä³¸¯ÅÍ¸¦ ºÎµå·´°Ô µû¶ó¿Àµµ·Ï Áö¿¬ È¿°ú
-	SpringArm->CameraLagSpeed = 10.f;             // Áö¿¬ ¼Óµµ
+    /* ===== SpringArm (ì¹´ë©”ë¼ ì§€ì§€ëŒ€) ì„¤ì • ===== */
+    SpringArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("SpringArm"));
+    SpringArm->SetupAttachment(GetRootComponent());
+    SpringArm->TargetArmLength = 450.f;          // ìºë¦­í„°ì™€ì˜ ê±°ë¦¬
+    SpringArm->bUsePawnControlRotation = true;    // ë§ˆìš°ìŠ¤ ì…ë ¥ì— ë”°ë¼ ì§€ì§€ëŒ€ê°€ íšŒì „í•¨
+    SpringArm->bEnableCameraLag = true;           // ì¹´ë©”ë¼ê°€ ìºë¦­í„°ë¥¼ ë¶€ë“œëŸ½ê²Œ ë”°ë¼ì˜¤ë„ë¡ ì§€ì—° íš¨ê³¼
+    SpringArm->CameraLagSpeed = 10.f;             // ì§€ì—° ì†ë„
 
 
-	/* ===== Camera ¼³Á¤ ===== */
-	Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
-	// Ä«¸Ş¶ó¸¦ ÁöÁö´ë ³¡¿¡ ºÎÂø
-	Camera->SetupAttachment(SpringArm);
+    /* ===== Camera ì„¤ì • ===== */
+    Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
+    // ì¹´ë©”ë¼ë¥¼ ì§€ì§€ëŒ€ ëì— ë¶€ì°©
+    Camera->SetupAttachment(SpringArm);
 
-	// ÁöÁö´ë°¡ È¸ÀüÇÏ¹Ç·Î Ä«¸Ş¶ó ÀÚÃ¼´Â ÄÁÆ®·Ñ·¯ È¸ÀüÀ» Á÷Á¢ µû¶ó°¥ ÇÊ¿ä ¾øÀ½
-	Camera->bUsePawnControlRotation = false;
+    // ì§€ì§€ëŒ€ê°€ íšŒì „í•˜ë¯€ë¡œ ì¹´ë©”ë¼ ìì²´ëŠ” ì»¨íŠ¸ë¡¤ëŸ¬ íšŒì „ì„ ì§ì ‘ ë”°ë¼ê°ˆ í•„ìš” ì—†ìŒ
+    Camera->bUsePawnControlRotation = false;
 
-	// °ÔÀÓ ½ÃÀÛ ½Ã ±âº»ÀûÀ¸·Î 1½ºÅ×ÀÌÁö »óÅÂ·Î ½ÃÀÛ
-	UnlockedStageLevel = 1;
+    // ê²Œì„ ì‹œì‘ ì‹œ ê¸°ë³¸ì ìœ¼ë¡œ 1ìŠ¤í…Œì´ì§€ ìƒíƒœë¡œ ì„¤ì •
+    UnlockedStageLevel = 1;
 }
 
 void ABaseCharacter::BeginPlay()
 {
-	Super::BeginPlay();
+    Super::BeginPlay();
 
-	// ÀÔ·Â ¸ÅÇÎ ÄÁÅØ½ºÆ®(IMC)¸¦ ½Ã½ºÅÛ¿¡ µî·Ï (·ÎÄÃ ÇÃ·¹ÀÌ¾îÀÏ ¶§¸¸ ÀÛµ¿)
-	if (APlayerController* PC = Cast<APlayerController>(GetController()))
-	{
-		if (ULocalPlayer* LocalPlayer = PC->GetLocalPlayer())
-		{
-			if (UEnhancedInputLocalPlayerSubsystem* Subsystem =
-				ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(LocalPlayer))
-			{
-				if (DefaultIMC)
-				{
-					// ¿ì¼±¼øÀ§ 0À¸·Î IMC Ãß°¡
-					Subsystem->AddMappingContext(DefaultIMC, 0);
-				}
-			}
-		}
-	}
+    // ì…ë ¥ ë§¤í•‘ ì»¨í…ìŠ¤íŠ¸(IMC)ë¥¼ ì‹œìŠ¤í…œì— ë“±ë¡ (ë¡œì»¬ í”Œë ˆì´ì–´ì¼ ë•Œë§Œ ì‘ë™)
+    if (APlayerController* PC = Cast<APlayerController>(GetController()))
+    {
+       if (ULocalPlayer* LocalPlayer = PC->GetLocalPlayer())
+       {
+          if (UEnhancedInputLocalPlayerSubsystem* Subsystem =
+             ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(LocalPlayer))
+          {
+             if (DefaultIMC)
+             {
+                // ìš°ì„ ìˆœìœ„ 0ìœ¼ë¡œ IMC ì¶”ê°€
+                Subsystem->AddMappingContext(DefaultIMC, 0);
+             }
+          }
+       }
+    }
 }
 
 void ABaseCharacter::Tick(float DeltaTime)
 {
-	Super::Tick(DeltaTime);
+    Super::Tick(DeltaTime);
 }
 
-// ÀÔ·ÂÀ» ÇÔ¼ö¿¡ ¹ÙÀÎµù
+// ì…ë ¥ì„ í•¨ìˆ˜ì— ë°”ì¸ë”©
 void ABaseCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
-	Super::SetupPlayerInputComponent(PlayerInputComponent);
+    Super::SetupPlayerInputComponent(PlayerInputComponent);
 
-	// ±âº» InputComponent¸¦ Enhanced ¹öÀüÀ¸·Î Ä³½ºÆÃ
-	UEnhancedInputComponent* EIC = CastChecked<UEnhancedInputComponent>(PlayerInputComponent);
+    // ê¸°ë³¸ InputComponentë¥¼ Enhanced ë²„ì „ìœ¼ë¡œ ìºìŠ¤íŒ…
+    UEnhancedInputComponent* EIC = CastChecked<UEnhancedInputComponent>(PlayerInputComponent);
 
-	// °¢ ¾×¼Ç ¿¡¼ÂÀÌ À¯È¿ÇÏ¸é ÇÔ¼ö¿Í ¿¬°á
-	if (MoveAction) // Move
-	{
-		EIC->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ABaseCharacter::Move);
-	}
+    // ê° ì•¡ì…˜ ì—ì…‹ì´ ìœ íš¨í•˜ë©´ í•¨ìˆ˜ì™€ ì—°ê²°
+    if (MoveAction) // Move
+    {
+       EIC->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ABaseCharacter::Move);
+    }
 
-	if (LookAction) // Look
-	{
-		EIC->BindAction(LookAction, ETriggerEvent::Triggered, this, &ABaseCharacter::Look);
-	}
+    if (LookAction) // Look
+    {
+       EIC->BindAction(LookAction, ETriggerEvent::Triggered, this, &ABaseCharacter::Look);
+    }
 
-	// Á¡ÇÁ ¾×¼Ç ¹ÙÀÎµù
-	if (JumpAction)
-	{
-		// Å°¸¦ ´­·¶À» ¶§ (Started) ¿£Áø ±âº» Jump ÇÔ¼ö ½ÇÇà
-		EIC->BindAction(JumpAction, ETriggerEvent::Started, this, &ABaseCharacter::Jump);
+    // ì í”„ ì•¡ì…˜ ë°”ì¸ë”©
+    if (JumpAction)
+    {
+       // í‚¤ë¥¼ ëˆŒë €ì„ ë•Œ (Started) ì—”ì§„ ê¸°ë³¸ Jump í•¨ìˆ˜ ì‹¤í–‰
+       EIC->BindAction(JumpAction, ETriggerEvent::Started, this, &ABaseCharacter::Jump);
 
-		// Å°¿¡¼­ ¼ÕÀ» ¶ÃÀ» ¶§ (Completed) ¿£Áø ±âº» StopJumping ÇÔ¼ö ½ÇÇà
-		EIC->BindAction(JumpAction, ETriggerEvent::Completed, this, &ABaseCharacter::StopJumping);
-	}
+       // í‚¤ì—ì„œ ì†ì„ ë—ì„ ë•Œ (Completed) ì—”ì§„ ê¸°ë³¸ StopJumping í•¨ìˆ˜ ì‹¤í–‰
+       EIC->BindAction(JumpAction, ETriggerEvent::Completed, this, &ABaseCharacter::StopJumping);
+    }
 
-	if (Skill1Action)
-	{
-		EIC->BindAction(Skill1Action, ETriggerEvent::Started, this, &ABaseCharacter::Skill1);
-	}
+    if (Skill1Action)
+    {
+       EIC->BindAction(Skill1Action, ETriggerEvent::Started, this, &ABaseCharacter::Skill1);
+    }
 
-	if (Skill2Action)
-	{
-		EIC->BindAction(Skill2Action, ETriggerEvent::Started, this, &ABaseCharacter::Skill2);
-	}
+    if (Skill2Action)
+    {
+       EIC->BindAction(Skill2Action, ETriggerEvent::Started, this, &ABaseCharacter::Skill2);
+    }
 
-	if (JobAbilityAction)
-	{
-		EIC->BindAction(JobAbilityAction, ETriggerEvent::Started, this, &ABaseCharacter::JobAbility);
-	}
+    if (JobAbilityAction)
+    {
+       EIC->BindAction(JobAbilityAction, ETriggerEvent::Started, this, &ABaseCharacter::JobAbility);
+    }
 }
 
 void ABaseCharacter::Move(const FInputActionValue& Value)
 {
-	const FVector2D Input = Value.Get<FVector2D>();
+    const FVector2D Input = Value.Get<FVector2D>();
 
-	if (!Controller) return;
+    if (!Controller) return;
 
-	// Ä«¸Ş¶ó(ÄÁÆ®·Ñ·¯)°¡ ¹Ù¶óº¸´Â ¹æÇâ
-	const FRotator ControlRot = Controller->GetControlRotation();
-	const FRotator YawRot(0.f, ControlRot.Yaw, 0.f);
+    // ì¹´ë©”ë¼(ì»¨íŠ¸ë¡¤ëŸ¬)ê°€ ë°”ë¼ë³´ëŠ” ë°©í–¥
+    const FRotator ControlRot = Controller->GetControlRotation();
+    const FRotator YawRot(0.f, ControlRot.Yaw, 0.f);
 
-	// Ä«¸Ş¶ó ±âÁØ ¹æÇâ º¤ÅÍ
-	const FVector ForwardDir = FRotationMatrix(YawRot).GetUnitAxis(EAxis::X);
-	const FVector RightDir = FRotationMatrix(YawRot).GetUnitAxis(EAxis::Y);
+    // ì¹´ë©”ë¼ ê¸°ì¤€ ë°©í–¥ ë²¡í„°
+    const FVector ForwardDir = FRotationMatrix(YawRot).GetUnitAxis(EAxis::X);
+    const FVector RightDir = FRotationMatrix(YawRot).GetUnitAxis(EAxis::Y);
 
-	AddMovementInput(ForwardDir, Input.Y);
-	AddMovementInput(RightDir, Input.X);
+    AddMovementInput(ForwardDir, Input.Y);
+    AddMovementInput(RightDir, Input.X);
 }
 
 void ABaseCharacter::Look(const FInputActionValue& Value)
 {
-	const FVector2D Input = Value.Get<FVector2D>();
+    const FVector2D Input = Value.Get<FVector2D>();
 
-	// ÁÂ¿ì(Yaw)´Â ±×´ë·Î
-	AddControllerYawInput(Input.X);
+    // ì¢Œìš°(Yaw)ëŠ” ê·¸ëŒ€ë¡œ
+    AddControllerYawInput(Input.X);
 
-	// »óÇÏ(Pitch)´Â ¹İÀü
-	AddControllerPitchInput(-Input.Y);
+    // ìƒí•˜(Pitch)ëŠ” ë°˜ì „
+    AddControllerPitchInput(-Input.Y);
 }
 
 void ABaseCharacter::Jump()
 {
-	// 1. ÇöÀç Á¡ÇÁ°¡ °¡´ÉÇÑ »óÅÂÀÎÁö, ±×¸®°í °øÁß¿¡ ¶° ÀÖÁö ¾ÊÀºÁö È®ÀÎ
-	if (bCanJump && !GetCharacterMovement()->IsFalling())
-	{
-		Super::Jump();
+    // 1. í˜„ì¬ ì í”„ê°€ ê°€ëŠ¥í•œ ìƒíƒœì¸ì§€, ê·¸ë¦¬ê³  ê³µì¤‘ì— ë–  ìˆì§€ ì•Šì€ì§€ í™•ì¸
+    if (bCanJump && !GetCharacterMovement()->IsFalling())
+    {
+       Super::Jump();
 
-		// 2. ÄğÅ¸ÀÓÀÌ ¼³Á¤µÇ¾î ÀÖ´Ù¸é ÀÔ·ÂÀ» Àá±İ
-		if (JumpCooldownTimer > 0.0f)
-		{
-			bCanJump = false;
+       // 2. ì¿¨íƒ€ì„ì´ ì„¤ì •ë˜ì–´ ìˆë‹¤ë©´ ì…ë ¥ì„ ì ê¸ˆ
+       if (JumpCooldownTimer > 0.0f)
+       {
+          bCanJump = false;
 
-			FTimerHandle JumpTimerHandle;
-			GetWorldTimerManager().SetTimer(JumpTimerHandle, this, &ABaseCharacter::ResetJump, JumpCooldownTimer, false);
-		}
-	}
+          FTimerHandle JumpTimerHandle;
+          GetWorldTimerManager().SetTimer(JumpTimerHandle, this, &ABaseCharacter::ResetJump, JumpCooldownTimer, false);
+       }
+    }
 }
 
 void ABaseCharacter::ResetJump()
 {
-	bCanJump = true;
+    bCanJump = true;
 }
 
 /**
- * ½ºÅ³ÀÌ ÇöÀç ÇØ±İµÈ »óÅÂÀÎÁö È®ÀÎÇÏ´Â ÇÔ¼ö
- * RequiredStage°¡ 0ÀÌ¸é Á÷¾÷ ´É·Â(JobAbility)ÀÌ¹Ç·Î Ç×»ó true¸¦ ¹İÈ¯
+ * ìŠ¤í‚¬ì´ í˜„ì¬ í•´ê¸ˆëœ ìƒíƒœì¸ì§€ í™•ì¸í•˜ëŠ” í•¨ìˆ˜
+ * RequiredStageê°€ 0ì´ë©´ ì§ì—… ëŠ¥ë ¥(JobAbility)ì´ë¯€ë¡œ í•­ìƒ trueë¥¼ ë°˜í™˜
  */
 bool ABaseCharacter::IsSkillUnlocked(int32 RequiredStage)
 {
-	// 0¹ø ½ºÅ×ÀÌÁö ¿ä±¸ ½ºÅ³(Á÷¾÷ ´É·Â)Àº ¾ğÁ¦³ª »ç¿ë °¡´É
-	if (RequiredStage == 0)
-	{
-		return true;
-	}
+    // 0ë²ˆ ìŠ¤í…Œì´ì§€ ìš”êµ¬ ìŠ¤í‚¬(ì§ì—… ëŠ¥ë ¥)ì€ ì–¸ì œë‚˜ ì‚¬ìš© ê°€ëŠ¥
+    if (RequiredStage == 0)
+    {
+       return true;
+    }
 
-	// ÇöÀç Ä³¸¯ÅÍÀÇ ÇØ±İ ·¹º§ÀÌ ¿ä±¸ ½ºÅ×ÀÌÁöº¸´Ù Å©°Å³ª °°À¸¸é ÇØ±İµÈ °ÍÀ¸·Î ÆÇ´Ü
-	return UnlockedStageLevel >= RequiredStage;
+    // í˜„ì¬ ìºë¦­í„°ì˜ í•´ê¸ˆ ë ˆë²¨ì´ ìš”êµ¬ ìŠ¤í…Œì´ì§€ë³´ë‹¤ í¬ê±°ë‚˜ ê°™ìœ¼ë©´ í•´ê¸ˆëœ ê²ƒìœ¼ë¡œ íŒë‹¨
+    return UnlockedStageLevel >= RequiredStage;
 }

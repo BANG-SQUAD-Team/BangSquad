@@ -4,71 +4,69 @@
 
 AMageCharacter::AMageCharacter()
 {
-	GetCharacterMovement()->MaxWalkSpeed = 500.f;
-	JumpCooldownTimer = 1.0f;   // 1ÃÊ ÄğÅ¸ÀÓ
-	UnlockedStageLevel = 1; // ÇöÀç ÁøÇà ÁßÀÎ ½ºÅ×ÀÌÁö (Å×½ºÆ®¿ë)
-	
+    GetCharacterMovement()->MaxWalkSpeed = 500.f;
+    JumpCooldownTimer = 1.0f;   // 1ì´ˆ ì¿¨íƒ€ì„
+    UnlockedStageLevel = 1;     // í˜„ì¬ ì§„í–‰ ì¤‘ì¸ ìŠ¤í…Œì´ì§€ (í…ŒìŠ¤íŠ¸ìš©)
 }
 
 void AMageCharacter::Skill1()
 {
-	ProcessSkill(TEXT("Skill1"));
+    ProcessSkill(TEXT("Skill1"));
 }
 
 void AMageCharacter::Skill2()
 {
-	ProcessSkill(TEXT("Skill2"));
+    ProcessSkill(TEXT("Skill2"));
 }
 
 void AMageCharacter::JobAbility()
 {
-	// ¿ìÅ¬¸¯ Á÷¾÷ ´É·Âµµ µ¥ÀÌÅÍ Å×ÀÌºí¿¡¼­ °ü¸®
-	ProcessSkill(TEXT("JobAbility"));
-
+    // ìš°í´ë¦­ ì§ì—… ëŠ¥ë ¥ë„ ë°ì´í„° í…Œì´ë¸”ì—ì„œ ê´€ë¦¬
+    ProcessSkill(TEXT("JobAbility"));
 }
 
 void AMageCharacter::ProcessSkill(FName SkillRowName)
 {
-	if (!SkillDataTable)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Skill Data Missed."));
-		return;
-	}
+    if (!SkillDataTable)
+    {
+       UE_LOG(LogTemp, Warning, TEXT("ë§ˆë²•ì‚¬ ìŠ¤í‚¬ ë°ì´í„° í…Œì´ë¸”ì´ í• ë‹¹ë˜ì§€ ì•Šì•˜ìŠµë‹ˆë‹¤."));
+       return;
+    }
 
-	// µ¥ÀÌÅÍÅ×ÀÌºí¿¡¼­ Çà Ã£±â
-	static const FString ContextString(TEXT("SkillContext"));
-	FSkillData* Data = SkillDataTable->FindRow<FSkillData>(SkillRowName, ContextString);
+    // ë°ì´í„° í…Œì´ë¸”ì—ì„œ í–‰ ì°¾ê¸°
+    static const FString ContextString(TEXT("SkillContext"));
+    FSkillData* Data = SkillDataTable->FindRow<FSkillData>(SkillRowName, ContextString);
 
-	if (Data)
-	{
-		// 1. ºÎ¸ğ Å¬·¡½ºÀÇ ÇÔ¼ö¸¦ È£ÃâÇÏ¿© ½ºÅ×ÀÌÁö ÇØ±İ ¿©ºÎ Ã¼Å©
-		if (!IsSkillUnlocked(Data->RequiredStage))
-		{
-			if (GEngine)
-			{
-				GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red,
-					FString::Printf(TEXT("You Can't Use Skill!(Required Stage:%d)"), Data->RequiredStage));
-			}
-			return;
-		}
+    if (Data)
+    {
+       // 1. ë¶€ëª¨ í´ë˜ìŠ¤ì˜ í•¨ìˆ˜ë¥¼ í˜¸ì¶œí•˜ì—¬ ìŠ¤í…Œì´ì§€ í•´ê¸ˆ ì—¬ë¶€ ì²´í¬
+       if (!IsSkillUnlocked(Data->RequiredStage))
+       {
+          if (GEngine)
+          {
+             GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red,
+                FString::Printf(TEXT("ì•„ì§ ì‚¬ìš©í•  ìˆ˜ ì—†ìŠµë‹ˆë‹¤! (í•„ìš” ìŠ¤í…Œì´ì§€: %d)"), Data->RequiredStage));
+          }
+          return;
+       }
 
-		// 2. ¸ùÅ¸ÁÖ°¡ ÀÖ´Ù¸é Àç»ı
-		if (Data->SkillMontage)
-		{
-			PlayAnimMontage(Data->SkillMontage);
-		}
-		// 3. ±â´É ½ÇÇà
-		if (GEngine)
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 3.f, FColor::Cyan, FString::Printf(TEXT("%s ! (Damage: %.1f)"), *Data->SkillName.ToString(), Data->Damage));
-		}
+       // 2. ëª½íƒ€ì£¼ê°€ ìˆë‹¤ë©´ ì¬ìƒ
+       if (Data->SkillMontage)
+       {
+          PlayAnimMontage(Data->SkillMontage);
+       }
 
-		// TODO ½ÇÁ¦ Åõ»çÃ¼ »ı¼º ·ÎÁ÷ÀÌ ¿©±â µé¾î°¡¾ßÇÔ
+       // 3. ê¸°ëŠ¥ ì‹¤í–‰ (ë¡œê·¸ ì¶œë ¥)
+       if (GEngine)
+       {
+          GEngine->AddOnScreenDebugMessage(-1, 3.f, FColor::Cyan, 
+             FString::Printf(TEXT("%s ì‹œì „! (ë°ë¯¸ì§€: %.1f)"), *Data->SkillName.ToString(), Data->Damage));
+       }
 
-	}
-
-	else
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Can't Found [%s]"), *SkillRowName.ToString());
-	}
+       // TODO: ì‹¤ì œ íˆ¬ì‚¬ì²´ ìƒì„± ë¡œì§ ë“±ì´ ì—¬ê¸°ì— ë“¤ì–´ê°ˆ ì˜ˆì •ì…ë‹ˆë‹¤.
+    }
+    else
+    {
+       UE_LOG(LogTemp, Warning, TEXT("ë°ì´í„° í…Œì´ë¸”ì—ì„œ í–‰ [%s]ë¥¼ ì°¾ì„ ìˆ˜ ì—†ìŠµë‹ˆë‹¤."), *SkillRowName.ToString());
+    }
 }
