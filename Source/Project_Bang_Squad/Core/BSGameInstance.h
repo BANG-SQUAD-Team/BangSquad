@@ -84,10 +84,6 @@ private:
 	TSubclassOf<UUserWidget> MainMenuWidgetClass;
 	class UMainMenu* MainMenu;
 
-	UPROPERTY(EditAnywhere)
-	TSubclassOf<UUserWidget> PauseMenuWidgetClass;
-	class UPauseMenu* PauseMenu;
-
 	// 세션 이름 / 호스트 이름
 	FString DesiredServerName;
 	FString DesiredHostName;
