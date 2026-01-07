@@ -14,6 +14,7 @@ public:
 
 protected:
     /** 부모의 기능을 마법사 전용으로 재정의 */
+    virtual void Attack() override;
     virtual void Skill1() override;
     virtual void Skill2() override;
     virtual void JobAbility() override;

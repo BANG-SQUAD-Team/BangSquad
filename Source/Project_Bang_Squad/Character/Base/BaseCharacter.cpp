@@ -108,6 +108,11 @@ void ABaseCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
        EIC->BindAction(JumpAction, ETriggerEvent::Completed, this, &ABaseCharacter::StopJumping);
     }
 
+   if (AttackAction)
+   {
+      EIC->BindAction(AttackAction, ETriggerEvent::Started, this, &ABaseCharacter::Attack);
+   }
+   
     if (Skill1Action)
     {
        EIC->BindAction(Skill1Action, ETriggerEvent::Started, this, &ABaseCharacter::Skill1);
