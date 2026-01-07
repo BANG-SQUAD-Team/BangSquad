@@ -168,7 +168,7 @@ void UBSGameInstance::OnCreateSessionComplete(FName InSessionName, bool IsSucces
 
 	UWorld* World = GetWorld();
 	if (!World) return;
-	World->ServerTravel("/Game/Project/LobbyMap?listen");
+	World->ServerTravel("/Game/TeamShare/Level/LobbyMap?listen");
 }
 
 void UBSGameInstance::OnDestroySessionComplete(FName InSessionName, bool IsSuccess)

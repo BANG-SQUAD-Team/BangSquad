@@ -4,7 +4,6 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
-#include "Project_Bang_Squad/Core/SessionInterface.h"
 #include "Project_Bang_Squad/UI/Base/BaseMenu.h"
 #include "MainMenu.generated.h"
 
@@ -16,9 +15,6 @@ public:
 	UMainMenu();
 protected:
 	virtual bool Initialize() override;
-
-	ISessionInterface* OwningInstance;
-
 public:
 	UFUNCTION()
 	void SetServerList(TArray<FServerData> InServerData);
