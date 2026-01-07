@@ -14,6 +14,7 @@ USTRUCT()
 struct FServerData
 {
 	GENERATED_BODY()
+
 public:
 	FString Name;
 	uint16 CurrentPlayers;
@@ -25,8 +26,10 @@ UCLASS()
 class PROJECT_BANG_SQUAD_API UBSGameInstance : public UGameInstance, public ISessionInterface
 {
 	GENERATED_BODY()
+
 public:
 	UBSGameInstance();
+
 protected:
 	virtual void Init() override;
 
@@ -37,7 +40,7 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void LoadMainMenu();
 
-	// ✨ 인터페이스 시그니처와 동일
+                     #pragma region SessionInterface Codes
 	virtual void Host(FString ServerName, int32 MaxPlayers, FString HostName) override;
 
 	UFUNCTION(Exec)
@@ -47,6 +50,7 @@ public:
 	void RefreshServerList() override;
 
 	void OpenMainMenuLevel() override;
+#pragma endregion
 
 	// Host 호출 흐름 제어용 플래그
 	bool bIsGoingToHost = false;
@@ -66,7 +70,8 @@ private:
 	void OnDestroySessionComplete(FName InSessionName, bool IsSuccess);
 	void OnFindSessionComplete(bool IsSuccess);
 	void OnJoinSessionComplete(FName InSessionName, EOnJoinSessionCompleteResult::Type InResult);
-	void OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, ENetworkFailure::Type FailureType, const FString& ErrorString);
+	void OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, ENetworkFailure::Type FailureType,
+	                      const FString& ErrorString);
 
 	void CreateSession();
 
