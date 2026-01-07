@@ -11,6 +11,7 @@ class USpringArmComponent;
 class UCameraComponent;
 class UInputMappingContext;
 class UInputAction;
+class UHealthComponent;
 
 /** * 스킬 데이터를 정의하는 구조체
  * 데이터 테이블의 양식이 됩니다.
@@ -49,6 +50,10 @@ public:
 protected:
     virtual void BeginPlay() override;
 
+    // 모든 플레이어 캐릭터가 공통으로 가질 체력 컴포넌트
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Components")
+    UHealthComponent* HealthComp;
+    
     /* ===== 카메라 컴포넌트 ===== */
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
     USpringArmComponent* SpringArm;

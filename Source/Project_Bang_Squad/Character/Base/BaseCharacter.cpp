@@ -1,5 +1,6 @@
 #include "BaseCharacter.h" 
 
+#include "Project_Bang_Squad/Character/Component/HealthComponent.h"
 #include "Camera/CameraComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -11,6 +12,8 @@
 
 ABaseCharacter::ABaseCharacter()
 {
+   // 체력 컴포넌트 생성
+   HealthComp = CreateDefaultSubobject<UHealthComponent>(TEXT("HealthComp"));
     // 매 프레임마다 Tick 함수를 호출할지 여부 (필요 없으면 false로 성능 최적화 가능)
     PrimaryActorTick.bCanEverTick = true;
 
