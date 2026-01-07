@@ -1,12 +1,12 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 
-#include "Project_Bang_Squad/Game/Lobby/MyPlayerController.h"
+#include "Project_Bang_Squad/Game/Lobby/MenuPlayerController.h"
 
 #include "Project_Bang_Squad/Core/BSGameInstance.h"
 #include "Project_Bang_Squad/UI/Menu/MainMenu.h"
 
-void AMyPlayerController::BeginPlay()
+void AMenuPlayerController::BeginPlay()
 {
 	Super::BeginPlay();
 

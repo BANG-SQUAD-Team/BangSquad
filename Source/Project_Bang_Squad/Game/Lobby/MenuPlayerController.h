@@ -4,13 +4,13 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
-#include "MyPlayerController.generated.h"
+#include "MenuPlayerController.generated.h"
 
 /**
  * 
  */
 UCLASS()
-class PROJECT_BANG_SQUAD_API AMyPlayerController : public APlayerController
+class PROJECT_BANG_SQUAD_API AMenuPlayerController : public APlayerController
 {
 	GENERATED_BODY()
 
