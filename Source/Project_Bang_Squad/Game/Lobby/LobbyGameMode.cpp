@@ -25,7 +25,14 @@ void ALobbyGameMode::PostLogin(APlayerController* NewPlayer)
 
 void ALobbyGameMode::ChangePlayerCharacter(AController* Controller, EJobType NewJob)
 {
-	if (!Controller || !JobCharacterMap.Contains(NewJob)) return;
+	if (!Controller || !JobCharacterMap.Contains(NewJob))
+	{
+		UE_LOG(LogTemp, Error, TEXT("[GameMode] 캐릭터 교체 실패! (Controller Null 혹은 Map에 없는 Job)"));
+		return;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("[GameMode] 캐릭터 교체 시도... JobIndex: %d"), (uint8)NewJob);
+	
 	TSubclassOf<ACharacter> TargetClass = JobCharacterMap[NewJob];
 
 	APawn* OldPawn = Controller->GetPawn();
@@ -36,6 +43,7 @@ void ALobbyGameMode::ChangePlayerCharacter(AController* Controller, EJobType New
 	if (ACharacter* NewChar = GetWorld()->SpawnActor<ACharacter>(TargetClass, Loc, Rot))
 	{
 		Controller->Possess(NewChar);
+		UE_LOG(LogTemp, Log, TEXT("[GameMode] 캐릭터 교체 성공!"));
 	}
 }
 
@@ -47,21 +55,25 @@ void ALobbyGameMode::CheckAllReady()
 	if (GS->PlayerArray.Num() == 0) return;
 
 	bool bAllReady = true;
+	int32 ReadyCount = 0;
+	
 	for (APlayerState* PS : GS->PlayerArray)
 	{
 		ALobbyPlayerState* LobbyPS = Cast<ALobbyPlayerState>(PS);
-		if (!LobbyPS || !LobbyPS->bIsReady)
+		if (LobbyPS)
 		{
-			bAllReady = false;
-			break;
+			if (LobbyPS->bIsReady) ReadyCount++;
+			else bAllReady = false;
 		}
 	}
 
+	UE_LOG(LogTemp, Warning, TEXT("[GameMode] 준비 체크 중... (%d / %d 명 준비됨)"), ReadyCount, GS->PlayerArray.Num());
+	
 	//이동
 	if (bAllReady)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] ✅ 전원 준비 완료! 직업 선택 페이즈로 전환합니다."));
 		GS->SetLobbyPhase(ELobbyPhase::SelectJob);
-		UE_LOG(LogTemp, Warning, TEXT("직업 선택 창 On."));
 	}
 }
 
@@ -72,21 +84,30 @@ void ALobbyGameMode::CheckConfirmedJob()
 
 	if (GS->PlayerArray.Num() == 0) return;
 
-	bool bAllConfirmed = true;
+	int32 ConfirmedCount = 0;
+	int32 TotalPlayers = GS->PlayerArray.Num();
+
 	for (APlayerState* PS : GS->PlayerArray)
 	{
 		ALobbyPlayerState* LobbyPS = Cast<ALobbyPlayerState>(PS);
-		if (!LobbyPS || !LobbyPS->bIsConfirmedJob)
+		if (LobbyPS && LobbyPS->bIsConfirmedJob)
 		{
-			bAllConfirmed = false;
-			break;
+			ConfirmedCount++;
+		}
+		else
+		{
+			
 		}
 	}
 
+	UE_LOG(LogTemp, Warning, TEXT("[GameMode] 직업 확정 현황: (%d / %d) 명"), ConfirmedCount, TotalPlayers);
+	
 	//모두 직업 확정 완료
-	if (bAllConfirmed)
+	if (ConfirmedCount == TotalPlayers)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] ✅ 전원 직업 확정 완료! 게임(TestMap)으로 이동합니다. 🚀"));
+		
 		//TODO: 나중에 TestMap -> Stage맵 이름으로 변경
-		GetWorld()->ServerTravel("/Game/Maps/TestMap?listen");
+		GetWorld()->ServerTravel("/Game/TeamShare/Level/TestMap?listen");
 	}
 }

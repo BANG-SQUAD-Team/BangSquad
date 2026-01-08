@@ -19,7 +19,7 @@ public:
 	ALobbyGameMode();
 
 	//TODO: 바꿀 가능성O / 직업별 캐릭터 BP 설정
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Lobby")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "BS|Lobby")
 	TMap<EJobType, TSubclassOf<ACharacter>> JobCharacterMap;
 
 	//캐릭터 교체

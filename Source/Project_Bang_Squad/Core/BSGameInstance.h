@@ -112,4 +112,8 @@ private:
 public:
 	FORCEINLINE EJobType GetMyJob() const { return MyJob; }
 	void SetMyJob(EJobType NewJob) { MyJob = NewJob; }
+
+	//닉네임 저장
+	UPROPERTY()
+	FString UserNickname;
 };
