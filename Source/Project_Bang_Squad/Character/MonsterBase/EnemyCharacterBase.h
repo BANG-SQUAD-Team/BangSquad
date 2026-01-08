@@ -2,9 +2,12 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "TimerManager.h" // FTimerHandle 때문에 필요
+
 #include "EnemyCharacterBase.generated.h"
 
 class UAnimMontage;
+class UHealthComponent;
 
 UCLASS()
 class PROJECT_BANG_SQUAD_API AEnemyCharacterBase : public ACharacter
@@ -33,6 +36,13 @@ public:
 	bool IsDead() const { return bIsDead; }
 
 protected:
+	// ===== HealthComponent Auto Bind =====
+	UFUNCTION()
+	void HandleDeadFromHealth();
+
+	UFUNCTION()
+	void HandleHealthChangedFromHealth(float NewHealth, float InMaxHealth);
+
 	// ===== Hit React Settings =====
 	UPROPERTY(EditDefaultsOnly, Category = "HitReact")
 	TObjectPtr<UAnimMontage> HitReactMontage = nullptr;
@@ -50,23 +60,18 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Death")
 	TObjectPtr<UAnimMontage> DeathMontage = nullptr;
 
-	// 데스 몽타주를 루프로 돌리고 싶으면 true
 	UPROPERTY(EditDefaultsOnly, Category = "Death")
 	bool bLoopDeathMontage = false;
 
-	// 루프 섹션 이름(몽타주에 섹션을 만들었을 때만 의미 있음)
 	UPROPERTY(EditDefaultsOnly, Category = "Death", meta = (EditCondition = "bLoopDeathMontage"))
 	FName DeathLoopSectionName = TEXT("Loop");
 
-	// 몽타주 재생 후 래그돌로 전환할지
 	UPROPERTY(EditDefaultsOnly, Category = "Death")
 	bool bEnableRagdollOnDeath = true;
 
-	// (몽타주 시작 후) 몇 초 뒤 래그돌로 전환할지
 	UPROPERTY(EditDefaultsOnly, Category = "Death", meta = (ClampMin = "0.0", ClampMax = "10.0", EditCondition = "bEnableRagdollOnDeath"))
 	float DeathToRagdollDelay = 0.25f;
 
-	// 죽은 뒤 일정 시간 후 파괴(시체 정리)
 	UPROPERTY(EditDefaultsOnly, Category = "Death")
 	bool bDestroyAfterDeath = true;
 
@@ -80,7 +85,6 @@ protected:
 	void StartDeath();
 	void EnterRagdoll();
 
-	// 전 클라에 재생/전환 전파
 	UFUNCTION(NetMulticast, Unreliable)
 	void Multicast_PlayHitReactMontage();
 	void Multicast_PlayHitReactMontage_Implementation();
@@ -98,7 +102,7 @@ private:
 	bool bIsDead = false;
 
 	float DefaultMaxWalkSpeed = 0.f;
-	FTimerHandle HitReactTimer;
 
+	FTimerHandle HitReactTimer;
 	FTimerHandle DeathToRagdollTimer;
 };
