@@ -144,11 +144,32 @@ void ATitanCharacter::ThrowTarget()
 	SetHighlight(GrabbedActor, false);
 	GrabbedActor->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
 
+	// 1. 던지는 방향 계산
 	FVector ThrowDir = GetControlRotation().Vector();
+<<<<<<< Updated upstream
+=======
+	// 상단 방향으로 살짝 보정해주면 포물선을 그리며 더 시원하게 날아갑니다.
+	ThrowDir = (ThrowDir + FVector(0.f, 0.f, 0.2f)).GetSafeNormal();
+
+>>>>>>> Stashed changes
 	if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(GrabbedActor->GetRootComponent()))
 	{
 		RootComp->AddImpulse(ThrowDir * ThrowForce, NAME_None, true);
 		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Orange, TEXT("Target Thrown!!"));
+<<<<<<< Updated upstream
+=======
+=======
+<<<<<<< Updated upstream
+		// 강력하게 던지기
+		RootComp->AddImpulse(ThrowDir * ThrowForce, NAME_None, true);
+=======
+		float StrongerForce = 5000.f; // 기존 3500에서 상향 제안
+		RootComp->AddImpulse(ThrowDir * StrongerForce, NAME_None, true); // 세 번째 인자가 bVelChange
+
+		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Orange, TEXT("Target Thrown Strongly!!"));
+>>>>>>> Stashed changes
+>>>>>>> Stashed changes
+>>>>>>> Stashed changes
 	}
 
 	if (ACharacter* Victim = Cast<ACharacter>(GrabbedActor))
