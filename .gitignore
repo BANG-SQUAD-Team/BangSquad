@@ -1,5 +1,6 @@
 # Visual Studio
 .vs/
+.idea/
 
 # Object / Binary
 *.obj
@@ -31,3 +32,7 @@ DerivedDataCache/*
 Content/**
 !Content/TeamShare/
 !Content/TeamShare/**
+!Content/__ExternalActors__/
+!Content/__ExternalActors__/**
+!Content/__ExternalObjects__/
+!Content/__ExternalObjects__/**

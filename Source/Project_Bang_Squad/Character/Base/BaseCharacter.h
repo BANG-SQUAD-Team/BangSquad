@@ -2,99 +2,111 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
-// Enhanced InputÀÇ µ¥ÀÌÅÍ¸¦ Ã³¸®ÇÏ±â À§ÇÑ ±¸Á¶Ã¼°¡ Æ÷ÇÔµÈ Çì´õ
-#include "InputActionValue.h" 
+#include "Engine/DataTable.h" // ë°ì´í„° í…Œì´ë¸” ê¸°ëŠ¥ì„ ì‚¬ìš©í•˜ê¸° ìœ„í•´ ì¶”ê°€
+#include "InputActionValue.h"
 #include "BaseCharacter.generated.h"
 
-// Àü¹æ ¼±¾ğ: ÄÄÆÄÀÏ ¼Óµµ¸¦ ³ôÀÌ±â À§ÇØ Å¬·¡½º ÀÌ¸§¸¸ ¹Ì¸® ¾Ë·ÁÁÜ
+// ì „ë°© ì„ ì–¸
 class USpringArmComponent;
 class UCameraComponent;
 class UInputMappingContext;
 class UInputAction;
+class UHealthComponent;
+
+/** * ìŠ¤í‚¬ ë°ì´í„°ë¥¼ ì •ì˜í•˜ëŠ” êµ¬ì¡°ì²´
+ * ë°ì´í„° í…Œì´ë¸”ì˜ ì–‘ì‹ì´ ë©ë‹ˆë‹¤.
+ */
+USTRUCT(BlueprintType)
+struct FSkillData : public FTableRowBase
+{
+    GENERATED_BODY()
+
+public:
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
+    FName SkillName;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
+    float Damage;
+
+    /** ìŠ¤í‚¬ ì‹œì „ ì‹œ ì¬ìƒí•  ì• ë‹ˆë©”ì´ì…˜ ëª½íƒ€ì£¼ */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
+    class UAnimMontage* SkillMontage;
+
+    /** í•´ê¸ˆ ì¡°ê±´: 0ì€ ì¦‰ì‹œ(JobAbility), 1 ì´ìƒì€ í•´ë‹¹ ìŠ¤í…Œì´ì§€ ì§„ì…/í´ë¦¬ì–´ ì‹œ */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
+    int32 RequiredStage = 0;
+};
 
 UCLASS()
 class PROJECT_BANG_SQUAD_API ABaseCharacter : public ACharacter
 {
-	GENERATED_BODY()
+    GENERATED_BODY()
 
 public:
-	// »ı¼ºÀÚ: °´Ã¼°¡ »ı¼ºµÉ ¶§ ÃÊ±â ¼³Á¤À» ´ã´ç
-	ABaseCharacter();
+    ABaseCharacter();
+    virtual void Tick(float DeltaTime) override;
+    virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
 protected:
-	// °ÔÀÓÀÌ ½ÃÀÛµÇ°Å³ª Ä³¸¯ÅÍ°¡ ½ºÆùµÉ ¶§ ÇÑ ¹ø È£Ãâ
-	virtual void BeginPlay() override;
+    virtual void BeginPlay() override;
 
-public:
-	// ¸Å ÇÁ·¹ÀÓ¸¶´Ù È£Ãâ (ÇöÀç´Â ·ÎÁ÷ÀÌ ¾øÀ¸¸é ²¨µÎ´Â °ÍÀÌ ¼º´É¿¡ ÁÁÀ½)
-	virtual void Tick(float DeltaTime) override;
+    // ëª¨ë“  í”Œë ˆì´ì–´ ìºë¦­í„°ê°€ ê³µí†µìœ¼ë¡œ ê°€ì§ˆ ì²´ë ¥ ì»´í¬ë„ŒíŠ¸
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Components")
+    UHealthComponent* HealthComp;
+    
+    /* ===== ì¹´ë©”ë¼ ì»´í¬ë„ŒíŠ¸ ===== */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
+    USpringArmComponent* SpringArm;
 
-	// ÀÔ·Â°ú ÇÔ¼ö¸¦ ¿¬°á(¹ÙÀÎµù)ÇÏ±â À§ÇÑ ¼³Á¤
-	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
+    UCameraComponent* Camera;
 
+    /* ===== ì…ë ¥ ì—ì…‹ ===== */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+    UInputMappingContext* DefaultIMC;
 
-protected:
-	/* ===== Ä«¸Ş¶ó ÄÄÆ÷³ÍÆ® ===== */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+    UInputAction* MoveAction;
 
-	// Ä³¸¯ÅÍ¿Í Ä«¸Ş¶ó »çÀÌÀÇ °Å¸®¸¦ À¯ÁöÇÏ°í Àå¾Ö¹°À» Ã³¸®ÇÏ´Â 'ÆÈ' ¿ªÇÒ
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
-	USpringArmComponent* SpringArm;
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+    UInputAction* LookAction;
 
-	// ÇÃ·¹ÀÌ¾îÀÇ È­¸éÀ» ´ã´çÇÏ´Â ½ÇÁ¦ Ä«¸Ş¶ó
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
-	UCameraComponent* Camera;
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+    UInputAction* JumpAction;
 
-	/* ===== ÀÔ·Â ¿¡¼Â (¿¡µğÅÍ ÇÒ´ç¿ë) ===== */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+    UInputAction* Skill1Action;
 
-	// ¾î¶² Å°¸¦ ´©¸¦Áö Á¤ÀÇÇÑ ¸ÅÇÎ ÄÁÅØ½ºÆ®
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
-	UInputMappingContext* DefaultIMC;
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+    UInputAction* Skill2Action;
 
-	// ÀÌµ¿ ÀÔ·Â ¾×¼Ç ¿¡¼Â
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
-	UInputAction* MoveAction;
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+    UInputAction* JobAbilityAction;
 
-	// ½Ã¾ß È¸Àü ÀÔ·Â ¾×¼Ç ¿¡¼Â
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
-	UInputAction* LookAction;
+    /* ===== ê³µí†µ ë¡œì§ í•¨ìˆ˜ ===== */
+    void Move(const FInputActionValue& Value);
+    void Look(const FInputActionValue& Value);
 
-	// Á¡ÇÁ ¾×¼Ç 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
-	UInputAction* JumpAction;
+    virtual void Skill1() {}
+    virtual void Skill2() {}
+    virtual void JobAbility() {}
 
-	/* ===== ½ºÅ³ °øÅë ÀÔ·Â ¾×¼Ç ===== */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
-	UInputAction* Skill1Action; //1¹ø Å°
+    /** ìŠ¤í‚¬ í•´ê¸ˆ ì—¬ë¶€ë¥¼ í™•ì¸í•˜ëŠ” ê³µí†µ í•¨ìˆ˜ (ì¶”ê°€) */
+    bool IsSkillUnlocked(int32 RequiredStage);
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
-	UInputAction* Skill2Action; //2¹ø Å°
+    /* ===== ì í”„ ì‹œìŠ¤í…œ (ê¸°ì¡´ ìœ ì§€) ===== */
+    virtual void Jump() override;
+    bool bCanJump = true;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
-	UInputAction* JobAbilityAction; // ¿ìÅ¬¸¯ (Á÷¾÷ ´É·Â)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement")
+    float JumpCooldownTimer = 0.0f;
 
-protected:
-	// ½ÇÁ¦ ÀÌµ¿ ·ÎÁ÷À» Ã³¸®ÇÒ ÇÔ¼ö
-	void Move(const FInputActionValue& Value);
+    UFUNCTION() // íƒ€ì´ë¨¸ìš© í•¨ìˆ˜ëŠ” UFUNCTIONì´ ì•ˆì „í•©ë‹ˆë‹¤.
+    void ResetJump();
 
-	// ½ÇÁ¦ Ä«¸Ş¶ó È¸Àü ·ÎÁ÷À» Ã³¸®ÇÒ ÇÔ¼ö
-	void Look(const FInputActionValue& Value);
+    /* ===== ê²Œì„ ì§„í–‰ ìƒíƒœ (ì¶”ê°€) ===== */
 
-	// ÀÚ½Ä Å¬·¡½º¿¡¼­ ½ÇÁ¦ ³»¿ë Ã¤¿ï °¡»ó ÇÔ¼ö
-	virtual void Skill1() {}
-	virtual void Skill2() {}
-	virtual void JobAbility() {} // Á÷¾÷ ´É·Â
-
-protected:
-	/** ¿£Áø ±âº» Jump¸¦ ¿À¹ö¶óÀÌµåÇÏ¿© Á¦¾î ·ÎÁ÷ Ãß°¡ */
-	virtual void Jump() override;
-
-	/** Á¡ÇÁ °¡´É »óÅÂ ÇÃ·¡±× */
-	bool bCanJump = true;
-
-	/** Á¡ÇÁ ÈÄ ´ÙÀ½ Á¡ÇÁ±îÁöÀÇ ´ë±â ½Ã°£ (¸ŞÀÌÁö´Â 1.33ÃÊ ¼³Á¤ ¿¹Á¤) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement")
-	float JumpCooldownTimer = 0.0f;
-
-	/** Á¡ÇÁ Á¦ÇÑÀ» ÇØÁ¦ÇÏ´Â ÇÔ¼ö */
-	void ResetJump();
+    /** í˜„ì¬ ìºë¦­í„°ê°€ í•´ê¸ˆí•œ ìŠ¤í…Œì´ì§€ ë ˆë²¨ (ê¸°ë³¸ê°’ 1) */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Game Progress")
+    int32 UnlockedStageLevel = 1;
 };
