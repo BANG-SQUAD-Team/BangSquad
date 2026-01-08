@@ -173,11 +173,11 @@ void ATitanCharacter::OnChargeHit(UPrimitiveComponent* HitComp, AActor* OtherAct
 	// 벽이나 바닥 같은 정적 물체(Static)에 박으면?
 	if (OtherActor->IsRootComponentStatic())
 	{
+
 		// 벽에 쾅! 박으면 멈춤
 		StopCharge();
 		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Orange, TEXT("🧱 벽 충돌! 멈춤"));
-	}
-	// 캐릭터는 이제 Overlap에서 처리하므로 여기서 처리 안 함 (자동으로 통과됨)
+  }
 }
 
 // =============================================================
@@ -223,14 +223,15 @@ void ATitanCharacter::TryGrab()
 
 	if (ABaseCharacter* Victim = Cast<ABaseCharacter>(GrabbedActor))
 	{
-		// 1. 충돌 끄기 (이동 방해 X)
+
 		Victim->GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 		Victim->GetMesh()->SetSimulatePhysics(false); // 물리 끄기
+
 
 		// 2. 잡힘 상태 알림
 		Victim->SetIsGrabbed(true);
 
-		// 3. 상호 무시
+
 		this->MoveIgnoreActorAdd(Victim);
 		Victim->MoveIgnoreActorAdd(this);
 	}
