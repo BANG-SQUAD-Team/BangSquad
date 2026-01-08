@@ -32,6 +32,10 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
     class UAnimMontage* SkillMontage;
 
+    // /** 스킬이 발사핧 투사체 블루프린트 클래스 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
+    TSubclassOf<class AMageProjectile> ProjectileClass;
+    
     /** 해금 조건: 0은 즉시(JobAbility), 1 이상은 해당 스테이지 진입/클리어 시 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
     int32 RequiredStage = 0;
@@ -73,6 +77,9 @@ protected:
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
     UInputAction* JumpAction;
+    
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+    UInputAction* AttackAction;
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
     UInputAction* Skill1Action;
@@ -87,6 +94,7 @@ protected:
     void Move(const FInputActionValue& Value);
     void Look(const FInputActionValue& Value);
 
+    virtual void Attack() {}
     virtual void Skill1() {}
     virtual void Skill2() {}
     virtual void JobAbility() {}

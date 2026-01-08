@@ -82,7 +82,7 @@ void ATitanCharacter::UpdateHoverHighlight()
 		if (TargetChar && !HitActor->ActorHasTag("Boss") && !HitActor->ActorHasTag("MidBoss"))
 		{
 			NewTarget = HitActor;
-			// ·Î±×·Î ÀâÀ¸·Á´Â ´ë»óÀÇ ÀÌ¸§À» ¸íÈ®È÷ È®ÀÎ
+			// ë¡œê·¸ë¡œ ì¡ìœ¼ë ¤ëŠ” ëŒ€ìƒì˜ ì´ë¦„ì„ ëª…í™•íˆ í™•ì¸
 			if (GEngine) GEngine->AddOnScreenDebugMessage(1, 0.1f, FColor::Blue,
 				FString::Printf(TEXT("Target Locked: %s"), *HitActor->GetName()));
 		}
@@ -113,19 +113,19 @@ void ATitanCharacter::TryGrab()
 
 	if (ACharacter* Victim = Cast<ACharacter>(GrabbedActor))
 	{
-		// [¼öÁ¤] Ä¸½¶ ÄÄÆ÷³ÍÆ®¸¦ ÅëÇØ ÇÔ¼ö È£Ãâ
+		// [ìˆ˜ì •] ìº¡ìŠ ì»´í¬ë„ŒíŠ¸ë¥¼ í†µí•´ í•¨ìˆ˜ í˜¸ì¶œ
 		Victim->GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
-		// ¹°¸® ½Ã¹Ä·¹ÀÌ¼Ç ¼³Á¤
+		// ë¬¼ë¦¬ ì‹œë®¬ë ˆì´ì…˜ ì„¤ì •
 		Victim->GetMesh()->SetSimulatePhysics(true);
 		Victim->GetMesh()->SetCollisionProfileName(TEXT("Ragdoll"));
 
-		// [ÇÙ½É] ¼­·Î ¹Ğ¾î³»Áö ¾Êµµ·Ï ¹«½Ã ¼³Á¤ (ÄÄÆ÷³ÍÆ® ´ÜÀ§)
+		// [í•µì‹¬] ì„œë¡œ ë°€ì–´ë‚´ì§€ ì•Šë„ë¡ ë¬´ì‹œ ì„¤ì • (ì»´í¬ë„ŒíŠ¸ ë‹¨ìœ„)
 		Victim->GetCapsuleComponent()->IgnoreActorWhenMoving(this, true);
 		Victim->GetMesh()->IgnoreActorWhenMoving(this, true);
 		this->GetCapsuleComponent()->IgnoreActorWhenMoving(Victim, true);
 
-		// [Ãß°¡] ¾×ÅÍ ·¹º§¿¡¼­µµ ¼­·Î ¹«½ÃÇÏµµ·Ï ¼³Á¤ (¾ÈÀüÀåÄ¡)
+		// [ì¶”ê°€] ì•¡í„° ë ˆë²¨ì—ì„œë„ ì„œë¡œ ë¬´ì‹œí•˜ë„ë¡ ì„¤ì • (ì•ˆì „ì¥ì¹˜)
 		this->MoveIgnoreActorAdd(Victim);
 		Victim->MoveIgnoreActorAdd(this);
 
@@ -144,32 +144,18 @@ void ATitanCharacter::ThrowTarget()
 	SetHighlight(GrabbedActor, false);
 	GrabbedActor->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
 
-	// 1. ´øÁö´Â ¹æÇâ °è»ê
+	// 1. ë˜ì§€ëŠ” ë°©í–¥ ê³„ì‚°
 	FVector ThrowDir = GetControlRotation().Vector();
-<<<<<<< Updated upstream
-=======
-	// »ó´Ü ¹æÇâÀ¸·Î »ìÂ¦ º¸Á¤ÇØÁÖ¸é Æ÷¹°¼±À» ±×¸®¸ç ´õ ½Ã¿øÇÏ°Ô ³¯¾Æ°©´Ï´Ù.
+
 	ThrowDir = (ThrowDir + FVector(0.f, 0.f, 0.2f)).GetSafeNormal();
 
->>>>>>> Stashed changes
 	if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(GrabbedActor->GetRootComponent()))
 	{
-		RootComp->AddImpulse(ThrowDir * ThrowForce, NAME_None, true);
-		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Orange, TEXT("Target Thrown!!"));
-<<<<<<< Updated upstream
-=======
-=======
-<<<<<<< Updated upstream
-		// °­·ÂÇÏ°Ô ´øÁö±â
-		RootComp->AddImpulse(ThrowDir * ThrowForce, NAME_None, true);
-=======
-		float StrongerForce = 5000.f; // ±âÁ¸ 3500¿¡¼­ »óÇâ Á¦¾È
-		RootComp->AddImpulse(ThrowDir * StrongerForce, NAME_None, true); // ¼¼ ¹øÂ° ÀÎÀÚ°¡ bVelChange
+		float StrongerForce = 5000.f; // ê¸°ì¡´ 3500ì—ì„œ ìƒí–¥ ì œì•ˆ
+		RootComp->AddImpulse(ThrowDir * StrongerForce, NAME_None, true); // ì„¸ ë²ˆì§¸ ì¸ìê°€ bVelChange
 
 		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Orange, TEXT("Target Thrown Strongly!!"));
->>>>>>> Stashed changes
->>>>>>> Stashed changes
->>>>>>> Stashed changes
+
 	}
 
 	if (ACharacter* Victim = Cast<ACharacter>(GrabbedActor))
