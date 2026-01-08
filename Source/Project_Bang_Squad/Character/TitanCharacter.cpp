@@ -146,16 +146,22 @@ void ATitanCharacter::ThrowTarget()
 
 	FVector ThrowDir = GetControlRotation().Vector();
 	ThrowDir = (ThrowDir + FVector(0.f, 0.f, 0.2f)).GetSafeNormal();
+
 	if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(GrabbedActor->GetRootComponent()))
 	{
+<<<<<<< Updated upstream
 		RootComp->AddImpulse(ThrowDir * ThrowForce, NAME_None, true);
 		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Orange, TEXT("Target Thrown!!"));
 <<<<<<< Updated upstream
+		// �����ϰ� ������
 		RootComp->AddImpulse(ThrowDir * ThrowForce, NAME_None, true);
+		float StrongerForce = 5000.f; // ���� 3500���� ���� ����
+		RootComp->AddImpulse(ThrowDir * StrongerForce, NAME_None, true); // �� ��° ���ڰ� bVelChange
 		float StrongerForce = 5000.f; // ���� 3500���� ���� ����
 		RootComp->AddImpulse(ThrowDir * StrongerForce, NAME_None, true); // �� ��° ���ڰ� bVelChange
 
 		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Orange, TEXT("Target Thrown Strongly!!"));
+>>>>>>> Stashed changes
 >>>>>>> Stashed changes
 	}
 
