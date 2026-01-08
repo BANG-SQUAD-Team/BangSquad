@@ -82,7 +82,7 @@ void ATitanCharacter::UpdateHoverHighlight()
 		if (TargetChar && !HitActor->ActorHasTag("Boss") && !HitActor->ActorHasTag("MidBoss"))
 		{
 			NewTarget = HitActor;
-			// ∑Œ±◊∑Œ ¿‚¿∏∑¡¥¬ ¥ÎªÛ¿« ¿Ã∏ß¿ª ∏Ì»Æ»˜ »Æ¿Œ
+			// Î°úÍ∑∏Î°ú Ïû°ÏúºÎ†§Îäî ÎåÄÏÉÅÏùò Ïù¥Î¶ÑÏùÑ Î™ÖÌôïÌûà ÌôïÏù∏
 			if (GEngine) GEngine->AddOnScreenDebugMessage(1, 0.1f, FColor::Blue,
 				FString::Printf(TEXT("Target Locked: %s"), *HitActor->GetName()));
 		}
@@ -113,19 +113,19 @@ void ATitanCharacter::TryGrab()
 
 	if (ACharacter* Victim = Cast<ACharacter>(GrabbedActor))
 	{
-		// [ºˆ¡§] ƒ∏Ω∂ ƒƒ∆˜≥Õ∆Æ∏¶ ≈Î«ÿ «‘ºˆ »£√‚
+		// [ÏàòÏ†ï] Ï∫°Ïäê Ïª¥Ìè¨ÎÑåÌä∏Î•º ÌÜµÌï¥ Ìï®Ïàò Ìò∏Ï∂ú
 		Victim->GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
-		// π∞∏Æ Ω√πƒ∑π¿Ãº« º≥¡§
+		// Î¨ºÎ¶¨ ÏãúÎÆ¨Î†àÏù¥ÏÖò ÏÑ§Ï†ï
 		Victim->GetMesh()->SetSimulatePhysics(true);
 		Victim->GetMesh()->SetCollisionProfileName(TEXT("Ragdoll"));
 
-		// [«ŸΩ…] º≠∑Œ π–æÓ≥ª¡ˆ æ µµ∑œ π´Ω√ º≥¡§ (ƒƒ∆˜≥Õ∆Æ ¥‹¿ß)
+		// [ÌïµÏã¨] ÏÑúÎ°ú Î∞ÄÏñ¥ÎÇ¥ÏßÄ ÏïäÎèÑÎ°ù Î¨¥Ïãú ÏÑ§Ï†ï (Ïª¥Ìè¨ÎÑåÌä∏ Îã®ÏúÑ)
 		Victim->GetCapsuleComponent()->IgnoreActorWhenMoving(this, true);
 		Victim->GetMesh()->IgnoreActorWhenMoving(this, true);
 		this->GetCapsuleComponent()->IgnoreActorWhenMoving(Victim, true);
 
-		// [√ﬂ∞°] æ◊≈Õ ∑π∫ßø°º≠µµ º≠∑Œ π´Ω√«œµµ∑œ º≥¡§ (æ»¿¸¿Âƒ°)
+		// [Ï∂îÍ∞Ä] Ïï°ÌÑ∞ Î†àÎ≤®ÏóêÏÑúÎèÑ ÏÑúÎ°ú Î¨¥ÏãúÌïòÎèÑÎ°ù ÏÑ§Ï†ï (ÏïàÏ†ÑÏû•Ïπò)
 		this->MoveIgnoreActorAdd(Victim);
 		Victim->MoveIgnoreActorAdd(this);
 
@@ -144,25 +144,18 @@ void ATitanCharacter::ThrowTarget()
 	SetHighlight(GrabbedActor, false);
 	GrabbedActor->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
 
+	// 1. ÎçòÏßÄÎäî Î∞©Ìñ• Í≥ÑÏÇ∞
 	FVector ThrowDir = GetControlRotation().Vector();
+
 	ThrowDir = (ThrowDir + FVector(0.f, 0.f, 0.2f)).GetSafeNormal();
 
 	if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(GrabbedActor->GetRootComponent()))
 	{
-<<<<<<< Updated upstream
-		RootComp->AddImpulse(ThrowDir * ThrowForce, NAME_None, true);
-		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Orange, TEXT("Target Thrown!!"));
-<<<<<<< Updated upstream
-		// ÔøΩÔøΩÔøΩÔøΩÔøΩœ∞ÔøΩ ÔøΩÔøΩÔøΩÔøΩÔøΩÔøΩ
-		RootComp->AddImpulse(ThrowDir * ThrowForce, NAME_None, true);
-		float StrongerForce = 5000.f; // ÔøΩÔøΩÔøΩÔøΩ 3500ÔøΩÔøΩÔøΩÔøΩ ÔøΩÔøΩÔøΩÔøΩ ÔøΩÔøΩÔøΩÔøΩ
-		RootComp->AddImpulse(ThrowDir * StrongerForce, NAME_None, true); // ÔøΩÔøΩ ÔøΩÔøΩ¬∞ ÔøΩÔøΩÔøΩ⁄∞ÔøΩ bVelChange
-		float StrongerForce = 5000.f; // ÔøΩÔøΩÔøΩÔøΩ 3500ÔøΩÔøΩÔøΩÔøΩ ÔøΩÔøΩÔøΩÔøΩ ÔøΩÔøΩÔøΩÔøΩ
-		RootComp->AddImpulse(ThrowDir * StrongerForce, NAME_None, true); // ÔøΩÔøΩ ÔøΩÔøΩ¬∞ ÔøΩÔøΩÔøΩ⁄∞ÔøΩ bVelChange
+		float StrongerForce = 5000.f; // Í∏∞Ï°¥ 3500ÏóêÏÑú ÏÉÅÌñ• Ï†úÏïà
+		RootComp->AddImpulse(ThrowDir * StrongerForce, NAME_None, true); // ÏÑ∏ Î≤àÏß∏ Ïù∏ÏûêÍ∞Ä bVelChange
 
 		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Orange, TEXT("Target Thrown Strongly!!"));
->>>>>>> Stashed changes
->>>>>>> Stashed changes
+
 	}
 
 	if (ACharacter* Victim = Cast<ACharacter>(GrabbedActor))
