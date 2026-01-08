@@ -1,28 +1,37 @@
 #include "Project_Bang_Squad/Character/MageCharacter.h"
 #include "Project_Bang_Squad/Projectile/MageProjectile.h"
+#include "Project_Bang_Squad/Character/Pillar.h" 
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Camera/CameraComponent.h" 
 #include "EnhancedInputComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "GameFramework/SpringArmComponent.h"
 #include "Engine/DataTable.h"
-#include "Components/PrimitiveComponent.h" 
-
 
 AMageCharacter::AMageCharacter()
 {
-    // 매 프레임 아웃라인 체크와 힘 적용을 위해 Tick 활성화
     PrimaryActorTick.bCanEverTick = true;
 
     GetCharacterMovement()->MaxWalkSpeed = 500.f;
     JumpCooldownTimer = 1.0f;
     UnlockedStageLevel = 1;
 
-    // 포인터 초기화
-    CurrentTargetComp = nullptr;
-    CurrentFocusedComp = nullptr;
-
-    // [삭제됨] PhysicsHandle, HoldPoint 생성 코드 제거
+    FocusedPillar = nullptr;
+    CurrentTargetPillar = nullptr;
 }
+
+void AMageCharacter::BeginPlay()
+{
+    Super::BeginPlay();
+
+    if (SpringArm)
+    {
+        // 에디터 컴포넌트 창에서 설정한 값을 미리 저장해둠
+        DefaultArmLength = SpringArm->TargetArmLength;
+        DefaultSocketOffset = SpringArm->SocketOffset;
+    }
+}
+
 
 void AMageCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
@@ -32,7 +41,6 @@ void AMageCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
     {
         if (JobAbilityAction)
         {
-            // 누름(타겟 지정)과 뗌(힘 중단) 모두 바인딩
             EIC->BindAction(JobAbilityAction, ETriggerEvent::Started, this, &AMageCharacter::JobAbility);
             EIC->BindAction(JobAbilityAction, ETriggerEvent::Completed, this, &AMageCharacter::EndJobAbility);
         }
@@ -43,43 +51,63 @@ void AMageCharacter::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
 
-    // 1. 평상시: 크로스헤어 아래 물체 아웃라인(테두리) 처리
-    UpdateCrosshairInteraction();
+    UpdatePillarInteraction(); // 아웃라인 처리
 
-    // 2. 스킬 사용 중: 타겟을 잡고 있다면, 내 시선 방향으로 힘을 가함
-    if (CurrentTargetComp && Camera)
+    // 유효성 체크 (IsValid 필수)
+    if (bIsJobAbilityActive && IsValid(CurrentTargetPillar))
     {
-        // A. 카메라가 보고 있는 목표 지점 계산 (기둥 뒤의 바닥이나 허공)
-        FHitResult HitResult;
-        FVector Start = Camera->GetComponentLocation();
-        FVector End = Start + (Camera->GetForwardVector() * TraceDistance * 1.5f); // 넉넉한 거리
+        // [A] 시선 고정 (마우스 입력이 잠겨서 이제 아주 단단하게 고정됨)
+        LockOnPillar(DeltaTime);
 
-        FCollisionQueryParams Params;
-        Params.AddIgnoredActor(this);
-        Params.AddIgnoredComponent(CurrentTargetComp); // 내가 밀고 있는 기둥은 무시해야 그 뒤를 볼 수 있음
-
-        FVector TargetLocation = End; // 허공을 보면 끝점이 목표
-
-        // 레이저가 무언가(바닥 등)에 닿았다면 그곳이 목표 지점
-        if (GetWorld()->LineTraceSingleByChannel(HitResult, Start, End, ECC_Visibility, Params))
+        // [B] 카메라 줌 아웃 (기존 로직 유지)
+        if (SpringArm)
         {
-            TargetLocation = HitResult.Location;
+            SpringArm->bInheritPitch = false;
+            FRotator TargetRelRot = FRotator(-15.0f, 0.0f, 0.0f);
+            SpringArm->SetRelativeRotation(FMath::RInterpTo(SpringArm->GetRelativeRotation(), TargetRelRot, DeltaTime, 5.0f));
+            SpringArm->TargetArmLength = FMath::FInterpTo(SpringArm->TargetArmLength, 1200.f, DeltaTime, 3.0f); // 줌 아웃
+            SpringArm->SocketOffset = FMath::VInterpTo(SpringArm->SocketOffset, FVector::ZeroVector, DeltaTime, 3.0f);
         }
 
-        // B. 힘의 방향 계산: [기둥의 윗부분] -> [목표 지점]
-        // 기둥의 중심(Origin)에서 Z축으로 반(BoxExtent.Z)만큼 올리면 윗부분입니다.
-        FVector PillarTop = CurrentTargetComp->Bounds.Origin + FVector(0, 0, CurrentTargetComp->Bounds.BoxExtent.Z);
-        FVector ForceDir = (TargetLocation - PillarTop).GetSafeNormal();
+        // [C] 제스처 입력 처리
+        if (!CurrentTargetPillar->bIsFallen)
+        {
+            float MouseX, MouseY;
+            APlayerController* PC = Cast<APlayerController>(GetController());
+            if (PC)
+            {
+                // IgnoreLookInput이 켜져 있어도, 이 함수는 순수한 마우스 이동량을 가져옵니다.
+                PC->GetInputMouseDelta(MouseX, MouseY);
 
-        // C. 지속적인 힘(Force) 가하기
-        // AddForce는 질량에 영향을 받으므로 PushForce 값이 매우 커야 합니다.
-        CurrentTargetComp->AddForceAtLocation(ForceDir * PushForce, PillarTop);
+                if (FMath::Abs(MouseX) > 0.1f && FMath::Sign(MouseX) == CurrentTargetPillar->RequiredMouseDirection)
+                {
+                    CurrentTargetPillar->TriggerFall();
+                    // (타이머 없음: 손 뗄 때까지 뷰 유지)
+                }
+            }
+        }
+    }
+    // 3. 복구 로직
+    else if (SpringArm)
+    {
+        // 복구 시 LookInput이 false로 남아있으면 안 되므로, 혹시 모르니 여기서도 풀어줍니다.
+        if (APlayerController* PC = Cast<APlayerController>(GetController()))
+        {
+             // 만약 EndJobAbility가 안 불리고 넘어왔을 경우를 대비한 안전장치
+             if (PC->IsLookInputIgnored()) PC->SetIgnoreLookInput(false);
+        }
+
+        // ... (기존 카메라 복구 로직) ...
+        SpringArm->bInheritPitch = true;
+        SpringArm->SetRelativeRotation(FMath::RInterpTo(SpringArm->GetRelativeRotation(), FRotator::ZeroRotator, DeltaTime, 5.0f));
+        SpringArm->TargetArmLength = FMath::FInterpTo(SpringArm->TargetArmLength, DefaultArmLength, DeltaTime, 3.0f);
+        SpringArm->SocketOffset = FMath::VInterpTo(SpringArm->SocketOffset, DefaultSocketOffset, DeltaTime, 3.0f);
     }
 }
 
-void AMageCharacter::UpdateCrosshairInteraction()
+void AMageCharacter::UpdatePillarInteraction()
 {
-    if (!Camera) return;
+    if (!Camera || bIsJobAbilityActive) return;
 
     FHitResult HitResult;
     FVector Start = Camera->GetComponentLocation();
@@ -88,65 +116,82 @@ void AMageCharacter::UpdateCrosshairInteraction()
     FCollisionQueryParams Params;
     Params.AddIgnoredActor(this);
 
-    // 1. 레이저 발사
     bool bHit = GetWorld()->LineTraceSingleByChannel(HitResult, Start, End, ECC_Visibility, Params);
-    UPrimitiveComponent* HitComp = bHit ? HitResult.GetComponent() : nullptr;
+    APillar* HitPillar = bHit ? Cast<APillar>(HitResult.GetActor()) : nullptr;
 
-    // 2. 물리 시뮬레이션 중인 물체인지 확인
-    bool bIsPhysicsObject = (HitComp && HitComp->IsSimulatingPhysics());
-
-    // 3. 상태 변화 체크 (새로운 물체를 봤거나, 허공을 봤을 때)
-    if (CurrentFocusedComp != HitComp)
+    // 상호작용 가능한(아직 안 넘어간) 기둥인지 확인
+    if (HitPillar && !HitPillar->bIsFallen)
     {
-        // 기존에 보고 있던 게 있다면 아웃라인 끄기
-        if (CurrentFocusedComp)
+        if (FocusedPillar != HitPillar)
         {
-            CurrentFocusedComp->SetRenderCustomDepth(false);
+            if (FocusedPillar) FocusedPillar->PillarMesh->SetRenderCustomDepth(false);
+            
+            HitPillar->PillarMesh->SetRenderCustomDepth(true);
+            FocusedPillar = HitPillar;
+            
+            // TODO: UI에 HitPillar->InteractionText 표시
         }
+    }
+    else if (FocusedPillar)
+    {
+        FocusedPillar->PillarMesh->SetRenderCustomDepth(false);
+        FocusedPillar = nullptr;
+        // TODO: UI 숨기기
+    }
+}
 
-        // 새로 본 게 물리 오브젝트라면 아웃라인 켜기
-        if (bIsPhysicsObject)
-        {
-            HitComp->SetRenderCustomDepth(true);
-            // (선택) 아웃라인 색상 설정 로직이 있다면 여기서 CustomDepthStencilValue 설정
-            CurrentFocusedComp = HitComp;
-        }
-        else
-        {
-            CurrentFocusedComp = nullptr;
-        }
+void AMageCharacter::LockOnPillar(float DeltaTime)
+{
+    APlayerController* PC = Cast<APlayerController>(GetController());
+    if (PC && CurrentTargetPillar)
+    {
+        // 기둥의 중심보다 500 unit 위(기둥 머리 꼭대기)를 바라봄
+        // 이렇게 해야 카메라가 아래에서 위를 쳐다보는 앵글이 나옵니다.
+        FVector TargetLoc = CurrentTargetPillar->GetActorLocation() + FVector(0, 0, 500.f);
+        
+        FVector Dir = (TargetLoc - Camera->GetComponentLocation()).GetSafeNormal();
+        FRotator TargetRot = Dir.Rotation();
+
+        // 고정 속도 조금 더 빠르게 (8.0f)
+        FRotator NewRot = FMath::RInterpTo(PC->GetControlRotation(), TargetRot, DeltaTime, 8.0f);
+        PC->SetControlRotation(NewRot);
     }
 }
 
 void AMageCharacter::JobAbility()
 {
-    // 1. 애니메이션/사운드 재생 (데이터 테이블)
-    ProcessSkill(TEXT("JobAbility"));
-
-    // 2. 현재 아웃라인이 켜져 있는(보고 있는) 물체가 있다면 타겟으로 설정
-    if (CurrentFocusedComp)
+    // 1. 타겟이 있을 때만 로직 실행
+    if (FocusedPillar)
     {
-        CurrentTargetComp = CurrentFocusedComp;
+        // ... (기존 스킬 데이터 처리 로직 등) ...
 
-        if (GEngine) 
-            GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Cyan, TEXT("염력 제어 시작! 마우스로 방향을 지시하세요."));
+        CurrentTargetPillar = FocusedPillar;
+        bIsJobAbilityActive = true;
+
+        // [핵심 추가] 카메라 회전 잠금!
+        // 이제 마우스를 움직여도 시선이 돌아가지 않습니다.
+        if (APlayerController* PC = Cast<APlayerController>(GetController()))
+        {
+            PC->SetIgnoreLookInput(true);
+        }
     }
 }
 
 void AMageCharacter::EndJobAbility()
 {
-    // 버튼을 떼면 타겟 해제 -> Tick에서 힘 주는 것을 멈춤
-    if (CurrentTargetComp)
+    bIsJobAbilityActive = false;
+    CurrentTargetPillar = nullptr;
+
+    // [핵심 추가] 카메라 회전 잠금 해제!
+    // 다시 마우스로 화면을 돌릴 수 있게 됩니다.
+    if (APlayerController* PC = Cast<APlayerController>(GetController()))
     {
-        CurrentTargetComp = nullptr;
-        if (GEngine) 
-            GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Silver, TEXT("염력 해제"));
+        PC->SetIgnoreLookInput(false);
     }
 }
 
 void AMageCharacter::ProcessSkill(FName SkillRowName)
 {
-    // 기존 로직 유지
     if (!SkillDataTable) return;
 
     static const FString ContextString(TEXT("SkillContext"));
@@ -154,43 +199,25 @@ void AMageCharacter::ProcessSkill(FName SkillRowName)
 
     if (Data)
     {
-       if (!IsSkillUnlocked(Data->RequiredStage)) return;
-
-       if (Data->SkillMontage)
-       {
-          PlayAnimMontage(Data->SkillMontage);
-       }
+        if (!IsSkillUnlocked(Data->RequiredStage)) return;
+        if (Data->SkillMontage) PlayAnimMontage(Data->SkillMontage);
 
         if (Data->ProjectileClass)
         {
-           FVector SpawnLocation = GetActorLocation() + GetActorForwardVector() * 100.0f;
-           FRotator SpawnRotation = GetControlRotation();
+            FVector SpawnLocation = GetActorLocation() + GetActorForwardVector() * 100.0f;
+            FRotator SpawnRotation = GetControlRotation();
+            FActorSpawnParameters SpawnParams;
+            SpawnParams.Owner = this;
+            SpawnParams.Instigator = GetInstigator();
 
-           FActorSpawnParameters SpawnParams;
-           SpawnParams.Owner = this;
-           SpawnParams.Instigator = GetInstigator();
-
-           AMageProjectile* Projectile = GetWorld()->SpawnActor<AMageProjectile>(
-             Data->ProjectileClass, 
-             SpawnLocation, 
-             SpawnRotation, 
-             SpawnParams
-          );
-
-           if (Projectile)
-           {
-              Projectile->Damage = Data->Damage;
-           }
+            if (AMageProjectile* Projectile = GetWorld()->SpawnActor<AMageProjectile>(Data->ProjectileClass, SpawnLocation, SpawnRotation, SpawnParams))
+            {
+                Projectile->Damage = Data->Damage;
+            }
         }
-    }
-    else
-    {
-        // 데이터 테이블에 행이 없어도 염력 로직은 작동하므로 크래시 방지용 로그만 출력
-        // UE_LOG(LogTemp, Warning, TEXT("스킬 데이터를 찾을 수 없습니다: %s"), *SkillRowName.ToString());
     }
 }
 
-// Attack, Skill1, Skill2는 그대로 유지
 void AMageCharacter::Attack() { ProcessSkill(TEXT("Attack")); }
 void AMageCharacter::Skill1() { ProcessSkill(TEXT("Skill1")); }
 void AMageCharacter::Skill2() { ProcessSkill(TEXT("Skill2")); }
