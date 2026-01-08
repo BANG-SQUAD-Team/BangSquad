@@ -16,16 +16,16 @@ protected:
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaTime) override;
 
-	/** 직업 능력 및 스킬 */
 	virtual void JobAbility() override;
 	virtual void Skill1() override;
 	virtual void Skill2() override;
 
-	/** 실시간 하이라이트 업데이트 */
+	/** 데이터 테이블 기반 스킬 처리 (Mage 방식과 동일) */
+	void ProcessSkill(FName SkillRowName);
+
 	void UpdateHoverHighlight();
 
 private:
-	// --- 상태 변수 ---
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	bool bIsGrabbing = false;
 
@@ -38,16 +38,17 @@ private:
 	UPROPERTY()
 	AActor* HoveredActor = nullptr;
 
-	// --- 타이머 핸들 ---
+	/** 타이탄 스킬용 데이터 테이블 (에디터에서 할당) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Data", meta = (AllowPrivateAccess = "true"))
+	class UDataTable* SkillDataTable;
+
 	FTimerHandle GrabTimerHandle;
 	FTimerHandle CooldownTimerHandle;
 
-	// --- 설정값 ---
 	float ThrowForce = 3500.f;
 	float GrabMaxDuration = 5.0f;
 	float ThrowCooldownTime = 3.0f;
 
-	// --- 핵심 로직 함수 ---
 	void TryGrab();
 	void ThrowTarget();
 	void ResetCooldown();
@@ -55,5 +56,4 @@ private:
 
 	UFUNCTION()
 	void RecoverCharacter(ACharacter* Victim);
-
 };
