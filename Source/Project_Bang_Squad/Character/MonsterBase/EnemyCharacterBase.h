@@ -4,6 +4,8 @@
 #include "GameFramework/Character.h"
 #include "EnemyCharacterBase.generated.h"
 
+class UAnimMontage;
+
 UCLASS()
 class PROJECT_BANG_SQUAD_API AEnemyCharacterBase : public ACharacter
 {
@@ -16,45 +18,87 @@ protected:
 	virtual void BeginPlay() override;
 
 public:
-	/**
-	 * 피격 리액션(경직) 시작 요청
-	 * - 서버에서 호출하는 것을 권장(멀티 기준)
-	 * - 현재는 HealthComp 없이도 외부(무기/피격 판정)에서 호출 가능하게 열어둠
-	 */
+	// ===== Hit React =====
 	UFUNCTION(BlueprintCallable, Category = "HitReact")
 	void ReceiveHitReact();
 
-	/** 현재 피격 경직 중인지 */
 	UFUNCTION(BlueprintPure, Category = "HitReact")
 	bool IsHitReacting() const { return bIsHitReacting; }
 
+	// ===== Death =====
+	UFUNCTION(BlueprintCallable, Category = "Death")
+	void ReceiveDeath();
+
+	UFUNCTION(BlueprintPure, Category = "Death")
+	bool IsDead() const { return bIsDead; }
+
 protected:
-	/** 피격 몽타주 1개(몬스터마다 다르게 세팅) */
+	// ===== Hit React Settings =====
 	UPROPERTY(EditDefaultsOnly, Category = "HitReact")
 	TObjectPtr<UAnimMontage> HitReactMontage = nullptr;
 
-	/** 피격 중 이동속도 배수(속도만 낮추고 정지는 안 함) */
 	UPROPERTY(EditDefaultsOnly, Category = "HitReact", meta = (ClampMin = "0.05", ClampMax = "1.0"))
 	float HitReactSpeedMultiplier = 0.35f;
 
-	/** 몽타주 길이가 0이거나 짧을 때 보험 */
 	UPROPERTY(EditDefaultsOnly, Category = "HitReact", meta = (ClampMin = "0.05", ClampMax = "5.0"))
 	float HitReactMinDuration = 0.25f;
 
-	/** 피격 중 재피격 무시(초기 안정 버전) */
 	UPROPERTY(EditDefaultsOnly, Category = "HitReact")
 	bool bIgnoreHitReactWhileActive = true;
+
+	// ===== Death Settings =====
+	UPROPERTY(EditDefaultsOnly, Category = "Death")
+	TObjectPtr<UAnimMontage> DeathMontage = nullptr;
+
+	// 데스 몽타주를 루프로 돌리고 싶으면 true
+	UPROPERTY(EditDefaultsOnly, Category = "Death")
+	bool bLoopDeathMontage = false;
+
+	// 루프 섹션 이름(몽타주에 섹션을 만들었을 때만 의미 있음)
+	UPROPERTY(EditDefaultsOnly, Category = "Death", meta = (EditCondition = "bLoopDeathMontage"))
+	FName DeathLoopSectionName = TEXT("Loop");
+
+	// 몽타주 재생 후 래그돌로 전환할지
+	UPROPERTY(EditDefaultsOnly, Category = "Death")
+	bool bEnableRagdollOnDeath = true;
+
+	// (몽타주 시작 후) 몇 초 뒤 래그돌로 전환할지
+	UPROPERTY(EditDefaultsOnly, Category = "Death", meta = (ClampMin = "0.0", ClampMax = "10.0", EditCondition = "bEnableRagdollOnDeath"))
+	float DeathToRagdollDelay = 0.25f;
+
+	// 죽은 뒤 일정 시간 후 파괴(시체 정리)
+	UPROPERTY(EditDefaultsOnly, Category = "Death")
+	bool bDestroyAfterDeath = true;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Death", meta = (ClampMin = "0.0", ClampMax = "60.0", EditCondition = "bDestroyAfterDeath"))
+	float DestroyDelay = 8.0f;
 
 protected:
 	void StartHitReact(float Duration);
 	void EndHitReact();
 
-	/** 몽타주 재생을 전 클라에 전파(멀티 대비) */
+	void StartDeath();
+	void EnterRagdoll();
+
+	// 전 클라에 재생/전환 전파
 	UFUNCTION(NetMulticast, Unreliable)
 	void Multicast_PlayHitReactMontage();
+	void Multicast_PlayHitReactMontage_Implementation();
+
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_PlayDeathMontage();
+	void Multicast_PlayDeathMontage_Implementation();
+
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_EnterRagdoll();
+	void Multicast_EnterRagdoll_Implementation();
 
 private:
 	bool bIsHitReacting = false;
+	bool bIsDead = false;
+
 	float DefaultMaxWalkSpeed = 0.f;
 	FTimerHandle HitReactTimer;
+
+	FTimerHandle DeathToRagdollTimer;
 };
