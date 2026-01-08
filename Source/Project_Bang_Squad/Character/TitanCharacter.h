@@ -20,9 +20,7 @@ protected:
 	virtual void Skill1() override;
 	virtual void Skill2() override;
 
-	/** 데이터 테이블 기반 스킬 처리 (Mage 방식과 동일) */
 	void ProcessSkill(FName SkillRowName);
-
 	void UpdateHoverHighlight();
 
 private:
@@ -38,14 +36,14 @@ private:
 	UPROPERTY()
 	AActor* HoveredActor = nullptr;
 
-	/** 타이탄 스킬용 데이터 테이블 (에디터에서 할당) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Data", meta = (AllowPrivateAccess = "true"))
 	class UDataTable* SkillDataTable;
 
 	FTimerHandle GrabTimerHandle;
 	FTimerHandle CooldownTimerHandle;
 
-	float ThrowForce = 3500.f;
+	// 던지는 힘 (LaunchCharacter에서는 속도 벡터 계산에 쓰임)
+	float ThrowMaxDistance = 1500.f;
 	float GrabMaxDuration = 5.0f;
 	float ThrowCooldownTime = 3.0f;
 
@@ -53,7 +51,4 @@ private:
 	void ThrowTarget();
 	void ResetCooldown();
 	void SetHighlight(AActor* Target, bool bEnable);
-
-	UFUNCTION()
-	void RecoverCharacter(ACharacter* Victim);
 };

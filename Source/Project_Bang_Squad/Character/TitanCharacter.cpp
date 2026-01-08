@@ -1,9 +1,10 @@
-#include "Project_Bang_Squad/Character/TitanCharacter.h"
+ï»¿#include "Project_Bang_Squad/Character/TitanCharacter.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Camera/CameraComponent.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "Kismet/GameplayStatics.h" // SuggestProjectileVelocityìš©
 #include "TimerManager.h"
 #include "Engine/DataTable.h"
 
@@ -27,7 +28,6 @@ void ATitanCharacter::Tick(float DeltaTime)
 void ATitanCharacter::ProcessSkill(FName SkillRowName)
 {
 	if (!SkillDataTable) { return; }
-
 	static const FString ContextString(TEXT("TitanSkillContext"));
 	FSkillData* Data = SkillDataTable->FindRow<FSkillData>(SkillRowName, ContextString);
 
@@ -39,10 +39,8 @@ void ATitanCharacter::ProcessSkill(FName SkillRowName)
 				FString::Printf(TEXT("Skill Locked! (Required Stage: %d)"), Data->RequiredStage));
 			return;
 		}
-
 		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.f, FColor::Cyan,
 			FString::Printf(TEXT("Titan %s Activated! (Damage: %.1f)"), *Data->SkillName.ToString(), Data->Damage));
-
 		if (Data->SkillMontage) { PlayAnimMontage(Data->SkillMontage); }
 	}
 }
@@ -62,7 +60,6 @@ void ATitanCharacter::JobAbility()
 void ATitanCharacter::UpdateHoverHighlight()
 {
 	if (!Camera) return;
-
 	FVector Start = Camera->GetComponentLocation();
 	FVector End = Start + (Camera->GetForwardVector() * 600.0f);
 	FCollisionShape Shape = FCollisionShape::MakeSphere(70.0f);
@@ -76,18 +73,12 @@ void ATitanCharacter::UpdateHoverHighlight()
 	if (bHit && HitResult.GetActor())
 	{
 		AActor* HitActor = HitResult.GetActor();
-
 		ACharacter* TargetChar = Cast<ACharacter>(HitActor);
-
 		if (TargetChar && !HitActor->ActorHasTag("Boss") && !HitActor->ActorHasTag("MidBoss"))
 		{
 			NewTarget = HitActor;
-			// ·Î±×·Î ÀâÀ¸·Á´Â ´ë»óÀÇ ÀÌ¸§À» ¸íÈ®È÷ È®ÀÎ
-			if (GEngine) GEngine->AddOnScreenDebugMessage(1, 0.1f, FColor::Blue,
-				FString::Printf(TEXT("Target Locked: %s"), *HitActor->GetName()));
 		}
 	}
-
 	if (HoveredActor != NewTarget)
 	{
 		if (HoveredActor) SetHighlight(HoveredActor, false);
@@ -96,13 +87,12 @@ void ATitanCharacter::UpdateHoverHighlight()
 	}
 }
 
+// ==========================================================
+// [ìž¡ê¸°] ë¬¼ë¦¬ ë„ê³  ì†Œì¼“ì— ë¶€ì°© (ëž™ëŒ X)
+// ==========================================================
 void ATitanCharacter::TryGrab()
 {
-	if (!HoveredActor)
-	{
-		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, TEXT("No target to grab!"));
-		return;
-	}
+	if (!HoveredActor) return;
 
 	GrabbedActor = HoveredActor;
 	HoveredActor = nullptr;
@@ -111,28 +101,26 @@ void ATitanCharacter::TryGrab()
 	SetHighlight(GrabbedActor, true);
 	ProcessSkill(TEXT("JobAbility"));
 
-	if (ACharacter* Victim = Cast<ACharacter>(GrabbedActor))
+	if (ABaseCharacter* Victim = Cast<ABaseCharacter>(GrabbedActor))
 	{
-		// [¼öÁ¤] Ä¸½¶ ÄÄÆ÷³ÍÆ®¸¦ ÅëÇØ ÇÔ¼ö È£Ãâ
+		// 1. ìº¡ìŠ ì¶©ëŒ ë„ê¸° (ìž¡í˜€ ìžˆëŠ” ë™ì•ˆ)
 		Victim->GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
-		// ¹°¸® ½Ã¹Ä·¹ÀÌ¼Ç ¼³Á¤
-		Victim->GetMesh()->SetSimulatePhysics(true);
-		Victim->GetMesh()->SetCollisionProfileName(TEXT("Ragdoll"));
+		// 2. ë¬¼ë¦¬ ë„ê¸° (í™•ì‹¤í•˜ê²Œ ê³ ì •)
+		Victim->GetMesh()->SetSimulatePhysics(false);
 
-		// [ÇÙ½É] ¼­·Î ¹Ð¾î³»Áö ¾Êµµ·Ï ¹«½Ã ¼³Á¤ (ÄÄÆ÷³ÍÆ® ´ÜÀ§)
-		Victim->GetCapsuleComponent()->IgnoreActorWhenMoving(this, true);
-		Victim->GetMesh()->IgnoreActorWhenMoving(this, true);
-		this->GetCapsuleComponent()->IgnoreActorWhenMoving(Victim, true);
+		// 3. ìž¡íž˜ ìƒíƒœ ì„¤ì •
+		Victim->SetIsGrabbed(true);
 
-		// [Ãß°¡] ¾×ÅÍ ·¹º§¿¡¼­µµ ¼­·Î ¹«½ÃÇÏµµ·Ï ¼³Á¤ (¾ÈÀüÀåÄ¡)
+		// 4. ìƒí˜¸ ë¬´ì‹œ
 		this->MoveIgnoreActorAdd(Victim);
 		Victim->MoveIgnoreActorAdd(this);
-
-		Victim->GetMesh()->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
 	}
 
+	// 5. ì†Œì¼“ ë¶€ì°©
 	GrabbedActor->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, TEXT("Hand_R_Socket"));
+
+	// 5ì´ˆ ë’¤ ìžë™ ë˜ì§€ê¸°
 	GetWorldTimerManager().SetTimer(GrabTimerHandle, this, &ATitanCharacter::ThrowTarget, GrabMaxDuration, false);
 }
 
@@ -142,45 +130,50 @@ void ATitanCharacter::ThrowTarget()
 
 	GetWorldTimerManager().ClearTimer(GrabTimerHandle);
 	SetHighlight(GrabbedActor, false);
+
 	GrabbedActor->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
 
-	FVector ThrowDir = GetControlRotation().Vector();
-	if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(GrabbedActor->GetRootComponent()))
+	if (ABaseCharacter* Victim = Cast<ABaseCharacter>(GrabbedActor))
 	{
-		RootComp->AddImpulse(ThrowDir * ThrowForce, NAME_None, true);
-		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Orange, TEXT("Target Thrown!!"));
-	}
+		Victim->GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+		Victim->GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
 
-	if (ACharacter* Victim = Cast<ACharacter>(GrabbedActor))
-	{
-		FTimerHandle RecoveryHandle;
-		FTimerDelegate Delegate;
-		Delegate.BindUFunction(this, TEXT("RecoverCharacter"), Victim);
-		GetWorldTimerManager().SetTimer(RecoveryHandle, Delegate, 0.5f, false);
+		Victim->GetCharacterMovement()->SetMovementMode(MOVE_Falling);
+
+		// 1. ë¹„ê±°ë¦¬ë¥¼ ìœ ì§€í•˜ë©´ì„œ ì‹œê°ì  í•´ìƒë„ë¥¼ ë†’ìž„
+		FVector StartPos = Victim->GetActorLocation();
+		FVector ForwardVector = GetControlRotation().Vector();
+		FVector TargetPos = StartPos + (ForwardVector * 2000.0f);
+
+		FVector LaunchVelocity;
+		// 2. [í•µì‹¬] ArcParamì„ 0.85ë¡œ ì„¤ì • (ê±°ì˜ ì‚° ëª¨ì–‘ìœ¼ë¡œ ë†’ê²Œ ë˜ì§)
+		// 1.0ì— ê°€ê¹Œìš¸ìˆ˜ë¡ ì •ì ì´ ë†’ì•„ì§‘ë‹ˆë‹¤.
+		bool bHaveSolution = UGameplayStatics::SuggestProjectileVelocity_CustomArc(
+			this, LaunchVelocity, StartPos, TargetPos, 0.0f, 0.85f);
+
+		if (!bHaveSolution)
+		{
+			// ê³„ì‚° ì‹¤íŒ¨ ì‹œ ë³´ì •ê°’: ìœ„ë¡œ ë” ê°•í•˜ê²Œ ì†Ÿêµ¬ì¹˜ê²Œ ì„¤ì •
+			LaunchVelocity = ForwardVector * 1500.0f + FVector(0, 0, 1200.0f);
+		}
+
+		// 3. ë°œì‚¬!
+		Victim->LaunchCharacter(LaunchVelocity, true, true);
+
+		// 4. [ì¤‘ìš”] ì¤‘ë ¥ì„ 4.5ë¡œ ë†’ì—¬ì„œ ì •ì ì— ë„ë‹¬í•œ ë’¤ ìˆœì‹ê°„ì— ë°”ë‹¥ìœ¼ë¡œ ê½‚ížˆê²Œ í•¨
+		Victim->SetThrownByTitan(true, this);
+		Victim->GetCharacterMovement()->GravityScale = 4.5f;
+		Victim->GetCharacterMovement()->AirControl = 0.0f;
+
+		Victim->SetIsGrabbed(false);
+		this->MoveIgnoreActorRemove(Victim);
+		Victim->MoveIgnoreActorRemove(this);
 	}
 
 	bIsGrabbing = false;
 	GrabbedActor = nullptr;
 	bIsCooldown = true;
 	GetWorldTimerManager().SetTimer(CooldownTimerHandle, this, &ATitanCharacter::ResetCooldown, ThrowCooldownTime, false);
-}
-
-void ATitanCharacter::RecoverCharacter(ACharacter* Victim)
-{
-	if (!Victim || !Victim->IsValidLowLevel()) return;
-	USkeletalMeshComponent* VictimMesh = Victim->GetMesh();
-	UCapsuleComponent* Capsule = Victim->GetCapsuleComponent();
-	FVector LandedLocation = VictimMesh->GetComponentLocation();
-	float CapsuleHalfHeight = Capsule->GetScaledCapsuleHalfHeight();
-	FVector NewLocation = LandedLocation + FVector(0.0f, 0.0f, CapsuleHalfHeight);
-	Victim->SetActorLocation(NewLocation, false, nullptr, ETeleportType::TeleportPhysics);
-	VictimMesh->AttachToComponent(Capsule, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
-	VictimMesh->SetSimulatePhysics(false);
-	VictimMesh->SetCollisionProfileName(TEXT("CharacterMesh"));
-	VictimMesh->SetRelativeLocation(FVector(0, 0, -90.0f));
-	VictimMesh->SetRelativeRotation(FRotator(0, -90.0f, 0));
-	Capsule->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-	if (Victim->GetCharacterMovement()) { Victim->GetCharacterMovement()->SetMovementMode(MOVE_Walking); }
 }
 
 void ATitanCharacter::SetHighlight(AActor* Target, bool bEnable)
