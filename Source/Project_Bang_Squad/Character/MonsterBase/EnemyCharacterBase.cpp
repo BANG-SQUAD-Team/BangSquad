@@ -1,14 +1,19 @@
 #include "Project_Bang_Squad/Character/MonsterBase/EnemyCharacterBase.h"
-#include "GameFramework/CharacterMovementComponent.h"
+
+#include "AIController.h"
 #include "Animation/AnimMontage.h"
-#include "TimerManager.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "Components/CapsuleComponent.h"
+
+//  여기서만 포함 (헤더에서는 전방선언만)
+#include "Project_Bang_Squad/Character/Component/HealthComponent.h"
 
 AEnemyCharacterBase::AEnemyCharacterBase()
 {
-	PrimaryActorTick.bCanEverTick = false; // 기본 OFF
-
-	// 바라보기 허용: AIController가 SetFocus로 회전하는 패턴을 쓰기 좋게
+	PrimaryActorTick.bCanEverTick = false;
 	bUseControllerRotationYaw = false;
+
+	bReplicates = true;
 }
 
 void AEnemyCharacterBase::BeginPlay()
@@ -19,19 +24,45 @@ void AEnemyCharacterBase::BeginPlay()
 	{
 		DefaultMaxWalkSpeed = Move->MaxWalkSpeed;
 
-		// AI가 원하는 방향으로 회전(바라보기) 가능하게
 		Move->bUseControllerDesiredRotation = true;
 		Move->RotationRate = FRotator(0.f, 720.f, 0.f);
 	}
+
+	// =========================
+	// HealthComponent 자동 연동
+	// =========================
+	if (UHealthComponent* HC = FindComponentByClass<UHealthComponent>())
+	{
+		HC->OnDead.RemoveDynamic(this, &AEnemyCharacterBase::HandleDeadFromHealth);
+		HC->OnDead.AddDynamic(this, &AEnemyCharacterBase::HandleDeadFromHealth);
+
+		HC->OnHealthChanged.RemoveDynamic(this, &AEnemyCharacterBase::HandleHealthChangedFromHealth);
+		HC->OnHealthChanged.AddDynamic(this, &AEnemyCharacterBase::HandleHealthChangedFromHealth);
+	}
 }
+
+void AEnemyCharacterBase::HandleDeadFromHealth()
+{
+	ReceiveDeath();
+}
+
+void AEnemyCharacterBase::HandleHealthChangedFromHealth(float NewHealth, float InMaxHealth)
+{
+	if (!HasAuthority()) return;
+	if (bIsDead) return;
+	if (NewHealth <= 0.f) return;
+
+	ReceiveHitReact();
+}
+
+// =========================
+// Hit React
+// =========================
 
 void AEnemyCharacterBase::ReceiveHitReact()
 {
-	// 멀티 기준: 서버에서 시작하는 게 정석
-	if (!HasAuthority())
-	{
-		return;
-	}
+	if (!HasAuthority()) return;
+	if (bIsDead) return;
 
 	if (bIsHitReacting && bIgnoreHitReactWhileActive)
 	{
@@ -51,16 +82,18 @@ void AEnemyCharacterBase::StartHitReact(float Duration)
 {
 	bIsHitReacting = true;
 
-	// 속도만 감소
 	if (UCharacterMovementComponent* Move = GetCharacterMovement())
 	{
+		if (DefaultMaxWalkSpeed <= 0.f)
+		{
+			DefaultMaxWalkSpeed = Move->MaxWalkSpeed;
+		}
+
 		Move->MaxWalkSpeed = DefaultMaxWalkSpeed * HitReactSpeedMultiplier;
 	}
 
-	// 전 클라에 몽타주 재생
 	Multicast_PlayHitReactMontage();
 
-	// Duration 후 복구
 	GetWorldTimerManager().ClearTimer(HitReactTimer);
 	GetWorldTimerManager().SetTimer(HitReactTimer, this, &AEnemyCharacterBase::EndHitReact, Duration, false);
 }
@@ -78,6 +111,97 @@ void AEnemyCharacterBase::EndHitReact()
 void AEnemyCharacterBase::Multicast_PlayHitReactMontage_Implementation()
 {
 	if (!HitReactMontage) return;
+	if (bIsDead) return;
 
 	PlayAnimMontage(HitReactMontage);
+}
+
+// =========================
+// Death
+// =========================
+
+void AEnemyCharacterBase::ReceiveDeath()
+{
+	if (!HasAuthority()) return;
+	if (bIsDead) return;
+
+	StartDeath();
+}
+
+void AEnemyCharacterBase::StartDeath()
+{
+	bIsDead = true;
+	bIsHitReacting = false;
+
+	if (AAIController* AIC = Cast<AAIController>(GetController()))
+	{
+		AIC->StopMovement();
+		AIC->ClearFocus(EAIFocusPriority::Gameplay);
+	}
+
+	if (UCharacterMovementComponent* Move = GetCharacterMovement())
+	{
+		Move->StopMovementImmediately();
+		Move->DisableMovement();
+	}
+
+	Multicast_PlayDeathMontage();
+
+	GetWorldTimerManager().ClearTimer(DeathToRagdollTimer);
+	if (bEnableRagdollOnDeath)
+	{
+		GetWorldTimerManager().SetTimer(
+			DeathToRagdollTimer,
+			this,
+			&AEnemyCharacterBase::EnterRagdoll,
+			DeathToRagdollDelay,
+			false
+		);
+	}
+
+	if (bDestroyAfterDeath)
+	{
+		SetLifeSpan(DestroyDelay);
+	}
+}
+
+void AEnemyCharacterBase::Multicast_PlayDeathMontage_Implementation()
+{
+	if (!DeathMontage) return;
+
+	PlayAnimMontage(DeathMontage);
+
+	if (bLoopDeathMontage && DeathLoopSectionName != NAME_None)
+	{
+		if (UAnimInstance* AnimInst = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr)
+		{
+			AnimInst->Montage_SetNextSection(DeathLoopSectionName, DeathLoopSectionName, DeathMontage);
+		}
+	}
+}
+
+void AEnemyCharacterBase::EnterRagdoll()
+{
+	if (!HasAuthority()) return;
+	Multicast_EnterRagdoll();
+}
+
+void AEnemyCharacterBase::Multicast_EnterRagdoll_Implementation()
+{
+	if (!GetMesh()) return;
+
+	if (UAnimInstance* AnimInst = GetMesh()->GetAnimInstance())
+	{
+		AnimInst->StopAllMontages(0.1f);
+	}
+
+	if (UCapsuleComponent* Capsule = GetCapsuleComponent())
+	{
+		Capsule->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	}
+
+	GetMesh()->SetCollisionProfileName(TEXT("Ragdoll"));
+	GetMesh()->SetSimulatePhysics(true);
+	GetMesh()->WakeAllRigidBodies();
+	GetMesh()->bBlendPhysics = true;
 }
