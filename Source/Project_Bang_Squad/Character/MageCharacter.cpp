@@ -10,12 +10,19 @@
 #include "Engine/DataTable.h"
 #include "Components/TimelineComponent.h" 
 #include "Curves/CurveFloat.h" 
-#include "Net/UnrealNetwork.h" // 네트워크 헤더
+#include "Net/UnrealNetwork.h"
 
 AMageCharacter::AMageCharacter()
 {
     PrimaryActorTick.bCanEverTick = true;
 
+    bUseControllerRotationYaw = true;
+    bUseControllerRotationPitch = false;
+    bUseControllerRotationRoll = false;
+    
+    GetCharacterMovement()->bOrientRotationToMovement = false;
+    GetCharacterMovement()->RotationRate = FRotator(0.0f, 720.0f, 0.0f);
+    
     GetCharacterMovement()->MaxWalkSpeed = 500.f;
     JumpCooldownTimer = 1.0f;
     UnlockedStageLevel = 1;
@@ -112,25 +119,162 @@ void AMageCharacter::Tick(float DeltaTime)
             // 마우스 제스처 감지
             if (FMath::Abs(MouseX) > 0.1f && FMath::Sign(MouseX) == CurrentTargetPillar->RequiredMouseDirection)
             {
-                // [변경됨] 클라이언트가 직접 넘기지 않고, 서버에게 요청함
                 Server_TriggerPillarFall(CurrentTargetPillar);
-                
-                // (선택 사항) 반응성을 위해 내 화면에서는 미리 종료 처리를 시작할 수도 있지만,
-                // 안전하게 서버가 처리해서 bIsFallen이 바뀌면 다음 틱에 [로직 1]에서 자동 종료되게 둠.
             }
         }
     }
 }
 
-// [추가됨] 서버에서 실행되는 함수 (RPC Implementation)
+// =========================================================
+// [핵심] 공격 및 콤보 시스템
+// =========================================================
+
+void AMageCharacter::Attack()
+{
+    // 1. 현재 콤보 순서에 맞는 스킬 이름 선택
+    FName SkillName;
+    if (CurrentComboIndex == 0)
+    {
+        SkillName = TEXT("Attack_A"); // 1타
+    }
+    else
+    {
+        SkillName = TEXT("Attack_B"); // 2타
+    }
+
+    // 2. 스킬 실행
+    ProcessSkill(SkillName);
+
+    // 3. 콤보 카운트 증가 (0 -> 1 -> 0 -> 1 ...)
+    CurrentComboIndex++;
+    if (CurrentComboIndex > 1) 
+    {
+        CurrentComboIndex = 0;
+    }
+
+    // 4. 콤보 리셋 타이머 설정 (1.2초 뒤 초기화)
+    GetWorldTimerManager().ClearTimer(ComboResetTimer);
+    GetWorldTimerManager().SetTimer(ComboResetTimer, this, &AMageCharacter::ResetCombo, 1.2f, false);
+}
+
+void AMageCharacter::ResetCombo()
+{
+    CurrentComboIndex = 0;
+}
+
+void AMageCharacter::Skill1() { ProcessSkill(TEXT("Skill1")); }
+void AMageCharacter::Skill2() { ProcessSkill(TEXT("Skill2")); }
+
+void AMageCharacter::ProcessSkill(FName SkillRowName)
+{
+    if (!SkillDataTable) return;
+    static const FString ContextString(TEXT("SkillContext"));
+    FSkillData* Data = SkillDataTable->FindRow<FSkillData>(SkillRowName, ContextString);
+    
+    if (Data)
+    {
+        if (!IsSkillUnlocked(Data->RequiredStage)) return;
+
+        // 1. 몽타주 재생 (내 화면 + 멀티)
+        if (Data->SkillMontage) 
+        {
+            PlayAnimMontage(Data->SkillMontage);
+            Server_PlayMontage(Data->SkillMontage);
+        }
+
+        // 2. 투사체 발사 (타이머 적용)
+        if (Data->ProjectileClass)
+        {
+            // 뭘 쏠지 저장
+            PendingProjectileClass = Data->ProjectileClass;
+
+            // 기존 타이머가 돌고 있다면 초기화 (연타 꼬임 방지)
+            GetWorldTimerManager().ClearTimer(ProjectileTimerHandle);
+
+            // 딜레이 체크
+            if (Data->ProjectileSpawnDelay > 0.0f)
+            {
+                // [지연 발사]
+                GetWorldTimerManager().SetTimer(
+                    ProjectileTimerHandle, 
+                    this, 
+                    &AMageCharacter::SpawnDelayedProjectile, 
+                    Data->ProjectileSpawnDelay, 
+                    false
+                );
+            }
+            else
+            {
+                // [즉시 발사]
+                SpawnDelayedProjectile();
+            }
+        }
+    }
+}
+
+void AMageCharacter::SpawnDelayedProjectile()
+{
+    // 저장된 투사체가 없으면 취소
+    if (!PendingProjectileClass) return;
+
+    // 발사 위치 계산
+    FVector SpawnLoc;
+    FRotator SpawnRot = GetControlRotation(); 
+    FName SocketName = TEXT("Weapon_Root_R"); 
+
+    if (GetMesh() && GetMesh()->DoesSocketExist(SocketName))
+    {
+        SpawnLoc = GetMesh()->GetSocketLocation(SocketName);
+    }
+    else
+    {
+        SpawnLoc = GetActorLocation() + (GetActorForwardVector() * 100.f);
+    }
+
+    // 서버에 생성 요청
+    Server_SpawnProjectile(PendingProjectileClass, SpawnLoc, SpawnRot);
+}
+
+// =========================================================
+// 서버 RPC 구현부
+// =========================================================
+
+void AMageCharacter::Server_SpawnProjectile_Implementation(UClass* ProjectileClassToSpawn, FVector Location, FRotator Rotation)
+{
+    if (!ProjectileClassToSpawn) return;
+
+    FActorSpawnParameters SpawnParams;
+    SpawnParams.Owner = this;            
+    SpawnParams.Instigator = GetInstigator(); 
+
+    GetWorld()->SpawnActor<AActor>(ProjectileClassToSpawn, Location, Rotation, SpawnParams);
+}
+
+void AMageCharacter::Server_PlayMontage_Implementation(UAnimMontage* MontageToPlay)
+{
+    Multicast_PlayMontage(MontageToPlay);
+}
+
+void AMageCharacter::Multicast_PlayMontage_Implementation(UAnimMontage* MontageToPlay)
+{
+    // 내가 아닌 다른 클라이언트에서만 재생
+    if (MontageToPlay && !IsLocallyControlled())
+    {
+        PlayAnimMontage(MontageToPlay);
+    }
+}
+
 void AMageCharacter::Server_TriggerPillarFall_Implementation(APillar* TargetPillar)
 {
     if (TargetPillar)
     {
-        // 서버에서 기둥을 넘어뜨림 -> Pillar의 Replicated 변수 변경 -> 모든 클라이언트에 전파됨
         TargetPillar->TriggerFall();
     }
 }
+
+// =========================================================
+// 기타 기능 (타임라인, 상호작용)
+// =========================================================
 
 void AMageCharacter::CameraTimelineProgress(float Alpha)
 {
@@ -259,69 +403,3 @@ void AMageCharacter::LockOnPillar(float DeltaTime)
         PC->SetControlRotation(NewRot);
     }
 }
-
-void AMageCharacter::ProcessSkill(FName SkillRowName)
-{
-    if (!SkillDataTable) return;
-    static const FString ContextString(TEXT("SkillContext"));
-    FSkillData* Data = SkillDataTable->FindRow<FSkillData>(SkillRowName, ContextString);
-    
-    if (Data)
-    {
-        if (!IsSkillUnlocked(Data->RequiredStage)) return;
-
-        // 1. 애니메이션 재생 (로컬)
-        if (Data->SkillMontage) 
-        {
-            PlayAnimMontage(Data->SkillMontage);
-        }
-
-        // 2. 투사체 소환 로직
-        if (Data->ProjectileClass)
-        {
-            FVector SpawnLoc;
-            FRotator SpawnRot = GetControlRotation(); // 조준 방향 (카메라가 보는 방향)
-
-            //  소켓 이름 (에디터에 있는 소켓 이름과 똑같아야 함!)
-            FName SocketName = TEXT("Weapon_Root_R"); 
-
-            // 소켓이 있으면 소켓 위치 사용, 없으면 그냥 몸 앞에서 발사
-            if (GetMesh() && GetMesh()->DoesSocketExist(SocketName))
-            {
-                SpawnLoc = GetMesh()->GetSocketLocation(SocketName);
-            }
-            else
-            {
-                // 소켓 못 찾았을 때 비상용 
-                SpawnLoc = GetActorLocation() + (GetActorForwardVector() * 100.f);
-            }
-
-            //  서버에게 생성을 요청함
-            Server_SpawnProjectile(Data->ProjectileClass, SpawnLoc, SpawnRot);
-        }
-    }
-}
-
-// 서버에서 실제 투사체를 만드는 곳
-void AMageCharacter::Server_SpawnProjectile_Implementation(UClass* ProjectileClassToSpawn, FVector Location, FRotator Rotation)
-{
-    if (!ProjectileClassToSpawn) return;
-
-    // 1. 스폰 파라미터 설정 (아까 배운 핵심 내용!)
-    FActorSpawnParameters SpawnParams;
-    SpawnParams.Owner = this;            // 주인은 나! (MageCharacter)
-    SpawnParams.Instigator = GetInstigator(); 
-
-    // 2. 실제 소환 (서버에서만 일어남 -> 모든 클라이언트로 복제됨)
-    GetWorld()->SpawnActor<AActor>(
-        ProjectileClassToSpawn,
-        Location,
-        Rotation,
-        SpawnParams
-    );
-}
-
-
-void AMageCharacter::Attack() { ProcessSkill(TEXT("Attack")); }
-void AMageCharacter::Skill1() { ProcessSkill(TEXT("Skill1")); }
-void AMageCharacter::Skill2() { ProcessSkill(TEXT("Skill2")); }

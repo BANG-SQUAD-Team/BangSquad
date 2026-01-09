@@ -12,7 +12,7 @@ class UCameraComponent;
 class UInputMappingContext;
 class UInputAction;
 class UHealthComponent;
-class AMageProjectile; // 전방 선언 추가
+class AMageProjectile; 
 
 /** 스킬 데이터 구조체 */
 USTRUCT(BlueprintType)
@@ -35,6 +35,9 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
 	int32 RequiredStage = 0;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float ProjectileSpawnDelay = 0.0f;
 };
 
 UCLASS()

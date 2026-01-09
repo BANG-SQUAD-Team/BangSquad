@@ -4,8 +4,6 @@
 #include "Animation/AnimMontage.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/CapsuleComponent.h"
-
-//  여기서 HealthComponent 헤더 경로 확인 필요
 #include "Project_Bang_Squad/Character/Component/HealthComponent.h"
 
 AEnemyCharacterBase::AEnemyCharacterBase()
@@ -41,8 +39,9 @@ void AEnemyCharacterBase::BeginPlay()
     }
 }
 
-// [추가됨] 데미지를 받아서 HealthComponent로 넘겨주는 핵심 함수
-float AEnemyCharacterBase::TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser)
+//  데미지를 받아서 HealthComponent로 넘겨주는 핵심 함수
+float AEnemyCharacterBase::TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, 
+	class AController* EventInstigator, AActor* DamageCauser)
 {
     // 1. 부모 클래스의 기본 로직 실행
     float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);

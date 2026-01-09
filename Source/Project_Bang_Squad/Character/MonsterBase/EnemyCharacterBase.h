@@ -21,8 +21,9 @@ protected:
     virtual void BeginPlay() override;
 
 public:
-    // [추가] 데미지 받는 함수 (Override) - 이게 있어야 ApplyDamage를 받을 수 있습니다.
-    virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
+    // 데미지 받는 함수 (Override)
+    virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, 
+        class AController* EventInstigator, AActor* DamageCauser) override;
 
     // ===== Hit React =====
     UFUNCTION(BlueprintCallable, Category = "HitReact")
