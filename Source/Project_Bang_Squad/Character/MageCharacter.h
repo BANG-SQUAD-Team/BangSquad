@@ -42,6 +42,14 @@ public:
 
     UPROPERTY(EditAnywhere, Category = "Timeline")
     UCurveFloat* CameraCurve;
+    
+    // MageCharacter.h
+
+public:
+    // 서버한테 투사체 좀 쏴달라고 요청하는 함수
+    UFUNCTION(Server, Reliable)
+    void Server_SpawnProjectile(UClass* ProjectileClassToSpawn, FVector Location, FRotator Rotation);
+    void Server_SpawnProjectile_Implementation(UClass* ProjectileClassToSpawn, FVector Location, FRotator Rotation);
 
 private:
     UFUNCTION()

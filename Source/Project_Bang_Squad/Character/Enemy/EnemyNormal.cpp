@@ -6,238 +6,264 @@
 #include "TimerManager.h"
 #include "GameFramework/Controller.h"
 #include "Engine/World.h"
+#include "Components/BoxComponent.h" // [í•„ìˆ˜]
+#include "Project_Bang_Squad/Character/Base/BaseCharacter.h" // [í•„ìˆ˜] í”Œë ˆì´ì–´ í—¤ë”
 
 AEnemyNormal::AEnemyNormal()
 {
-	PrimaryActorTick.bCanEverTick = false;
-	bReplicates = true; // RPC ÀÇ¹Ì ÀÖÀ¸·Á¸é ±âº»
+    PrimaryActorTick.bCanEverTick = false;
+    bReplicates = true; 
+
+    // 1. ë¬´ê¸° ì¶©ëŒ ë°•ìŠ¤ ìƒì„±
+    WeaponCollisionBox = CreateDefaultSubobject<UBoxComponent>(TEXT("WeaponCollisionBox"));
+    
+    WeaponCollisionBox->SetupAttachment(GetMesh(), TEXT("weapon_root_R")); 
+    WeaponCollisionBox->SetGenerateOverlapEvents(true);
+    // 2. í‰ì†Œì—ëŠ” êº¼ë‘  (NoCollision)
+    WeaponCollisionBox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    WeaponCollisionBox->SetCollisionObjectType(ECC_WorldDynamic);
+    WeaponCollisionBox->SetCollisionResponseToAllChannels(ECR_Ignore);
+    WeaponCollisionBox->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap); // ìºë¦­í„°ë‘ë§Œ ì¶©ëŒ ì²´í¬
+
+    // 3. ì¶©ëŒ ì´ë²¤íŠ¸ ì—°ê²°
+    WeaponCollisionBox->OnComponentBeginOverlap.AddDynamic(this, &AEnemyNormal::OnWeaponOverlap);
 }
 
 void AEnemyNormal::BeginPlay()
 {
-	Super::BeginPlay();
+    Super::BeginPlay();
 
-	AcquireTarget();
+    AcquireTarget();
 
-	if (TargetPawn.IsValid())
-	{
-		StartChase(TargetPawn.Get());
-	}
+    if (TargetPawn.IsValid())
+    {
+       StartChase(TargetPawn.Get());
+    }
 }
 
 void AEnemyNormal::AcquireTarget()
 {
-	// Áö±İÀº ½Ì±Û/Å×½ºÆ® ±âÁØ: 0¹ø ÇÃ·¹ÀÌ¾î
-	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(this, 0);
-	TargetPawn = PlayerPawn;
+    APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(this, 0);
+    TargetPawn = PlayerPawn;
 }
 
 void AEnemyNormal::StartChase(APawn* NewTarget)
 {
-	if (!NewTarget) return;
+    if (!NewTarget) return;
 
-	TargetPawn = NewTarget;
+    TargetPawn = NewTarget;
 
-	UpdateMoveTo();
+    UpdateMoveTo();
 
-	GetWorldTimerManager().ClearTimer(RepathTimer);
-	GetWorldTimerManager().SetTimer(
-		RepathTimer,
-		this,
-		&AEnemyNormal::UpdateMoveTo,
-		RepathInterval,
-		true
-	);
+    GetWorldTimerManager().ClearTimer(RepathTimer);
+    GetWorldTimerManager().SetTimer(
+       RepathTimer,
+       this,
+       &AEnemyNormal::UpdateMoveTo,
+       RepathInterval,
+       true
+    );
 }
 
 void AEnemyNormal::StopChase()
 {
-	GetWorldTimerManager().ClearTimer(RepathTimer);
+    GetWorldTimerManager().ClearTimer(RepathTimer);
 
-	if (AAIController* AIC = Cast<AAIController>(GetController()))
-	{
-		AIC->StopMovement();
-	}
+    if (AAIController* AIC = Cast<AAIController>(GetController()))
+    {
+       AIC->StopMovement();
+    }
 
-	TargetPawn = nullptr;
+    TargetPawn = nullptr;
 }
 
-inline void AEnemyNormal::UpdateMoveTo()
-
-
+void AEnemyNormal::UpdateMoveTo()
 {
-	if (IsDead()) return;
+    if (IsDead()) return;
 
-	APawn* TP = TargetPawn.Get();
-	if (!TP)
-	{
-		StopChase();
-		return;
-	}
+    APawn* TP = TargetPawn.Get();
+    if (!TP)
+    {
+       StopChase();
+       return;
+    }
 
-	const float Dist = FVector::Dist(GetActorLocation(), TP->GetActorLocation());
-	if (Dist > StopChaseDistance)
-	{
-		StopChase();
-		return;
-	}
+    const float Dist = FVector::Dist(GetActorLocation(), TP->GetActorLocation());
+    if (Dist > StopChaseDistance)
+    {
+       StopChase();
+       return;
+    }
 
-	// °ø°İ Áß¿¡´Â ÀÌµ¿ °»½Å ¸ØÃã (½½¶óÀÌµù ¹æÁö)
-	if (bIsAttacking)
-	{
-		return;
-	}
+    if (bIsAttacking)
+    {
+       return;
+    }
 
-	// °ø°İ °Å¸®¸é °ø°İ ½Ãµµ
-	if (IsInAttackRange())
-	{
-		if (AAIController* AIC = Cast<AAIController>(GetController()))
-		{
-			AIC->StopMovement();
-		}
+    if (IsInAttackRange())
+    {
+       if (AAIController* AIC = Cast<AAIController>(GetController()))
+       {
+          AIC->StopMovement();
+       }
 
-		// ¼­¹ö¿¡ °ø°İ ¿äÃ» (½Ì±ÛÀÌ¸é ¼­¹ö°¡ ÀÚ±â ÀÚ½Å)
-		Server_TryAttack();
-		return;
-	}
+       Server_TryAttack();
+       return;
+    }
 
-	// ¾ÆÁ÷ ¸Ö¸é ÃßÀû À¯Áö
-	if (AAIController* AIC = Cast<AAIController>(GetController()))
-	{
-		AIC->MoveToActor(TP, AcceptanceRadius, true, true, true, 0, true);
-	}
+    if (AAIController* AIC = Cast<AAIController>(GetController()))
+    {
+       AIC->MoveToActor(TP, AcceptanceRadius, true, true, true, 0, true);
+    }
 }
 
 bool AEnemyNormal::IsInAttackRange() const
 {
-	APawn* TP = TargetPawn.Get();
-	if (!TP) return false;
+    APawn* TP = TargetPawn.Get();
+    if (!TP) return false;
 
-	return FVector::Dist(GetActorLocation(), TP->GetActorLocation()) <= AttackRange;
+    return FVector::Dist(GetActorLocation(), TP->GetActorLocation()) <= AttackRange;
 }
 
 void AEnemyNormal::Server_TryAttack_Implementation()
 {
-	if (IsDead()) return;
+    if (IsDead()) return;
+    if (!HasAuthority()) return;
 
-	// ¼­¹ö ±ÇÇÑ¿¡¼­¸¸ ½Å·Ú
-	if (!HasAuthority())
-	{
-		return;
-	}
+    const float Now = GetWorld()->GetTimeSeconds();
+    if (Now - LastAttackTime < AttackCooldown) return;
+    if (!IsInAttackRange()) return;
 
-	// Äğ´Ù¿î Ã¼Å©
-	const float Now = GetWorld()->GetTimeSeconds();
-	if (Now - LastAttackTime < AttackCooldown)
-	{
-		return;
-	}
+    // 1. ìœ íš¨í•œ ê³µê²© ì„¤ì • ì°¾ê¸° (Struct ë°°ì—´ ìˆœíšŒ)
+    TArray<int32> ValidIndices;
+    ValidIndices.Reserve(AttackConfigs.Num());
 
-	// ¼­¹ö¿¡¼­ °Å¸® Àç°ËÁõ
-	if (!IsInAttackRange())
-	{
-		return;
-	}
+    for (int32 i = 0; i < AttackConfigs.Num(); ++i)
+    {
+       if (AttackConfigs[i].Montage != nullptr)
+       {
+          ValidIndices.Add(i);
+       }
+    }
 
-	// ¸ùÅ¸ÁÖ ¹è¿­ À¯È¿¼º Ã¼Å© (nullptr Á¦¿Ü)
-	TArray<int32> ValidIndices;
-	ValidIndices.Reserve(AttackMontages.Num());
+    if (ValidIndices.Num() == 0) return;
 
-	for (int32 i = 0; i < AttackMontages.Num(); ++i)
-	{
-		if (AttackMontages[i] != nullptr)
-		{
-			ValidIndices.Add(i);
-		}
-	}
+    // 2. ëœë¤ ì„ íƒ
+    const int32 Pick = ValidIndices[FMath::RandRange(0, ValidIndices.Num() - 1)];
+    const FEnemyAttackData& SelectedAttack = AttackConfigs[Pick];
 
-	if (ValidIndices.Num() == 0)
-	{
-		return;
-	}
+    LastAttackTime = Now;
+    bIsAttacking = true;
 
-	const int32 Pick = ValidIndices[FMath::RandRange(0, ValidIndices.Num() - 1)];
+    // 3. ê³µê²© ì• ë‹ˆë©”ì´ì…˜ ì¬ìƒ (Index ì „ì†¡)
+    Multicast_PlayAttackMontage(Pick);
 
-	LastAttackTime = Now;
-	bIsAttacking = true;
+    // ====================================================
+    // [êµ¬ì¡°ì²´ì— ì„¤ì •ëœ ì‹œê°„ ê°’ì„ ì‚¬ìš©í•˜ì—¬ íƒ€ì´ë¨¸ ì„¤ì •
+    // ====================================================
 
-	// °ø°İ 1È¸ ½ÃÀÛ ½Ã, "ÀÌ¹ø °ø°İ¿¡¼­ µ¥¹ÌÁö 1¹ø¸¸" Çã¿ëÇÏµµ·Ï ÃÊ±âÈ­
-	bDamageAppliedThisAttack = false;
+    // 4. ì„ ë”œ í›„ ì½œë¦¬ì „ ì¼œê¸°
+    GetWorldTimerManager().SetTimer(
+        CollisionEnableTimer,
+        this,
+        &AEnemyNormal::EnableWeaponCollision,
+        SelectedAttack.HitDelay, // ê° ê³µê²©ë³„ ì„ ë”œ ì‹œê°„ ì ìš©
+        false
+    );
 
-	// ¸ğµç Å¬¶ó¿¡¼­ °°Àº ÀÎµ¦½º ¸ùÅ¸ÁÖ Àç»ı
-	Multicast_PlayAttackMontage(Pick);
+    // 5. ì§€ì† ì‹œê°„ í›„ ì½œë¦¬ì „ ë„ê¸°
+    // ë„ëŠ” ì‹œì  = (ì„ ë”œ + ì§€ì†ì‹œê°„)
+    float DisableTime = SelectedAttack.HitDelay + SelectedAttack.HitDuration;
+    
+    GetWorldTimerManager().SetTimer(
+        CollisionDisableTimer,
+        this,
+        &AEnemyNormal::DisableWeaponCollision,
+        DisableTime,
+        false
+    );
 
-	// °ø°İ ³¡ Å¸ÀÌ¸Ó(¼±ÅÃµÈ ¸ùÅ¸ÁÖ ±æÀÌ ±âÁØ)
-	float Duration = 0.7f;
-	if (AttackMontages[Pick])
-	{
-		Duration = AttackMontages[Pick]->GetPlayLength();
-	}
-
-	GetWorldTimerManager().ClearTimer(AttackEndTimer);
-	GetWorldTimerManager().SetTimer(
-		AttackEndTimer,
-		this,
-		&AEnemyNormal::EndAttack,
-		Duration,
-		false
-	);
+    // 6. ì „ì²´ ë™ì‘ ì¢…ë£Œ íƒ€ì´ë¨¸
+    float Duration = 0.7f;
+    if (SelectedAttack.Montage) 
+    {
+        Duration = SelectedAttack.Montage->GetPlayLength();
+    }
+    
+    GetWorldTimerManager().ClearTimer(AttackEndTimer);
+    GetWorldTimerManager().SetTimer(AttackEndTimer, this, &AEnemyNormal::EndAttack, Duration, false);
 }
 
 void AEnemyNormal::Multicast_PlayAttackMontage_Implementation(int32 MontageIndex)
 {
-	if (MontageIndex < 0 || MontageIndex >= AttackMontages.Num())
-	{
-		return;
-	}
+    // ì¸ë±ìŠ¤ ë²”ìœ„ ì²´í¬
+    if (!AttackConfigs.IsValidIndex(MontageIndex)) return;
 
-	UAnimMontage* MontageToPlay = AttackMontages[MontageIndex];
-	if (!MontageToPlay) return;
+    UAnimMontage* MontageToPlay = AttackConfigs[MontageIndex].Montage;
+    if (!MontageToPlay) return;
 
-	PlayAnimMontage(MontageToPlay);
+    PlayAnimMontage(MontageToPlay);
+}
+
+// [ì¶”ê°€] ì½œë¦¬ì „ ì¼œê¸°
+void AEnemyNormal::EnableWeaponCollision()
+{
+    if (WeaponCollisionBox)
+    {
+        WeaponCollisionBox->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+    }
+}
+
+// [ì¶”ê°€] ì½œë¦¬ì „ ë„ê¸°
+void AEnemyNormal::DisableWeaponCollision()
+{
+    if (WeaponCollisionBox)
+    {
+        WeaponCollisionBox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    }
+}
+
+// [ì¶”ê°€] ì‹¤ì œ ì¶©ëŒ ê°ì§€ (ì—¬ê¸°ì„œ ë°ë¯¸ì§€ ì¤Œ)
+void AEnemyNormal::OnWeaponOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, 
+                                   UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, 
+                                   bool bFromSweep, const FHitResult& SweepResult)
+{
+    if (!HasAuthority()) return;
+
+    if (OtherActor == nullptr || OtherActor == this || OtherActor == GetOwner()) return;
+
+    if (OtherActor->IsA(ABaseCharacter::StaticClass()))
+    {
+        UGameplayStatics::ApplyDamage(
+            OtherActor,
+            AttackDamage,
+            GetController(),
+            this,
+            UDamageType::StaticClass()
+        );
+
+        // í•œ ë²ˆ ë•Œë ¸ìœ¼ë©´ ì¦‰ì‹œ íŒì • êº¼ì„œ ë‹¤ë‹¨íˆíŠ¸ ë°©ì§€
+        DisableWeaponCollision();
+    }
 }
 
 void AEnemyNormal::EndAttack()
 {
-	bIsAttacking = false;
-}
-
-// AnimNotify¿¡¼­ È£ÃâµÉ Å¸°İ Ã³¸® (¼­¹ö¸¸ µ¥¹ÌÁö Àû¿ë)
-inline void AEnemyNormal::AnimNotify_AttackHit()
-{
-	// µ¥¹ÌÁö´Â ¼­¹ö¸¸!
-	if (!HasAuthority()) return;
-
-	// °ø°İ 1È¸´ç µ¥¹ÌÁö 1¹ø
-	if (bDamageAppliedThisAttack) return;
-
-	APawn* Victim = TargetPawn.Get();
-	if (!IsValid(Victim)) return;
-
-	// Å¸°İ ¼ø°£¿¡µµ °Å¸® Àç°ËÁõ (¾Ö´Ï¸¸ º¸°í ¸Â¾Ò´Ù°í Ä¡¸é ÆÇÁ¤ÀÌ ±¸·ÁÁü)
-	if (!IsInAttackRange()) return;
-
-	bDamageAppliedThisAttack = true;
-
-	UGameplayStatics::ApplyDamage(
-		Victim,
-		AttackDamage,
-		GetController(),
-		this,
-		UDamageType::StaticClass()
-	);
+    bIsAttacking = false;
+    DisableWeaponCollision(); 
 }
 
 void AEnemyNormal::OnDeathStarted()
 {
-	// Á×À¸¸é ´õ ÀÌ»ó ÃßÀû/°ø°İ °ü·Ã Å¸ÀÌ¸Ó°¡ µ¹ ÇÊ¿ä°¡ ¾øÀ½ (¹ö±×/³¶ºñ Â÷´Ü)
-	GetWorldTimerManager().ClearTimer(RepathTimer);
-	GetWorldTimerManager().ClearTimer(AttackEndTimer);
+    Super::OnDeathStarted();
 
-	// ÃßÀû »óÅÂµµ Á¤¸® (TargetPawn ºñ¿ì°í ÀÌµ¿ ÁßÁö)
-	StopChase();
-
-	// °ø°İ ÁßÀÌ¾ú´Ù¸é »óÅÂµµ Á¾·á
-	bIsAttacking = false;
+    // ëª¨ë“  íƒ€ì´ë¨¸ ë° ê³µê²© íŒì • ì´ˆê¸°í™”
+    GetWorldTimerManager().ClearTimer(RepathTimer);
+    GetWorldTimerManager().ClearTimer(AttackEndTimer);
+    GetWorldTimerManager().ClearTimer(CollisionEnableTimer);
+    GetWorldTimerManager().ClearTimer(CollisionDisableTimer);
+    
+    StopChase();
+    bIsAttacking = false;
+    DisableWeaponCollision(); 
 }
-

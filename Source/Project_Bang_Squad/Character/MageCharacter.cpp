@@ -265,18 +265,62 @@ void AMageCharacter::ProcessSkill(FName SkillRowName)
     if (!SkillDataTable) return;
     static const FString ContextString(TEXT("SkillContext"));
     FSkillData* Data = SkillDataTable->FindRow<FSkillData>(SkillRowName, ContextString);
+    
     if (Data)
     {
         if (!IsSkillUnlocked(Data->RequiredStage)) return;
-        if (Data->SkillMontage) PlayAnimMontage(Data->SkillMontage);
+
+        // 1. 애니메이션 재생 (로컬)
+        if (Data->SkillMontage) 
+        {
+            PlayAnimMontage(Data->SkillMontage);
+        }
+
+        // 2. 투사체 소환 로직
         if (Data->ProjectileClass)
         {
-            FVector SpawnLoc = GetActorLocation() + GetActorForwardVector() * 100.f;
-            FRotator SpawnRot = GetControlRotation();
-            GetWorld()->SpawnActor<AMageProjectile>(Data->ProjectileClass, SpawnLoc, SpawnRot);
+            FVector SpawnLoc;
+            FRotator SpawnRot = GetControlRotation(); // 조준 방향 (카메라가 보는 방향)
+
+            //  소켓 이름 (에디터에 있는 소켓 이름과 똑같아야 함!)
+            FName SocketName = TEXT("Weapon_Root_R"); 
+
+            // 소켓이 있으면 소켓 위치 사용, 없으면 그냥 몸 앞에서 발사
+            if (GetMesh() && GetMesh()->DoesSocketExist(SocketName))
+            {
+                SpawnLoc = GetMesh()->GetSocketLocation(SocketName);
+            }
+            else
+            {
+                // 소켓 못 찾았을 때 비상용 
+                SpawnLoc = GetActorLocation() + (GetActorForwardVector() * 100.f);
+            }
+
+            //  서버에게 생성을 요청함
+            Server_SpawnProjectile(Data->ProjectileClass, SpawnLoc, SpawnRot);
         }
     }
 }
+
+// 서버에서 실제 투사체를 만드는 곳
+void AMageCharacter::Server_SpawnProjectile_Implementation(UClass* ProjectileClassToSpawn, FVector Location, FRotator Rotation)
+{
+    if (!ProjectileClassToSpawn) return;
+
+    // 1. 스폰 파라미터 설정 (아까 배운 핵심 내용!)
+    FActorSpawnParameters SpawnParams;
+    SpawnParams.Owner = this;            // 주인은 나! (MageCharacter)
+    SpawnParams.Instigator = GetInstigator(); 
+
+    // 2. 실제 소환 (서버에서만 일어남 -> 모든 클라이언트로 복제됨)
+    GetWorld()->SpawnActor<AActor>(
+        ProjectileClassToSpawn,
+        Location,
+        Rotation,
+        SpawnParams
+    );
+}
+
 
 void AMageCharacter::Attack() { ProcessSkill(TEXT("Attack")); }
 void AMageCharacter::Skill1() { ProcessSkill(TEXT("Skill1")); }
