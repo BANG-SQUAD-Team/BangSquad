@@ -34,6 +34,10 @@ ABaseCharacter::ABaseCharacter()
 	Camera->bUsePawnControlRotation = false;
 
 	UnlockedStageLevel = 1;
+
+	//복제 설정
+	bReplicates = true;
+	SetReplicateMovement(true);
 }
 
 void ABaseCharacter::BeginPlay()
@@ -55,6 +59,26 @@ void ABaseCharacter::BeginPlay()
 void ABaseCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+}
+
+float ABaseCharacter::TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser)
+{
+	// 1. 서버가 아니면 무시 (해킹 방지 및 동기화 주체 확인)
+	if (!HasAuthority()) return 0.0f;
+
+	// 2. 이미 죽었으면 무시
+	if (HealthComp && HealthComp->IsDead()) return 0.0f;
+
+	// 3. 실제 데미지 적용
+	float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
+    
+	// 체력 감소 (HealthComp가 알아서 처리하도록 위임)
+	if (HealthComp)
+	{
+		HealthComp->ApplyDamage(ActualDamage);
+	}
+
+	return ActualDamage;
 }
 
 // [복구] 타이탄이 던질 때 호출

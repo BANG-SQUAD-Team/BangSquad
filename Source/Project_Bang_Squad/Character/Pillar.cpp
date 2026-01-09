@@ -1,67 +1,90 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
-
 #include "Project_Bang_Squad/Character/Pillar.h"
 #include "Components/StaticMeshComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "Net/UnrealNetwork.h" // [필수] 리플리케이션 헤더
 
 APillar::APillar()
 {
-	PrimaryActorTick.bCanEverTick = false;
+    PrimaryActorTick.bCanEverTick = false;
 
-	PillarMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PillarMesh"));
-	RootComponent = PillarMesh;
+    // [멀티플레이 필수 설정]
+    bReplicates = true;             // 이 액터는 네트워크 통신을 합니다.
+    SetReplicateMovement(true);     // 이 액터가 움직이면 위치를 동기화합니다.
 
-	// 물리 및 충돌 설정
-	PillarMesh->SetSimulatePhysics(false); // 처음엔 고정
-	PillarMesh->SetNotifyRigidBodyCollision(true); // Hit 이벤트 활성화
+    PillarMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PillarMesh"));
+    RootComponent = PillarMesh;
+
+    PillarMesh->SetSimulatePhysics(false); 
+    PillarMesh->SetNotifyRigidBodyCollision(true);
+    
+    // 멀티플레이에서 끊김 없이 움직이게 하려면 Collision 설정이 중요함
+    PillarMesh->SetCollisionProfileName(TEXT("BlockAllDynamic"));
+}
+
+// 동기화 규칙 설정 (보일러플레이트 코드)
+void APillar::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+    Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+    // bIsFallen 변수를 모든 클라이언트에게 동기화한다.
+    DOREPLIFETIME(APillar, bIsFallen);
 }
 
 void APillar::BeginPlay()
 {
-	Super::BeginPlay();
-	PillarMesh->OnComponentHit.AddDynamic(this, &APillar::OnPillarHit);
+    Super::BeginPlay();
+    
+    // Hit 이벤트는 서버에서만 처리해도 충분함 (데미지 판정 등)
+    if (HasAuthority())
+    {
+        PillarMesh->OnComponentHit.AddDynamic(this, &APillar::OnPillarHit);
+    }
 }
 
+// [핵심] 서버가 이 함수를 실행하면 -> bIsFallen이 true가 되고 -> 클라이언트들은 OnRep_IsFallen이 실행됨
 void APillar::TriggerFall()
 {
-	if (bIsFallen || !PillarMesh) return;
+    // 권한(서버)이 없으면 실행하지 마라 (방어 코드)
+    if (!HasAuthority()) return;
+    if (bIsFallen || !PillarMesh) return;
 
-	bIsFallen = true;
+    // 1. 상태 변경 (이 순간 모든 클라이언트에게 신호가 감)
+    bIsFallen = true;
+
+    // 2. 서버에서도 물리 효과를 켜고 힘을 줘야 함 (OnRep은 서버에서 자동호출 안 되므로 수동 호출)
+    OnRep_IsFallen();
+
+    // 3. 물리적인 힘(Impulse)은 '서버'에서만 가하면 됩니다. (ReplicateMovement가 위치를 전파함)
+    FVector LaunchDir = FallDirection.GetSafeNormal();
+    FVector TorqueAxis = FVector::CrossProduct(FVector::UpVector, LaunchDir);
     
-	// 1. 물리 강제 활성화 및 잠듬 깨우기
-	PillarMesh->SetSimulatePhysics(true);
-	PillarMesh->WakeAllRigidBodies();
+    PillarMesh->SetPhysicsAngularVelocityInDegrees(TorqueAxis * 100.f);
+    FVector ApplyLocation = GetActorLocation() + FVector(0, 0, 400.f);
+    PillarMesh->AddImpulseAtLocation(LaunchDir * FallForce, ApplyLocation);
 
-	// 2. 캐릭터 충돌을 Overlap으로 변경 (기획 5번: 캐릭터에 막히지 않음)
-	PillarMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+    if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Cyan, TEXT("서버: 기둥 넘어짐 처리 완료"));
+}
 
-	// 3. 넘어지는 방향 벡터 (FallDirection)
-	FVector LaunchDir = FallDirection.GetSafeNormal();
+// [핵심] 클라이언트들이 "어? 기둥 넘어졌네?" 하고 실행하는 함수
+void APillar::OnRep_IsFallen()
+{
+    if (!PillarMesh) return;
 
-	// [보강] 각속도(회전하는 힘)를 직접 부여하여 즉시 회전하게 만듦
-	// 기둥 옆면을 쳐서 돌리는 느낌의 축 계산
-	FVector TorqueAxis = FVector::CrossProduct(FVector::UpVector, LaunchDir);
-	PillarMesh->SetPhysicsAngularVelocityInDegrees(TorqueAxis * 100.f);
+    // 클라이언트들도 물리를 켜줘야 자연스럽게 보일 수 있음
+    // (단, 위치 동기화는 서버가 ReplicateMovement로 덮어씌움)
+    PillarMesh->SetSimulatePhysics(true);
+    PillarMesh->WakeAllRigidBodies();
 
-	// 4. 강력한 충격 가하기 (기둥 윗부분 타격)
-	FVector ApplyLocation = GetActorLocation() + FVector(0, 0, 400.f);
-	PillarMesh->AddImpulseAtLocation(LaunchDir * FallForce, ApplyLocation);
-
-	if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Cyan, TEXT("기둥 작동 완료!"));
+    // 캐릭터랑 안 부딪히게 변경
+    PillarMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
 }
 
 void APillar::OnPillarHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
-	// 바닥이나 월드 정적 물체에 닿으면 데미지 발생
-	if (bIsFallen && OtherComp->GetCollisionObjectType() == ECC_WorldStatic)
-	{
-		// 주변 적에게 데미지 + 밀쳐내기 (Radial Damage)
-		UGameplayStatics::ApplyRadialDamage(GetWorld(), 50.f, GetActorLocation(), 500.f, nullptr, {}, this);
-        
-		// 시각 효과나 카메라 흔들림 추가 가능
-        
-		// 3초 뒤 기둥 삭제
-		SetLifeSpan(3.0f);
-	}
+    // 데미지 처리는 오직 서버(Authority)에서만!
+    if (HasAuthority() && bIsFallen && OtherComp->GetCollisionObjectType() == ECC_WorldStatic)
+    {
+       UGameplayStatics::ApplyRadialDamage(GetWorld(), 50.f, GetActorLocation(), 500.f, nullptr, {}, this);
+       SetLifeSpan(3.0f); // 3초 뒤 삭제도 서버가 결정하면 다 같이 사라짐
+    }
 }
