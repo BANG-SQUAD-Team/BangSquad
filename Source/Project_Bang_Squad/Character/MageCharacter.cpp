@@ -10,6 +10,7 @@
 #include "Engine/DataTable.h"
 #include "Components/TimelineComponent.h" 
 #include "Curves/CurveFloat.h" 
+#include "Net/UnrealNetwork.h" // 네트워크 헤더
 
 AMageCharacter::AMageCharacter()
 {
@@ -22,12 +23,10 @@ AMageCharacter::AMageCharacter()
     FocusedPillar = nullptr;
     CurrentTargetPillar = nullptr;
 
-    // 타임라인 컴포넌트 생성
     CameraTimelineComp = CreateDefaultSubobject<UTimelineComponent>(TEXT("CameraTimelineComp"));
     
     if (SpringArm) 
     {
-        // 피벗을 머리 위로 올려서 시야 확보
         SpringArm->TargetOffset = FVector(0.0f, 0.0f, 150.0f); 
         SpringArm->ProbeSize = 12.0f; 
     }
@@ -37,14 +36,12 @@ void AMageCharacter::BeginPlay()
 {
     Super::BeginPlay();
 
-    // 초기값 저장 (나중에 복구용)
     if (SpringArm)
     {
         DefaultArmLength = SpringArm->TargetArmLength;
         DefaultSocketOffset = SpringArm->SocketOffset;
     }
 
-    // 타임라인 바인딩
     FOnTimelineFloat TimelineProgress; 
     TimelineProgress.BindDynamic(this, &AMageCharacter::CameraTimelineProgress);
     
@@ -54,12 +51,10 @@ void AMageCharacter::BeginPlay()
     }
     else
     {
-        // 커브 없으면 기본 선형 보간 (0~1초)
         CameraTimelineComp->AddInterpFloat(nullptr, TimelineProgress);
         CameraTimelineComp->SetTimelineLength(1.0f); 
     }
 
-    // 종료 이벤트 바인딩
     FOnTimelineEvent TimelineFinishedEvent;
     TimelineFinishedEvent.BindDynamic(this, &AMageCharacter::OnCameraTimelineFinished);
     CameraTimelineComp->SetTimelineFinishedFunc(TimelineFinishedEvent);
@@ -86,13 +81,12 @@ void AMageCharacter::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
 
-    // 타임라인 업데이트 (필수)
     if (CameraTimelineComp)
     {
         CameraTimelineComp->TickComponent(DeltaTime, ELevelTick::LEVELTICK_TimeOnly, nullptr);
     }
 
-    // [로직 1] 상태 탈출: 기둥이 없거나 쓰러졌으면 강제 종료
+    // [로직 1] 상태 탈출
     if (bIsJobAbilityActive)
     {
         if (!IsValid(CurrentTargetPillar) || CurrentTargetPillar->bIsFallen)
@@ -102,46 +96,51 @@ void AMageCharacter::Tick(float DeltaTime)
         }
     }
 
-    // 아웃라인 업데이트
     UpdatePillarInteraction();
 
-    // [로직 2] 락온 및 제스처 (기둥이 멀쩡할 때만)
+    // [로직 2] 락온 및 제스처
     if (bIsJobAbilityActive && IsValid(CurrentTargetPillar) && !CurrentTargetPillar->bIsFallen)
     {
-        // 1. 시선 고정
         LockOnPillar(DeltaTime);
 
-        // 2. 마우스 제스처
         float MouseX, MouseY;
         APlayerController* PC = Cast<APlayerController>(GetController());
         if (PC)
         {
             PC->GetInputMouseDelta(MouseX, MouseY);
             
+            // 마우스 제스처 감지
             if (FMath::Abs(MouseX) > 0.1f && FMath::Sign(MouseX) == CurrentTargetPillar->RequiredMouseDirection)
             {
-                CurrentTargetPillar->TriggerFall();
-                // 쓰러지면 다음 프레임에 [로직 1]에 걸려서 자동 종료
+                // [변경됨] 클라이언트가 직접 넘기지 않고, 서버에게 요청함
+                Server_TriggerPillarFall(CurrentTargetPillar);
+                
+                // (선택 사항) 반응성을 위해 내 화면에서는 미리 종료 처리를 시작할 수도 있지만,
+                // 안전하게 서버가 처리해서 bIsFallen이 바뀌면 다음 틱에 [로직 1]에서 자동 종료되게 둠.
             }
         }
     }
 }
 
-// 타임라인 진행 (Alpha: 0.0 -> 1.0)
+// [추가됨] 서버에서 실행되는 함수 (RPC Implementation)
+void AMageCharacter::Server_TriggerPillarFall_Implementation(APillar* TargetPillar)
+{
+    if (TargetPillar)
+    {
+        // 서버에서 기둥을 넘어뜨림 -> Pillar의 Replicated 변수 변경 -> 모든 클라이언트에 전파됨
+        TargetPillar->TriggerFall();
+    }
+}
+
 void AMageCharacter::CameraTimelineProgress(float Alpha)
 {
     if (!SpringArm) return;
 
-    // 1. 거리: 기본값 <-> 1200 (줌 아웃)
     float NewArmLength = FMath::Lerp(DefaultArmLength, 1200.f, Alpha);
     SpringArm->TargetArmLength = NewArmLength;
 
-    // 2. 오프셋: 기본값 <-> (0,0,0) (중앙 정렬)
-    // 오프셋을 0으로 만들어서 화면 정중앙에 기둥을 둠
     FVector NewOffset = FMath::Lerp(DefaultSocketOffset, FVector::ZeroVector, Alpha);
     SpringArm->SocketOffset = NewOffset;
-
-    // 회전은 LockOnPillar에서 담당하므로 여기선 건드리지 않음
 }
 
 void AMageCharacter::JobAbility()
@@ -153,20 +152,17 @@ void AMageCharacter::JobAbility()
 
         if (APlayerController* PC = Cast<APlayerController>(GetController()))
         {
-            // 마우스 직접 조작 막기
             PC->SetIgnoreLookInput(true);
         }
 
         if (SpringArm) 
         {
-            // 스프링암이 컨트롤러 회전(LockOnPillar 계산값)을 따르도록 설정
             SpringArm->bUsePawnControlRotation = true; 
             SpringArm->bInheritPitch = true; 
             SpringArm->bInheritYaw = true;
             SpringArm->bInheritRoll = true;
         }
 
-        // 줌 아웃 시작
         if (CameraTimelineComp)
         {
             CameraTimelineComp->Play();
@@ -179,7 +175,6 @@ void AMageCharacter::EndJobAbility()
     bIsJobAbilityActive = false;
     CurrentTargetPillar = nullptr;
 
-    // 조작 권한 즉시 복구
     if (APlayerController* PC = Cast<APlayerController>(GetController()))
     {
         PC->SetIgnoreLookInput(false);
@@ -193,7 +188,6 @@ void AMageCharacter::EndJobAbility()
         SpringArm->bInheritRoll = true;
     }
 
-    // 줌 되감기 (원래 위치로)
     if (CameraTimelineComp) 
     {
         CameraTimelineComp->Reverse();
@@ -202,13 +196,11 @@ void AMageCharacter::EndJobAbility()
 
 void AMageCharacter::OnCameraTimelineFinished()
 {
-    // 완전히 되감아졌을 때(0.0)만 실행
     if (CameraTimelineComp && CameraTimelineComp->GetPlaybackPosition() <= 0.01f)
     {
         APlayerController* PC = Cast<APlayerController>(GetController());
         if (PC)
         {
-            // 마우스/인풋 모드 정리
             PC->bShowMouseCursor = false;
             PC->bEnableClickEvents = false;
             PC->bEnableMouseOverEvents = false;
@@ -240,7 +232,7 @@ void AMageCharacter::UpdatePillarInteraction()
             if (FocusedPillar) FocusedPillar->PillarMesh->SetRenderCustomDepth(false);
             
             HitPillar->PillarMesh->SetRenderCustomDepth(true);
-            HitPillar->PillarMesh->SetCustomDepthStencilValue(250); // 아웃라인 색상값 (필수)
+            HitPillar->PillarMesh->SetCustomDepthStencilValue(250);
 
             FocusedPillar = HitPillar;
         }
@@ -258,23 +250,16 @@ void AMageCharacter::LockOnPillar(float DeltaTime)
     
     if (PC && CurrentTargetPillar && !CurrentTargetPillar->bIsFallen)
     {
-        // 1. 시작점: 현재 카메라 위치
         FVector StartLoc = Camera->GetComponentLocation();
-        
-        // 2. 목표점: 기둥 상단부
         FVector TargetLoc = CurrentTargetPillar->GetActorLocation() + FVector(0.0f, 0.0f, 300.0f);
 
-        // 3. 회전 계산 (LookAt)
         FRotator TargetRot = UKismetMathLibrary::FindLookAtRotation(StartLoc, TargetLoc);
-
-        // 4. 부드럽게 회전
         FRotator NewRot = FMath::RInterpTo(PC->GetControlRotation(), TargetRot, DeltaTime, 5.0f);
         
         PC->SetControlRotation(NewRot);
     }
 }
 
-// 스킬 관련 로직 (유지)
 void AMageCharacter::ProcessSkill(FName SkillRowName)
 {
     if (!SkillDataTable) return;

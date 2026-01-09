@@ -27,7 +27,6 @@ protected:
     virtual void Skill1() override;
     virtual void Skill2() override;
     
-    // 우클릭(JobAbility): 타겟 고정 및 조작 시작
     virtual void JobAbility() override;
     void EndJobAbility();
 
@@ -45,13 +44,20 @@ public:
     UCurveFloat* CameraCurve;
 
 private:
-    // 타임라인 진행 (매 프레임 호출)
     UFUNCTION()
     void CameraTimelineProgress(float Alpha);
 
-    // 타임라인 종료 (완료 시 호출)
     UFUNCTION()
     void OnCameraTimelineFinished();
+
+    // =========================================================
+    // [추가됨] 멀티플레이용 서버 RPC 함수
+    // =========================================================
+protected:
+    // 클라이언트가 "나 기둥 밀었어!"라고 서버에 보내는 신호
+    // WithValidation은 생략하고 Reliable(중요함)만 사용
+    UFUNCTION(Server, Reliable)
+    void Server_TriggerPillarFall(APillar* TargetPillar);
 
     // =========================================================
     // 일반 변수
@@ -62,10 +68,7 @@ private:
     
     void ProcessSkill(FName SkillRowName);
     
-    // 아웃라인 업데이트
     void UpdatePillarInteraction();
-
-    // 시선 고정 로직
     void LockOnPillar(float DeltaTime);
     
     UPROPERTY(EditAnywhere, Category = "Telekinesis")
