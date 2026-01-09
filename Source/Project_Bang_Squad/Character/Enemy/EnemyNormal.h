@@ -2,7 +2,6 @@
 
 #include "CoreMinimal.h"
 #include "Project_Bang_Squad/Character/MonsterBase/EnemyCharacterBase.h"
-
 #include "EnemyNormal.generated.h"
 
 class UAnimMontage;
@@ -17,7 +16,8 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
-
+	virtual void OnDeathStarted() override;
+	// ===== Chase =====
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AI|Chase")
 	float AcceptanceRadius = 80.f;
 
@@ -27,14 +27,17 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AI|Chase")
 	float StopChaseDistance = 2500.f;
 
-	// ===== Attack (멀티 고려) =====
+	// ===== Attack =====
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AI|Attack")
 	float AttackRange = 150.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AI|Attack")
 	float AttackCooldown = 1.2f;
 
-	// 공격 몽타주 3개(또는 그 이상) 넣는 배열
+	// "데미지" 자체가 없어서 안 맞던 문제의 핵심. 반드시 추가.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AI|Attack")
+	float AttackDamage = 20.f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AI|Attack")
 	TArray<TObjectPtr<UAnimMontage>> AttackMontages;
 
@@ -46,6 +49,9 @@ private:
 	float LastAttackTime = -9999.f;
 
 	FTimerHandle AttackEndTimer;
+
+	// 한 번의 공격(몽타주 1회)에서 데미지 1번만 들어가게 잠금
+	bool bDamageAppliedThisAttack = false;
 
 	void AcquireTarget();
 	void StartChase(APawn* NewTarget);
@@ -65,4 +71,8 @@ private:
 	void Multicast_PlayAttackMontage_Implementation(int32 MontageIndex);
 
 	void EndAttack();
+
+public:
+	// AnimNotify에서 호출될 타격 처리 (서버만 데미지 적용)
+	void AnimNotify_AttackHit();
 };

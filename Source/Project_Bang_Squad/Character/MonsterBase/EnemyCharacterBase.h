@@ -36,6 +36,10 @@ public:
 	bool IsDead() const { return bIsDead; }
 
 protected:
+	// 파생(EnemyNormal 등)이 죽을 때 자기 타이머/상태 정리할 수 있는 훅
+	virtual void OnDeathStarted();
+
+
 	// ===== HealthComponent Auto Bind =====
 	UFUNCTION()
 	void HandleDeadFromHealth();
