@@ -5,6 +5,23 @@
 #include "EnemyNormal.generated.h"
 
 class UAnimMontage;
+class UBoxComponent;
+
+USTRUCT(BlueprintType)
+struct FEnemyAttackData
+{
+	GENERATED_BODY()
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	TObjectPtr<UAnimMontage> Montage = nullptr;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ToolTip="ê³µê²© ì‹œì‘ í›„ íŒì •ì´ ì¼œì§ˆ ë•Œê¹Œì§€ì˜ ì‹œê°„ (ì„ ë”œ)"))
+	float HitDelay = 0.3f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ToolTip="íŒì •ì´ ì¼œì ¸ ìˆëŠ” ì‹œê°„ (ì§€ì† ì‹œê°„)"))
+	float HitDuration = 0.4f;
+};
+
 
 UCLASS()
 class PROJECT_BANG_SQUAD_API AEnemyNormal : public AEnemyCharacterBase
@@ -34,12 +51,19 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AI|Attack")
 	float AttackCooldown = 1.2f;
 
-	// "µ¥¹ÌÁö" ÀÚÃ¼°¡ ¾ø¾î¼­ ¾È ¸Â´ø ¹®Á¦ÀÇ ÇÙ½É. ¹İµå½Ã Ãß°¡.
+	// "ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½" ï¿½ï¿½Ã¼ï¿½ï¿½ ï¿½ï¿½ï¿½î¼­ ï¿½ï¿½ ï¿½Â´ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Ù½ï¿½. ï¿½İµï¿½ï¿½ ï¿½ß°ï¿½.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AI|Attack")
-	float AttackDamage = 20.f;
+	float AttackDamage = 10.f;
 
+	// [ë³€ê²½] ê¸°ì¡´ ë‹¨ìˆœ ë°°ì—´ ëŒ€ì‹ , êµ¬ì¡°ì²´ ë°°ì—´ë¡œ ê´€ë¦¬ (ê° ê³µê²©ë§ˆë‹¤ íƒ€ì´ë° ì¡°ì ˆ ê°€ëŠ¥)
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AI|Attack")
-	TArray<TObjectPtr<UAnimMontage>> AttackMontages;
+	TArray<FEnemyAttackData> AttackConfigs;
+	
+	// ë¬´ê¸° ì¶©ëŒ ë°•ìŠ¤
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat")
+	UBoxComponent* WeaponCollisionBox;
+
+	
 
 private:
 	TWeakObjectPtr<APawn> TargetPawn;
@@ -49,8 +73,10 @@ private:
 	float LastAttackTime = -9999.f;
 
 	FTimerHandle AttackEndTimer;
+	FTimerHandle CollisionEnableTimer;
+	FTimerHandle CollisionDisableTimer;
 
-	// ÇÑ ¹øÀÇ °ø°İ(¸ùÅ¸ÁÖ 1È¸)¿¡¼­ µ¥¹ÌÁö 1¹ø¸¸ µé¾î°¡°Ô Àá±İ
+	// ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½(ï¿½ï¿½Å¸ï¿½ï¿½ 1È¸)ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ 1ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½î°¡ï¿½ï¿½ ï¿½ï¿½ï¿½
 	bool bDamageAppliedThisAttack = false;
 
 	void AcquireTarget();
@@ -60,19 +86,24 @@ private:
 
 	bool IsInAttackRange() const;
 
-	// ¼­¹ö¿¡¼­ °ø°İ ½ÃÀÛ (¸ÖÆ¼ Á¤¼®)
+	// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ (ï¿½ï¿½Æ¼ ï¿½ï¿½ï¿½ï¿½)
 	UFUNCTION(Server, Reliable)
 	void Server_TryAttack();
 	void Server_TryAttack_Implementation();
 
-	// ¸ğµç Å¬¶ó¿¡¼­ "¼±ÅÃµÈ ÀÎµ¦½º" ¸ùÅ¸ÁÖ Àç»ı
+	// ï¿½ï¿½ï¿½ Å¬ï¿½ó¿¡¼ï¿½ "ï¿½ï¿½ï¿½Ãµï¿½ ï¿½Îµï¿½ï¿½ï¿½" ï¿½ï¿½Å¸ï¿½ï¿½ ï¿½ï¿½ï¿½
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_PlayAttackMontage(int32 MontageIndex);
 	void Multicast_PlayAttackMontage_Implementation(int32 MontageIndex);
 
 	void EndAttack();
 
-public:
-	// AnimNotify¿¡¼­ È£ÃâµÉ Å¸°İ Ã³¸® (¼­¹ö¸¸ µ¥¹ÌÁö Àû¿ë)
-	void AnimNotify_AttackHit();
+
+	void EnableWeaponCollision();
+	void DisableWeaponCollision();
+	
+	UFUNCTION()
+	void OnWeaponOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, 
+						 UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, 
+						 bool bFromSweep, const FHitResult& SweepResult);
 };
