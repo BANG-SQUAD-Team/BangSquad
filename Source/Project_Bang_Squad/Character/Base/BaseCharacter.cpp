@@ -34,6 +34,10 @@ ABaseCharacter::ABaseCharacter()
 	Camera->bUsePawnControlRotation = false;
 
 	UnlockedStageLevel = 1;
+
+	//복제 설정
+	bReplicates = true;
+	SetReplicateMovement(true);
 }
 
 void ABaseCharacter::BeginPlay()
