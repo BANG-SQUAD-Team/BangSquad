@@ -41,6 +41,10 @@ void AEnemyCharacterBase::BeginPlay()
 	}
 }
 
+void AEnemyCharacterBase::OnDeathStarted()
+{
+}
+
 void AEnemyCharacterBase::HandleDeadFromHealth()
 {
 	ReceiveDeath();
@@ -132,6 +136,8 @@ void AEnemyCharacterBase::StartDeath()
 {
 	bIsDead = true;
 	bIsHitReacting = false;
+
+	OnDeathStarted();
 
 	if (AAIController* AIC = Cast<AAIController>(GetController()))
 	{

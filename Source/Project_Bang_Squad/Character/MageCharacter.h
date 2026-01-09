@@ -1,67 +1,84 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Project_Bang_Squad/Character/Base/BaseCharacter.h" 
+#include "Project_Bang_Squad/Character/Base/BaseCharacter.h"
+#include "Components/TimelineComponent.h" 
 #include "MageCharacter.generated.h"
 
 class UDataTable;
-class APillar; // Pillar 클래스 전방 선언
+class APillar; 
+class UCurveFloat; 
 
 UCLASS()
 class PROJECT_BANG_SQUAD_API AMageCharacter : public ABaseCharacter
 {
-	GENERATED_BODY()
+    GENERATED_BODY()
 
 public:
-	AMageCharacter();
+    AMageCharacter();
 
-	virtual void Tick(float DeltaTime) override;
-	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+    virtual void Tick(float DeltaTime) override;
+    virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
 protected:
-	virtual void BeginPlay() override;
-	
-	/** 스킬 기능 재정의 */
-	virtual void Attack() override;
-	virtual void Skill1() override;
-	virtual void Skill2() override;
+    virtual void BeginPlay() override;
     
-	// JobAbility(우클릭): 타겟 고정 및 조작 시작
-	virtual void JobAbility() override;
-	void EndJobAbility();
+    virtual void Attack() override;
+    virtual void Skill1() override;
+    virtual void Skill2() override;
+    
+    virtual void JobAbility() override;
+    void EndJobAbility();
 
-	/** 데이터 테이블 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Data")
-	UDataTable* SkillDataTable;
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Data")
+    UDataTable* SkillDataTable;
+
+    // =========================================================
+    // 타임라인 & 커브
+    // =========================================================
+public: 
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Timeline")
+    UTimelineComponent* CameraTimelineComp;
+
+    UPROPERTY(EditAnywhere, Category = "Timeline")
+    UCurveFloat* CameraCurve;
 
 private:
-	// 에디터에서 설정한 기본 팔 길이와 오프셋을 저장할 변수
-	float DefaultArmLength;
-	FVector DefaultSocketOffset;
-	
-	/** 내부 로직 함수 */
-	void ProcessSkill(FName SkillRowName);
+    UFUNCTION()
+    void CameraTimelineProgress(float Alpha);
+
+    UFUNCTION()
+    void OnCameraTimelineFinished();
+
+    // =========================================================
+    // [추가됨] 멀티플레이용 서버 RPC 함수
+    // =========================================================
+protected:
+    // 클라이언트가 "나 기둥 밀었어!"라고 서버에 보내는 신호
+    // WithValidation은 생략하고 Reliable(중요함)만 사용
+    UFUNCTION(Server, Reliable)
+    void Server_TriggerPillarFall(APillar* TargetPillar);
+
+    // =========================================================
+    // 일반 변수
+    // =========================================================
+private:
+    float DefaultArmLength;
+    FVector DefaultSocketOffset;
     
-	// 매 프레임 실행: 크로스헤어 아래 Pillar 확인 및 아웃라인 처리
-	void UpdatePillarInteraction();
+    void ProcessSkill(FName SkillRowName);
+    
+    void UpdatePillarInteraction();
+    void LockOnPillar(float DeltaTime);
+    
+    UPROPERTY(EditAnywhere, Category = "Telekinesis")
+    float TraceDistance = 5000.f;
 
-	// 시선 고정 로직
-	void LockOnPillar(float DeltaTime);
-	
-	// 카메라 복귀 지연을 위한 타이머 핸들
-	FTimerHandle CameraResetTimerHandle;
+    UPROPERTY()
+    APillar* FocusedPillar;
 
-	// 염력 사거리
-	UPROPERTY(EditAnywhere, Category = "Telekinesis")
-	float TraceDistance = 5000.f;
+    UPROPERTY()
+    APillar* CurrentTargetPillar;
 
-	// 현재 메이지가 조준/조작 중인 기둥 액터
-	UPROPERTY()
-	APillar* FocusedPillar;
-
-	UPROPERTY()
-	APillar* CurrentTargetPillar;
-
-	// 조작 중인지 여부
-	bool bIsJobAbilityActive = false;
+    bool bIsJobAbilityActive = false;
 };
