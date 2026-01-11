@@ -28,6 +28,7 @@ void ULobbyMainWidget::UpdatePlayerList()
 	ALobbyGameState* GS = GetWorld()->GetGameState<ALobbyGameState>();
 	if (!GS) return;
 
+	//List 갱신
 	for (APlayerState* PS : GS->PlayerArray)
 	{
 		ALobbyPlayerState* LobbyPS = Cast<ALobbyPlayerState>(PS);
@@ -38,6 +39,26 @@ void ULobbyMainWidget::UpdatePlayerList()
 			{
 				Row->UpdateInfo(LobbyPS->GetPlayerName(), LobbyPS->bIsReady, LobbyPS->CurrentJob);
 				PlayerListContainer->AddChild(Row);
+			}
+		}
+	}
+
+	if (ALobbyPlayerController* PC = GetLobbyPC())
+	{
+		if (ALobbyPlayerState* LobbyPS = PC->GetPlayerState<ALobbyPlayerState>())
+		{
+			if (Txt_ReadyState)
+			{
+				if (LobbyPS->bIsReady)
+				{
+					Txt_ReadyState->SetText(FText::FromString("READY"));
+					Txt_ReadyState->SetColorAndOpacity(FLinearColor::Green);
+				}
+				else
+				{
+					Txt_ReadyState->SetText(FText::FromString(TEXT("NOT READY")));
+					Txt_ReadyState->SetColorAndOpacity(FLinearColor::Red);
+				}
 			}
 		}
 	}

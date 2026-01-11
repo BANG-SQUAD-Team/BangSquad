@@ -70,10 +70,15 @@ void ALobbyGameMode::CheckAllReady()
 	UE_LOG(LogTemp, Warning, TEXT("[GameMode] 준비 체크 중... (%d / %d 명 준비됨)"), ReadyCount, GS->PlayerArray.Num());
 	
 	//이동
-	if (bAllReady)
+	if (bAllReady && GS->PlayerArray.Num() == 4)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[GameMode] ✅ 전원 준비 완료! 직업 선택 페이즈로 전환합니다."));
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] ✅ 4인 전원 준비 완료! 직업 선택 페이즈로 전환합니다."));
 		GS->SetLobbyPhase(ELobbyPhase::SelectJob);
+	}
+
+	else if (bAllReady && GS->PlayerArray.Num() < 4)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] 모든 인원이 준비되었으나 4명이 모이지 않아 대기합니다. (현재 %d명)"), GS->PlayerArray.Num());
 	}
 }
 
