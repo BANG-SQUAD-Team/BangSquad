@@ -64,6 +64,11 @@ void ALobbyPlayerController::RefreshLobbyUI()
 	{
 		LobbyMainWidget->UpdatePlayerList();
 	}
+
+	if (JobSelectWidget && JobSelectWidget->IsInViewport())
+	{
+		JobSelectWidget->UpdateJobAvailAbility();
+	}
 }
 
 void ALobbyPlayerController::ServerSetNickname_Implementation(const FString& NewName)
@@ -112,6 +117,8 @@ void ALobbyPlayerController::OnLobbyPhaseChanged(ELobbyPhase NewPhase)
 		{
 			JobSelectWidget->SetVisibility(ESlateVisibility::Visible);
 			JobSelectWidget->StartUp();
+
+			JobSelectWidget->UpdateJobAvailAbility();
 		}
 	}
 }
@@ -195,15 +202,23 @@ void ALobbyPlayerController::ServerToggleReady_Implementation()
 void ALobbyPlayerController::ServerConfirmedJob_Implementation(EJobType FinalJob)
 {
 	UE_LOG(LogTemp, Warning, TEXT("[Server] PC: Job Confirm 요청 받음! (JobIndex: %d)"), (uint8)FinalJob);
+
+	ALobbyPlayerState* PS = GetPlayerState<ALobbyPlayerState>();
+	ALobbyGameMode* GM = GetWorld()->GetAuthGameMode<ALobbyGameMode>();
 	
-	if (ALobbyPlayerState* PS = GetPlayerState<ALobbyPlayerState>())
+	if (PS && GM)
 	{
+		if (GM->IsJobTaken(FinalJob, PS))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[Server] 거절됨: 이미 선택된 직업"));
+			return;
+		}
+
+		//직업 설정 및 확정 상태로 변경
 		PS->SetJob(FinalJob);
 		PS->SetIsConfirmedJob(true);
 
-		if (ALobbyGameMode* GM = GetWorld()->GetAuthGameMode<ALobbyGameMode>())
-		{
-			GM->CheckConfirmedJob();
-		}
+		//게임 시작 조건 체크
+		GM->CheckConfirmedJob();
 	}
 }

@@ -23,6 +23,25 @@ void ALobbyGameMode::PostLogin(APlayerController* NewPlayer)
 	//TODO: 초기화 작업들 (PlayerState 데이터 갱신 등등...)
 }
 
+bool ALobbyGameMode::IsJobTaken(EJobType NewJob, class ALobbyPlayerState* RequestingPS)
+{
+	ALobbyGameState* GS = GetGameState<ALobbyGameState>();
+	if (!GS) return false;
+
+	for (APlayerState* PS : GS->PlayerArray)
+	{
+		ALobbyPlayerState* LobbyPS = Cast<ALobbyPlayerState>(PS);
+		if (LobbyPS && LobbyPS != RequestingPS)
+		{
+			if (LobbyPS->bIsConfirmedJob && LobbyPS->CurrentJob == NewJob)
+			{
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 void ALobbyGameMode::ChangePlayerCharacter(AController* Controller, EJobType NewJob)
 {
 	if (!Controller || !JobCharacterMap.Contains(NewJob))
@@ -32,7 +51,7 @@ void ALobbyGameMode::ChangePlayerCharacter(AController* Controller, EJobType New
 	}
 
 	UE_LOG(LogTemp, Log, TEXT("[GameMode] 캐릭터 교체 시도... JobIndex: %d"), (uint8)NewJob);
-	
+
 	TSubclassOf<ACharacter> TargetClass = JobCharacterMap[NewJob];
 
 	APawn* OldPawn = Controller->GetPawn();
@@ -56,7 +75,7 @@ void ALobbyGameMode::CheckAllReady()
 
 	bool bAllReady = true;
 	int32 ReadyCount = 0;
-	
+
 	for (APlayerState* PS : GS->PlayerArray)
 	{
 		ALobbyPlayerState* LobbyPS = Cast<ALobbyPlayerState>(PS);
@@ -68,8 +87,9 @@ void ALobbyGameMode::CheckAllReady()
 	}
 
 	UE_LOG(LogTemp, Warning, TEXT("[GameMode] 준비 체크 중... (%d / %d 명 준비됨)"), ReadyCount, GS->PlayerArray.Num());
-	
+
 	//이동
+	
 	if (bAllReady && GS->PlayerArray.Num() == 4)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[GameMode] ✅ 4인 전원 준비 완료! 직업 선택 페이즈로 전환합니다."));
@@ -101,17 +121,16 @@ void ALobbyGameMode::CheckConfirmedJob()
 		}
 		else
 		{
-			
 		}
 	}
 
 	UE_LOG(LogTemp, Warning, TEXT("[GameMode] 직업 확정 현황: (%d / %d) 명"), ConfirmedCount, TotalPlayers);
-	
+
 	//모두 직업 확정 완료
 	if (ConfirmedCount == TotalPlayers)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[GameMode] ✅ 전원 직업 확정 완료! 게임(TestMap)으로 이동합니다. 🚀"));
-		
+
 		//TODO: 나중에 TestMap -> Stage맵 이름으로 변경
 		GetWorld()->ServerTravel("/Game/TeamShare/Level/TestMap?listen");
 	}

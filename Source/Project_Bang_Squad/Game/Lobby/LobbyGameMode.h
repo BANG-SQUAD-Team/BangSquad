@@ -33,4 +33,6 @@ public:
 
 	virtual void PostLogin(APlayerController* NewPlayer) override;
 
+	//직업 중복 확인
+	bool IsJobTaken(EJobType NewJob, class ALobbyPlayerState* RequestingPS);
 };

@@ -34,6 +34,9 @@ public:
 	UPROPERTY(meta = (BindWidget))
 	UButton* Btn_Confirm;
 
+	//직업 버튼 상태 업데이트
+	void UpdateJobAvailAbility();
+
 private:
 	EJobType PendingJob = EJobType::None;
 
