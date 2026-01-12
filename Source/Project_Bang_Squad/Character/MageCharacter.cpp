@@ -22,9 +22,15 @@ AMageCharacter::AMageCharacter()
     
     GetCharacterMovement()->bOrientRotationToMovement = false;
     GetCharacterMovement()->RotationRate = FRotator(0.0f, 720.0f, 0.0f);
-    
     GetCharacterMovement()->MaxWalkSpeed = 500.f;
+    
+    // 공격 쿨타임
+    AttackCooldownTime = 1.f;
+    
+    // 점프 쿨타임
     JumpCooldownTimer = 1.0f;
+    
+    //해금 레벨
     UnlockedStageLevel = 1;
 
     FocusedPillar = nullptr;
@@ -131,6 +137,12 @@ void AMageCharacter::Tick(float DeltaTime)
 
 void AMageCharacter::Attack()
 {
+    // 공격 가능한 상태인지 체크, 아니면 그냥 무시
+    if (!CanAttack()) return;
+    
+    // 공격 시작! -> 즉시 쿨타임
+    StartAttackCooldown();
+    
     // 1. 현재 콤보 순서에 맞는 스킬 이름 선택
     FName SkillName;
     if (CurrentComboIndex == 0)

@@ -5,6 +5,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "TimerManager.h"
 #include "InputActionValue.h"
 #include "Kismet/GameplayStatics.h" // [필수] 데미지 처리를 위해 필요
 
@@ -79,6 +80,29 @@ float ABaseCharacter::TakeDamage(float DamageAmount, struct FDamageEvent const& 
 	}
 
 	return ActualDamage;
+}
+
+bool ABaseCharacter::CanAttack() const
+{
+	return !bIsAttackCoolingDown;
+}
+
+void ABaseCharacter::StartAttackCooldown()
+{
+	bIsAttackCoolingDown = true;
+	
+	// 설정된 시간 (AttackCooldownTime) 뒤에 쿨타임을 푼다
+	GetWorld()->GetTimerManager().SetTimer(
+		AttackCooldownTimerHandle,
+		this,
+		&ABaseCharacter::ResetAttackCooldown,
+		AttackCooldownTime,
+		false);
+}
+
+void ABaseCharacter::ResetAttackCooldown()
+{
+	bIsAttackCoolingDown = false;
 }
 
 // 타이탄이 던질 때 호출
@@ -184,6 +208,7 @@ void ABaseCharacter::Look(const FInputActionValue& Value)
 	AddControllerYawInput(Input.X);
 	AddControllerPitchInput(-Input.Y);
 }
+
 
 void ABaseCharacter::Jump()
 {
