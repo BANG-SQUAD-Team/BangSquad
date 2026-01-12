@@ -31,13 +31,13 @@ public:
 	class UAnimMontage* SkillMontage;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
-	TSubclassOf<class AMageProjectile> ProjectileClass;
+	TSubclassOf<class AActor> ProjectileClass;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
 	int32 RequiredStage = 0;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float ProjectileSpawnDelay = 0.0f;
+	float ActionDelay = 0.0f;
 };
 
 UCLASS()
