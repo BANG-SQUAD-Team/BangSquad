@@ -46,17 +46,6 @@ ABaseCharacter::ABaseCharacter()
 void ABaseCharacter::BeginPlay()
 {
 	Super::BeginPlay();
-	if (APlayerController* PC = Cast<APlayerController>(GetController()))
-	{
-		if (ULocalPlayer* LocalPlayer = PC->GetLocalPlayer())
-		{
-			if (UEnhancedInputLocalPlayerSubsystem* Subsystem =
-				ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(LocalPlayer))
-			{
-				if (DefaultIMC) Subsystem->AddMappingContext(DefaultIMC, 0);
-			}
-		}
-	}
 }
 
 void ABaseCharacter::Tick(float DeltaTime)
@@ -177,6 +166,18 @@ void ABaseCharacter::Landed(const FHitResult& Hit)
 void ABaseCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
+
+	if (APlayerController* PC = Cast<APlayerController>(GetController()))
+	{
+		if (ULocalPlayer* LocalPlayer = PC->GetLocalPlayer())
+		{
+			if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(LocalPlayer))
+			{
+				if (DefaultIMC) Subsystem->AddMappingContext(DefaultIMC, 0);
+			}
+		}
+	}
+	
 	UEnhancedInputComponent* EIC = CastChecked<UEnhancedInputComponent>(PlayerInputComponent);
 
 	if (MoveAction) EIC->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ABaseCharacter::Move);
