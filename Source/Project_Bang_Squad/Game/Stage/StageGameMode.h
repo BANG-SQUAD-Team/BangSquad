@@ -1,0 +1,25 @@
+// Fill out your copyright notice in the Description page of Project Settings.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "GameFramework/GameModeBase.h"
+#include "StageGameMode.generated.h"
+
+enum class EJobType : uint8;
+/**
+ * 
+ */
+UCLASS()
+class PROJECT_BANG_SQUAD_API AStageGameMode : public AGameModeBase
+{
+	GENERATED_BODY()
+
+public:
+	//TODO: LobbyGameMode에도 똑같은 게 있어서 바꿀 필요 있음
+	UPROPERTY(EditDefaultsOnly, Category = "Class")
+	TMap<EJobType, TSubclassOf<ACharacter>> JobCharacterMap;
+	
+	//실제 소환
+	void SpawnPlayerCharacter(AController* Controller, EJobType MyJob);
+};
