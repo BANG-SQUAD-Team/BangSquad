@@ -5,6 +5,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "TimerManager.h"
 #include "InputActionValue.h"
 #include "Kismet/GameplayStatics.h" // [필수] 데미지 처리를 위해 필요
 
@@ -14,7 +15,7 @@ ABaseCharacter::ABaseCharacter()
 	PrimaryActorTick.bCanEverTick = true;
 
 	bUseControllerRotationPitch = false;
-	bUseControllerRotationYaw = false;
+	bUseControllerRotationYaw = true;
 	bUseControllerRotationRoll = false;
 
 	UCharacterMovementComponent* MoveComp = GetCharacterMovement();
@@ -81,20 +82,43 @@ float ABaseCharacter::TakeDamage(float DamageAmount, struct FDamageEvent const& 
 	return ActualDamage;
 }
 
-// [복구] 타이탄이 던질 때 호출
+bool ABaseCharacter::CanAttack() const
+{
+	return !bIsAttackCoolingDown;
+}
+
+void ABaseCharacter::StartAttackCooldown()
+{
+	bIsAttackCoolingDown = true;
+	
+	// 설정된 시간 (AttackCooldownTime) 뒤에 쿨타임을 푼다
+	GetWorld()->GetTimerManager().SetTimer(
+		AttackCooldownTimerHandle,
+		this,
+		&ABaseCharacter::ResetAttackCooldown,
+		AttackCooldownTime,
+		false);
+}
+
+void ABaseCharacter::ResetAttackCooldown()
+{
+	bIsAttackCoolingDown = false;
+}
+
+// 타이탄이 던질 때 호출
 void ABaseCharacter::SetThrownByTitan(bool bThrown, AActor* Thrower)
 {
 	bWasThrownByTitan = bThrown;
 	TitanThrower = Thrower;
 }
 
-// [복구] 잡혔을 때 상태 처리
+// 잡혔을 때 상태 처리
 void ABaseCharacter::SetIsGrabbed(bool bGrabbed)
 {
 	// 잡혀있는 동안 이동 입력을 막고 싶다면 여기에 로직 추가
 }
 
-// [복구] 땅에 닿았을 때 호출됨 (여기가 핵심!)
+// 땅에 닿았을 때 호출됨 
 void ABaseCharacter::Landed(const FHitResult& Hit)
 {
 	Super::Landed(Hit);
@@ -147,6 +171,7 @@ void ABaseCharacter::Landed(const FHitResult& Hit)
 	}
 }
 
+/** 플레이어 입력 처리*/
 void ABaseCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
@@ -183,6 +208,7 @@ void ABaseCharacter::Look(const FInputActionValue& Value)
 	AddControllerYawInput(Input.X);
 	AddControllerPitchInput(-Input.Y);
 }
+
 
 void ABaseCharacter::Jump()
 {

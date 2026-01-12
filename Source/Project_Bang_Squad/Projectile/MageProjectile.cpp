@@ -15,7 +15,7 @@ AMageProjectile::AMageProjectile()
     SphereComp = CreateDefaultSubobject<USphereComponent>(TEXT("SphereComp"));
     SphereComp->InitSphereRadius(15.0f);
     
-    // [핵심 변경] 충돌 프로필: 일단 다 막고(Block), 필요한 것만 뚫기
+    // 충돌 프로필: 일단 다 막고(Block), 필요한 것만 뚫기
     SphereComp->SetCollisionProfileName(TEXT("Custom")); // 커스텀 설정 시작
     
     SphereComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics); // 물리 충돌(Block)도 가능하게 변경
@@ -65,7 +65,7 @@ void AMageProjectile::BeginPlay()
     }
 }
 
-// [상황 1] 적(Pawn)과 겹쳤을 때 -> 데미지 주고 삭제
+// 적(Pawn)과 겹쳤을 때 -> 데미지 주고 삭제
 void AMageProjectile::OnOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, 
                                 UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
@@ -86,7 +86,7 @@ void AMageProjectile::OnOverlap(UPrimitiveComponent* OverlappedComponent, AActor
     }
 }
 
-// [추가] [상황 2] 벽이나 바닥 등 단단한 물체(Block)에 부딪혔을 때 -> 그냥 삭제
+//  벽이나 바닥 등 단단한 물체(Block)에 부딪혔을 때 -> 그냥 삭제
 void AMageProjectile::NotifyHit(UPrimitiveComponent* MyComp, AActor* Other, UPrimitiveComponent* OtherComp, bool bSelfMoved, FVector HitLocation, FVector HitNormal, FVector NormalImpulse, const FHitResult& Hit)
 {
     Super::NotifyHit(MyComp, Other, OtherComp, bSelfMoved, HitLocation, HitNormal, NormalImpulse, Hit);

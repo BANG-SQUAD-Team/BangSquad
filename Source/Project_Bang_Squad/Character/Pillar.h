@@ -12,13 +12,9 @@ class PROJECT_BANG_SQUAD_API APillar : public AActor
 public: 
 	APillar();
 
-	// 동기화할 변수 등록 함수 (필수)
+	// 동기화할 변수 등록 함수
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
-
-protected:
-	virtual void BeginPlay() override;
-
-public: 
+	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	class UStaticMeshComponent* PillarMesh;
 
@@ -34,7 +30,7 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MageAbility")
 	float FallForce = 1000000.f;
 
-	// [중요] ReplicatedUsing: 이 변수가 서버에서 바뀌면 클라이언트에서 OnRep_IsFallen 함수가 자동 실행됨
+	// ReplicatedUsing: 이 변수가 서버에서 바뀌면 클라이언트에서 OnRep_IsFallen 함수가 자동 실행됨
 	UPROPERTY(ReplicatedUsing = OnRep_IsFallen, VisibleAnywhere, BlueprintReadOnly, Category = "State")
 	bool bIsFallen = false;
 
@@ -46,5 +42,9 @@ public:
 	void TriggerFall();
 
 	UFUNCTION()
-	void OnPillarHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
+	void OnPillarHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, 
+		UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
+	
+protected:
+	virtual void BeginPlay() override;
 };

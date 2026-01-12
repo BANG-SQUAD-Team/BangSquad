@@ -22,9 +22,15 @@ AMageCharacter::AMageCharacter()
     
     GetCharacterMovement()->bOrientRotationToMovement = false;
     GetCharacterMovement()->RotationRate = FRotator(0.0f, 720.0f, 0.0f);
-    
     GetCharacterMovement()->MaxWalkSpeed = 500.f;
+    
+    // 공격 쿨타임
+    AttackCooldownTime = 1.f;
+    
+    // 점프 쿨타임
     JumpCooldownTimer = 1.0f;
+    
+    //해금 레벨
     UnlockedStageLevel = 1;
 
     FocusedPillar = nullptr;
@@ -93,7 +99,7 @@ void AMageCharacter::Tick(float DeltaTime)
         CameraTimelineComp->TickComponent(DeltaTime, ELevelTick::LEVELTICK_TimeOnly, nullptr);
     }
 
-    // [로직 1] 상태 탈출
+    //  상태 탈출
     if (bIsJobAbilityActive)
     {
         if (!IsValid(CurrentTargetPillar) || CurrentTargetPillar->bIsFallen)
@@ -105,7 +111,7 @@ void AMageCharacter::Tick(float DeltaTime)
 
     UpdatePillarInteraction();
 
-    // [로직 2] 락온 및 제스처
+    //  락온 및 제스처
     if (bIsJobAbilityActive && IsValid(CurrentTargetPillar) && !CurrentTargetPillar->bIsFallen)
     {
         LockOnPillar(DeltaTime);
@@ -126,11 +132,17 @@ void AMageCharacter::Tick(float DeltaTime)
 }
 
 // =========================================================
-// [핵심] 공격 및 콤보 시스템
+//  공격 및 콤보 시스템
 // =========================================================
 
 void AMageCharacter::Attack()
 {
+    // 공격 가능한 상태인지 체크, 아니면 그냥 무시
+    if (!CanAttack()) return;
+    
+    // 공격 시작! -> 즉시 쿨타임
+    StartAttackCooldown();
+    
     // 1. 현재 콤보 순서에 맞는 스킬 이름 선택
     FName SkillName;
     if (CurrentComboIndex == 0)
@@ -388,6 +400,7 @@ void AMageCharacter::UpdatePillarInteraction()
     }
 }
 
+// Pillar에 시점 고정
 void AMageCharacter::LockOnPillar(float DeltaTime)
 {
     APlayerController* PC = Cast<APlayerController>(GetController());

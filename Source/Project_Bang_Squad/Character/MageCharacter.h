@@ -21,49 +21,7 @@ public:
 
     virtual void Tick(float DeltaTime) override;
     virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
-
-protected:
-    virtual void BeginPlay() override;
     
-    // 공격 함수들
-    virtual void Attack() override;
-    virtual void Skill1() override;
-    virtual void Skill2() override;
-    
-    // =========================================================
-    // 콤보 (Combo)
-    // =========================================================
-protected:
-    int32 CurrentComboIndex = 0;
-    FTimerHandle ComboResetTimer;
-    
-    void ResetCombo();
-
-    // =========================================================
-    // 투사체 발사 타이밍 (Timing)
-    // =========================================================
-protected:
-    // 발사 지연 타이머
-    FTimerHandle ProjectileTimerHandle;
-    
-    // 타이머 도는 동안 "뭘 쏠지" 저장해두는 변수
-    UPROPERTY()
-    UClass* PendingProjectileClass;
-
-    // 타이머 끝나면 실제 발사하는 함수
-    void SpawnDelayedProjectile();
-
-    // =========================================================
-    // 기믹 (Job Ability)
-    // =========================================================
-protected:
-    virtual void JobAbility() override;
-    void EndJobAbility();
-
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Data")
-    UDataTable* SkillDataTable;
-
-public: 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Timeline")
     UTimelineComponent* CameraTimelineComp;
 
@@ -73,7 +31,6 @@ public:
     // =========================================================
     // 네트워크 (RPC)
     // =========================================================
-public:
     // 서버: 투사체 생성
     UFUNCTION(Server, Reliable)
     void Server_SpawnProjectile(UClass* ProjectileClassToSpawn, FVector Location, FRotator Rotation);
@@ -94,9 +51,44 @@ public:
     void Server_TriggerPillarFall(APillar* TargetPillar);
     void Server_TriggerPillarFall_Implementation(APillar* TargetPillar);
 
+protected:
+    virtual void BeginPlay() override;
+    
+    // 공격 함수들
+    virtual void Attack() override;
+    virtual void Skill1() override;
+    virtual void Skill2() override;
+    
     // =========================================================
-    // 내부 로직
+    // 일반 공격 콤보 애니메이션 (Combo)
     // =========================================================
+    int32 CurrentComboIndex = 0;
+    FTimerHandle ComboResetTimer;
+    
+    void ResetCombo();
+
+    // =========================================================
+    // 투사체 발사 타이밍 (Timing)
+    // =========================================================
+    // 발사 지연 타이머
+    FTimerHandle ProjectileTimerHandle;
+    
+    // 타이머 도는 동안 "뭘 쏠지" 저장해두는 변수
+    UPROPERTY()
+    UClass* PendingProjectileClass;
+
+    // 타이머 끝나면 실제 발사하는 함수
+    void SpawnDelayedProjectile();
+
+    // =========================================================
+    // 직업 능력 (Job Ability)
+    // =========================================================
+    virtual void JobAbility() override;
+    void EndJobAbility();
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Data")
+    UDataTable* SkillDataTable;
+
 private:
     UFUNCTION()
     void CameraTimelineProgress(float Alpha);
