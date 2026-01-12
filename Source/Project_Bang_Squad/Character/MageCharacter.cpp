@@ -204,14 +204,14 @@ void AMageCharacter::ProcessSkill(FName SkillRowName)
             GetWorldTimerManager().ClearTimer(ProjectileTimerHandle);
 
             // 딜레이 체크
-            if (Data->ProjectileSpawnDelay > 0.0f)
+            if (Data->ActionDelay > 0.0f)
             {
                 // [지연 발사]
                 GetWorldTimerManager().SetTimer(
                     ProjectileTimerHandle, 
                     this, 
                     &AMageCharacter::SpawnDelayedProjectile, 
-                    Data->ProjectileSpawnDelay, 
+                    Data->ActionDelay, 
                     false
                 );
             }
