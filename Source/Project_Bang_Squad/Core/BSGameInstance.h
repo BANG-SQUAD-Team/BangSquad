@@ -17,7 +17,7 @@ enum class EJobType : uint8
 	Titan,
 	Striker,
 	Mage,
-	Defender
+	Paladin
 };
 
 USTRUCT()

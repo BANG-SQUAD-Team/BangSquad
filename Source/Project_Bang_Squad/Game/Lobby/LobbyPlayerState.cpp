@@ -70,3 +70,48 @@ void ALobbyPlayerState::OnRep_UpdateUI()
 		}
 	}
 }
+
+void ALobbyPlayerState::OnRep_PlayerName()
+{
+	Super::OnRep_PlayerName();
+
+	UWorld* World = GetWorld();
+	if (World)
+	{
+		APlayerController* PC = World->GetFirstPlayerController();
+		if (ALobbyPlayerController* LobbyPC = Cast<ALobbyPlayerController>(PC))
+		{
+			LobbyPC->RefreshLobbyUI();
+		}
+	}
+}
+
+void ALobbyPlayerState::BeginPlay()
+{
+	Super::BeginPlay();
+
+	UWorld* World = GetWorld();
+	if (World)
+	{
+		APlayerController* PC = World->GetFirstPlayerController();
+		if (ALobbyPlayerController* LobbyPC = Cast<ALobbyPlayerController>(PC))
+		{
+			LobbyPC->RefreshLobbyUI();
+		}
+	}
+}
+
+void ALobbyPlayerState::Destroyed()
+{
+	Super::Destroyed();
+
+	UWorld* World = GetWorld();
+	if (World)
+	{
+		APlayerController* PC = World->GetFirstPlayerController();
+		if (ALobbyPlayerController* LobbyPC = Cast<ALobbyPlayerController>(PC))
+		{
+			LobbyPC->RefreshLobbyUI();
+		}
+	}
+}

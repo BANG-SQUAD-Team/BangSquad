@@ -76,8 +76,12 @@ void ALobbyPlayerController::ServerSetNickname_Implementation(const FString& New
 	if (APlayerState* PS = GetPlayerState<APlayerState>())
 	{
 		PS->SetPlayerName(NewName);
-
 		UE_LOG(LogTemp, Warning, TEXT("[Server] 닉네임 변경 완료: %s"), *NewName);
+
+		if (ALobbyPlayerState* LobbyPS = Cast<ALobbyPlayerState>(PS))
+		{
+			LobbyPS->OnLobbyDataChanged.Broadcast();
+		}
 	}
 }
 
@@ -101,7 +105,7 @@ void ALobbyPlayerController::OnLobbyPhaseChanged(ELobbyPhase NewPhase)
 		if (JobSelectWidget) //혹시 몰라서 넣어둠
 			JobSelectWidget->SetVisibility(ESlateVisibility::Hidden);
 
-		SetMenuState(false);
+		SetMenuState(true);
 	}
 	else if (NewPhase == ELobbyPhase::SelectJob)
 	{

@@ -40,4 +40,11 @@ public:
 protected:
 	UFUNCTION()
 	void OnRep_UpdateUI();
+
+	//PlayerName이 변경될 때 호출되는 함수
+	//닉네임이 서버로부터 복제되어 내 컴퓨터에 도착했을 때 실행
+	virtual void OnRep_PlayerName() override;
+
+	virtual void BeginPlay() override;
+	virtual void Destroyed() override;
 };

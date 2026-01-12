@@ -15,7 +15,7 @@ void ULobbyMainWidget::NativeConstruct()
 	if (Btn_SelectTitan) Btn_SelectTitan->OnClicked.AddDynamic(this, &ULobbyMainWidget::OnBtn_SelectTitanClicked);
 	if (Btn_SelectStriker) Btn_SelectStriker->OnClicked.AddDynamic(this, &ULobbyMainWidget::OnBtn_SelectStrikerClicked);
 	if (Btn_SelectMage) Btn_SelectMage->OnClicked.AddDynamic(this, &ULobbyMainWidget::OnBtn_SelectMageClicked);
-	if (Btn_SelectDefender) Btn_SelectDefender->OnClicked.AddDynamic(this, &ULobbyMainWidget::OnBtn_SelectDefenderClicked);
+	if (Btn_SelectPaladin) Btn_SelectPaladin->OnClicked.AddDynamic(this, &ULobbyMainWidget::OnBtn_SelectPaladinClicked);
 	if (Btn_Ready) Btn_Ready->OnClicked.AddDynamic(this, &ULobbyMainWidget::OnBtn_ReadyClicked);
 }
 
@@ -28,8 +28,19 @@ void ULobbyMainWidget::UpdatePlayerList()
 	ALobbyGameState* GS = GetWorld()->GetGameState<ALobbyGameState>();
 	if (!GS) return;
 
+#pragma region PlayerList Sorting
+	//플레이어 순서가 네트워크 데이터 도착 순서대로 하고 있어서 뒤죽박죽 나옴
+	//-> Sort 후 나타내기
+	TArray<APlayerState*> SortedPlayers = GS->PlayerArray;
+
+	SortedPlayers.Sort([](const APlayerState& A, const APlayerState& B)
+	{
+		return A.GetPlayerId() < B.GetPlayerId();
+	});
+	
+#pragma endregion 
 	//List 갱신
-	for (APlayerState* PS : GS->PlayerArray)
+	for (APlayerState* PS : SortedPlayers/*GS->PlayerArray*/)
 	{
 		ALobbyPlayerState* LobbyPS = Cast<ALobbyPlayerState>(PS);
 		if (LobbyPS)
@@ -87,9 +98,9 @@ void ULobbyMainWidget::OnBtn_SelectMageClicked()
 	SelectJobClickedHelper(EJobType::Mage);
 }
 
-void ULobbyMainWidget::OnBtn_SelectDefenderClicked()
+void ULobbyMainWidget::OnBtn_SelectPaladinClicked()
 {
-	SelectJobClickedHelper(EJobType::Defender);
+	SelectJobClickedHelper(EJobType::Paladin);
 }
 
 void ULobbyMainWidget::OnBtn_ReadyClicked()

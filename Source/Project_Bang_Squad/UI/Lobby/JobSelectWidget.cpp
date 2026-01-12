@@ -15,7 +15,7 @@ void UJobSelectWidget::NativeConstruct()
 	if (Btn_SelectTitan) Btn_SelectTitan->OnClicked.AddDynamic(this, &UJobSelectWidget::OnPickTitan);
 	if (Btn_SelectStriker) Btn_SelectStriker->OnClicked.AddDynamic(this, &UJobSelectWidget::OnPickStriker);
 	if (Btn_SelectMage) Btn_SelectMage->OnClicked.AddDynamic(this, &UJobSelectWidget::OnPickMage);
-	if (Btn_SelectDefender) Btn_SelectDefender->OnClicked.AddDynamic(this, &UJobSelectWidget::OnPickDefender);
+	if (Btn_SelectPaladin) Btn_SelectPaladin->OnClicked.AddDynamic(this, &UJobSelectWidget::OnPickPaladin);
 	if (Btn_Confirm) Btn_Confirm->OnClicked.AddDynamic(this, &UJobSelectWidget::OnConfirmClicked);
 }
 
@@ -34,7 +34,7 @@ void UJobSelectWidget::UpdateJobAvailAbility()
 	for (APlayerState* PS : GS->PlayerArray)
 	{
 		ALobbyPlayerState* LobbyPS = Cast<ALobbyPlayerState>(PS);
-		if (LobbyPS && LobbyPS != MyPS && LobbyPS->bIsConfirmedJob)
+		if (LobbyPS && LobbyPS->bIsConfirmedJob)
 		{
 			TakenJobs.Add(LobbyPS->CurrentJob);
 		}
@@ -43,7 +43,7 @@ void UJobSelectWidget::UpdateJobAvailAbility()
 	if (Btn_SelectTitan) Btn_SelectTitan->SetIsEnabled(!TakenJobs.Contains(EJobType::Titan));
 	if (Btn_SelectStriker) Btn_SelectStriker->SetIsEnabled(!TakenJobs.Contains(EJobType::Striker));
 	if (Btn_SelectMage) Btn_SelectMage->SetIsEnabled(!TakenJobs.Contains(EJobType::Mage));
-	if (Btn_SelectDefender) Btn_SelectDefender->SetIsEnabled(!TakenJobs.Contains(EJobType::Defender));
+	if (Btn_SelectPaladin) Btn_SelectPaladin->SetIsEnabled(!TakenJobs.Contains(EJobType::Paladin));
 }
 
 void UJobSelectWidget::OnPickTitan()
@@ -61,9 +61,9 @@ void UJobSelectWidget::OnPickMage()
 	PendingJob = EJobType::Mage;
 }
 
-void UJobSelectWidget::OnPickDefender()
+void UJobSelectWidget::OnPickPaladin()
 {
-	PendingJob = EJobType::Defender;
+	PendingJob = EJobType::Paladin;
 }
 
 void UJobSelectWidget::OnConfirmClicked()

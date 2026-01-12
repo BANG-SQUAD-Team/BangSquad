@@ -30,7 +30,7 @@ public:
 	UPROPERTY(meta = (BindWidget))
 	UButton* Btn_SelectMage;
 	UPROPERTY(meta = (BindWidget))
-	UButton* Btn_SelectDefender;
+	UButton* Btn_SelectPaladin;
 	UPROPERTY(meta = (BindWidget))
 	UButton* Btn_Ready;
 	UPROPERTY(meta = (BindWidget))
@@ -56,7 +56,7 @@ private:
 	UFUNCTION()
 	void OnBtn_SelectMageClicked();
 	UFUNCTION()
-	void OnBtn_SelectDefenderClicked();
+	void OnBtn_SelectPaladinClicked();
 	UFUNCTION()
 	void OnBtn_ReadyClicked();
 
