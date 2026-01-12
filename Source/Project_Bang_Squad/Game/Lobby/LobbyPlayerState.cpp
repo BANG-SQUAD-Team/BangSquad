@@ -9,6 +9,10 @@
 ALobbyPlayerState::ALobbyPlayerState()
 {
 	bReplicates = true; //복제 설정
+
+	//업데이트 빈도 관련
+	NetUpdateFrequency = 100.f; //1초에 약 100번까지 상태 변화 체크
+	MinNetUpdateFrequency = 60.f; //최소 빈도
 }
 
 void ALobbyPlayerState::GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const
@@ -47,6 +51,9 @@ void ALobbyPlayerState::SetIsConfirmedJob(bool NewIsConfirmedJob)
 		
 		bIsConfirmedJob = NewIsConfirmedJob;
 		OnRep_UpdateUI();
+
+		//변경사항을 모든 클라이언트에게 즉시 전송
+		ForceNetUpdate();
 	}
 }
 
