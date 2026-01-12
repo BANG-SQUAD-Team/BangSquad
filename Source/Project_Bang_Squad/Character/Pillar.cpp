@@ -8,8 +8,8 @@ APillar::APillar()
     PrimaryActorTick.bCanEverTick = false;
 
     // [멀티플레이 필수 설정]
-    bReplicates = true;             // 이 액터는 네트워크 통신을 합니다.
-    SetReplicateMovement(true);     // 이 액터가 움직이면 위치를 동기화합니다.
+    bReplicates = true;             // 이 액터는 네트워크 통신을 수행
+    SetReplicateMovement(true);     // 이 액터가 움직이면 위치를 동기화
 
     PillarMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PillarMesh"));
     RootComponent = PillarMesh;
@@ -21,7 +21,7 @@ APillar::APillar()
     PillarMesh->SetCollisionProfileName(TEXT("BlockAllDynamic"));
 }
 
-// 동기화 규칙 설정 (보일러플레이트 코드)
+// 동기화 규칙 설정 
 void APillar::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
     Super::GetLifetimeReplicatedProps(OutLifetimeProps);
@@ -41,7 +41,7 @@ void APillar::BeginPlay()
     }
 }
 
-// [핵심] 서버가 이 함수를 실행하면 -> bIsFallen이 true가 되고 -> 클라이언트들은 OnRep_IsFallen이 실행됨
+// 서버가 이 함수를 실행하면 -> bIsFallen이 true가 되고 -> 클라이언트들은 OnRep_IsFallen이 실행됨
 void APillar::TriggerFall()
 {
     // 권한(서버)이 없으면 실행하지 마라 (방어 코드)
@@ -65,7 +65,7 @@ void APillar::TriggerFall()
     if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Cyan, TEXT("서버: 기둥 넘어짐 처리 완료"));
 }
 
-// [핵심] 클라이언트들이 "어? 기둥 넘어졌네?" 하고 실행하는 함수
+// 클라이언트들이 "어? 기둥 넘어졌네?" 하고 실행하는 함수
 void APillar::OnRep_IsFallen()
 {
     if (!PillarMesh) return;
@@ -79,7 +79,8 @@ void APillar::OnRep_IsFallen()
     PillarMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
 }
 
-void APillar::OnPillarHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
+void APillar::OnPillarHit(UPrimitiveComponent* HitComponent, AActor* OtherActor,
+    UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
     // 데미지 처리는 오직 서버(Authority)에서만!
     if (HasAuthority() && bIsFallen && OtherComp->GetCollisionObjectType() == ECC_WorldStatic)

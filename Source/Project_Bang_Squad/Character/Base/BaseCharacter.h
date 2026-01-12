@@ -50,27 +50,27 @@ public:
 	virtual void Tick(float DeltaTime) override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
-	// [추가] 서버에서만 실행되어야 하는 데미지 처리 함수
+	//  서버에서만 실행되어야 하는 데미지 처리 함수
 	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent,
 		class AController* EventInstigator, AActor* DamageCauser) override;
 	
-	// [복구] 타이탄이 던졌는지 상태 설정 함수
+	//  타이탄이 던졌는지 상태 설정 함수
 	void SetThrownByTitan(bool bThrown, AActor* Thrower);
 
-	// [복구] 잡혔을 때 상태 설정 함수
+	//  잡혔을 때 상태 설정 함수
 	void SetIsGrabbed(bool bGrabbed);
 
-	// [복구] 던져진 상태 확인용 변수
+	//  던져진 상태 확인용 변수
 	bool bWasThrownByTitan = false;
 
-	// [복구] 나를 던진 타이탄 (데미지 주체)
+	//  나를 던진 타이탄 (데미지 주체)
 	UPROPERTY()
 	AActor* TitanThrower = nullptr;
 
 protected:
 	virtual void BeginPlay() override;
 
-	// [복구] 착지(Landed) 이벤트 오버라이드 (낙하 데미지 및 로직 처리용)
+	//  착지(Landed) 이벤트 오버라이드 (낙하 데미지 및 로직 처리용)
 	virtual void Landed(const FHitResult& Hit) override;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Components")

@@ -17,6 +17,10 @@ class PROJECT_BANG_SQUAD_API AMageProjectile : public AActor
     
 public: 
 	AMageProjectile();
+	
+	/** 캐릭터(Mage)가 생성할 때 전달해 줄 데미지 값*/
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Damage")
+	float Damage = 10.0f; 
 
 protected:
 	virtual void BeginPlay() override;
@@ -48,8 +52,4 @@ protected:
 		bool bSelfMoved, FVector HitLocation, 
 		FVector HitNormal, FVector NormalImpulse,  const FHitResult& Hit) override;
 	
-public: 
-	/** 캐릭터(Mage)가 생성할 때 전달해 줄 데미지 값*/
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Damage")
-	float Damage = 20.0f; 
 };

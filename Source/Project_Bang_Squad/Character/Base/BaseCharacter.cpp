@@ -14,7 +14,7 @@ ABaseCharacter::ABaseCharacter()
 	PrimaryActorTick.bCanEverTick = true;
 
 	bUseControllerRotationPitch = false;
-	bUseControllerRotationYaw = false;
+	bUseControllerRotationYaw = true;
 	bUseControllerRotationRoll = false;
 
 	UCharacterMovementComponent* MoveComp = GetCharacterMovement();
@@ -81,20 +81,20 @@ float ABaseCharacter::TakeDamage(float DamageAmount, struct FDamageEvent const& 
 	return ActualDamage;
 }
 
-// [복구] 타이탄이 던질 때 호출
+// 타이탄이 던질 때 호출
 void ABaseCharacter::SetThrownByTitan(bool bThrown, AActor* Thrower)
 {
 	bWasThrownByTitan = bThrown;
 	TitanThrower = Thrower;
 }
 
-// [복구] 잡혔을 때 상태 처리
+// 잡혔을 때 상태 처리
 void ABaseCharacter::SetIsGrabbed(bool bGrabbed)
 {
 	// 잡혀있는 동안 이동 입력을 막고 싶다면 여기에 로직 추가
 }
 
-// [복구] 땅에 닿았을 때 호출됨 (여기가 핵심!)
+// 땅에 닿았을 때 호출됨 
 void ABaseCharacter::Landed(const FHitResult& Hit)
 {
 	Super::Landed(Hit);
@@ -147,6 +147,7 @@ void ABaseCharacter::Landed(const FHitResult& Hit)
 	}
 }
 
+/** 플레이어 입력 처리*/
 void ABaseCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);

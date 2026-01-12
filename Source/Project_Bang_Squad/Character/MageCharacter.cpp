@@ -93,7 +93,7 @@ void AMageCharacter::Tick(float DeltaTime)
         CameraTimelineComp->TickComponent(DeltaTime, ELevelTick::LEVELTICK_TimeOnly, nullptr);
     }
 
-    // [로직 1] 상태 탈출
+    //  상태 탈출
     if (bIsJobAbilityActive)
     {
         if (!IsValid(CurrentTargetPillar) || CurrentTargetPillar->bIsFallen)
@@ -105,7 +105,7 @@ void AMageCharacter::Tick(float DeltaTime)
 
     UpdatePillarInteraction();
 
-    // [로직 2] 락온 및 제스처
+    //  락온 및 제스처
     if (bIsJobAbilityActive && IsValid(CurrentTargetPillar) && !CurrentTargetPillar->bIsFallen)
     {
         LockOnPillar(DeltaTime);
@@ -126,7 +126,7 @@ void AMageCharacter::Tick(float DeltaTime)
 }
 
 // =========================================================
-// [핵심] 공격 및 콤보 시스템
+//  공격 및 콤보 시스템
 // =========================================================
 
 void AMageCharacter::Attack()
@@ -388,6 +388,7 @@ void AMageCharacter::UpdatePillarInteraction()
     }
 }
 
+// Pillar에 시점 고정
 void AMageCharacter::LockOnPillar(float DeltaTime)
 {
     APlayerController* PC = Cast<APlayerController>(GetController());
