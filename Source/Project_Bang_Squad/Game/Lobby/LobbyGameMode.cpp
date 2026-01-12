@@ -89,8 +89,9 @@ void ALobbyGameMode::CheckAllReady()
 	UE_LOG(LogTemp, Warning, TEXT("[GameMode] 준비 체크 중... (%d / %d 명 준비됨)"), ReadyCount, GS->PlayerArray.Num());
 
 	//이동
-	
-	if (bAllReady && GS->PlayerArray.Num() == 4)
+
+	//TODO: 4명으로 바꿔야함
+	if (bAllReady && GS->PlayerArray.Num() == 2)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[GameMode] ✅ 4인 전원 준비 완료! 직업 선택 페이즈로 전환합니다."));
 		GS->SetLobbyPhase(ELobbyPhase::SelectJob);
@@ -132,6 +133,6 @@ void ALobbyGameMode::CheckConfirmedJob()
 		UE_LOG(LogTemp, Warning, TEXT("[GameMode] ✅ 전원 직업 확정 완료! 게임(TestMap)으로 이동합니다. 🚀"));
 
 		//TODO: 나중에 TestMap -> Stage맵 이름으로 변경
-		GetWorld()->ServerTravel("/Game/TeamShare/Level/TestMap?listen");
+		GetWorld()->ServerTravel("/Game/TeamShare/Asset/Platformer_1/Scenes/Stage1_Demo?listen");
 	}
 }
