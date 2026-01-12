@@ -17,14 +17,13 @@ protected:
 	virtual void Tick(float DeltaTime) override;
 
 	virtual void JobAbility() override;
+	virtual void Attack() override;
 	virtual void Skill1() override;
 	virtual void Skill2() override;
 
-	/** 데이터 테이블 기반 스킬 처리 (Mage 방식과 동일) */
-	void ProcessSkill(FName SkillRowName);
+	void ProcessSkill(FName SkillRowName, FName StartSectionName = NAME_None);
 
 	void UpdateHoverHighlight();
-
 private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	bool bIsGrabbing = false;
@@ -56,4 +55,8 @@ private:
 
 	UFUNCTION()
 	void RecoverCharacter(ACharacter* Victim);
+
+public:
+	UFUNCTION(BlueprintCallable)
+	void ExecuteGrab();
 };
