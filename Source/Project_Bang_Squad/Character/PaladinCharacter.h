@@ -95,6 +95,11 @@ protected:
     
     FTimerHandle ShieldRegenTimer;
     
+    // 방패 생성 지연 타이머
+    FTimerHandle ShieldActivationTimer;
+    
+    // 타이머 끝나면 실제로 서버에 요청하는 함수
+    void ActivateGuard();
     // 가드 상태 동기화 
     UPROPERTY(ReplicatedUsing = OnRep_IsGuarding, BlueprintReadOnly, Category = "Combat")
     bool bIsGuarding;

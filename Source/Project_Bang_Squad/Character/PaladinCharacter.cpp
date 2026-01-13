@@ -7,7 +7,7 @@
 #include "TimerManager.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/DamageEvents.h"
-#include "DrawDebugHelpers.h" // 디버그 그리기 필수
+#include "DrawDebugHelpers.h" 
 
 APaladinCharacter::APaladinCharacter()
 {
@@ -15,11 +15,6 @@ APaladinCharacter::APaladinCharacter()
     
     bReplicates = true;
     SetReplicateMovement(true);
-    
-    // 1. 팔라딘 무빙
-    GetCharacterMovement()->MaxWalkSpeed = 450.f;
-    GetCharacterMovement()->JumpZVelocity = 550.f;
-    GetCharacterMovement()->AirControl = 0.35f;
     
     // 2. 공격 쿨타임
     AttackCooldownTime = 1.f;
@@ -43,15 +38,14 @@ APaladinCharacter::APaladinCharacter()
     ShieldMeshComp->SetupAttachment(GetMesh(), TEXT("Weapon_HitCenter"));
     
     // 기본적으로 꺼둠 & 충돌 없음
-    ShieldMeshComp -> SetVisibility(false);
+    ShieldMeshComp->SetVisibility(false);
     ShieldMeshComp->SetCollisionProfileName(TEXT("NoCollision"));
     
-    // 큐브 모양 임시 설정 (나중에 블루프린트에서 납작한 판으로 교체)
     static ConstructorHelpers::FObjectFinder<UStaticMesh> CubeMesh(TEXT("/Engine/BasicShapes/Cube.Cube"));
     if (CubeMesh.Succeeded())
     {
         ShieldMeshComp->SetStaticMesh(CubeMesh.Object);
-        ShieldMeshComp->SetRelativeScale3D(FVector(0.1f,2.5f,3.5f)); // 납작하고 넓게
+        ShieldMeshComp->SetRelativeScale3D(FVector(0.1f, 2.5f, 3.5f)); 
         ShieldMeshComp->SetRelativeLocation(FVector(50.0f, 0.0f, 0.0f));
     }
 }
@@ -74,12 +68,10 @@ void APaladinCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
     
     if (UEnhancedInputComponent* EIC = Cast<UEnhancedInputComponent>(PlayerInputComponent))
     {
-        // JobAbilityAction은 protected 변수라 자식이 접근 가능
         if (JobAbilityAction)
         {
             EIC->BindAction(JobAbilityAction, ETriggerEvent::Completed, this, &APaladinCharacter::EndJobAbility);
         }
-        
     }
 }
 
@@ -133,12 +125,9 @@ void APaladinCharacter::ProcessSkill(FName SkillRowName)
 
        if (HasAuthority())
        {
-          // 기존 타이머들 초기화
           GetWorldTimerManager().ClearTimer(AttackHitTimerHandle);
           GetWorldTimerManager().ClearTimer(HitLoopTimerHandle);
 
-          // 데이터 테이블에서 딜레이 시간 가져오기
-          // (주의: BaseCharacter.h에 변수명이 ProjectileSpawnDelay라면 그걸로 수정하세요)
           float HitDelay = Data->ActionDelay; 
 
           if (HitDelay > 0.0f)
@@ -146,7 +135,7 @@ void APaladinCharacter::ProcessSkill(FName SkillRowName)
              GetWorldTimerManager().SetTimer(
                 AttackHitTimerHandle,
                 this,
-                &APaladinCharacter::StartMeleeTrace, // ExecuteMeleeHit 대신 Start 호출
+                &APaladinCharacter::StartMeleeTrace, 
                 HitDelay,
                 false
              );
@@ -165,10 +154,8 @@ void APaladinCharacter::ProcessSkill(FName SkillRowName)
 // =========================================================
 void APaladinCharacter::StartMeleeTrace()
 {
-    // 중복 타격 목록 초기화
     SwingDamagedActors.Empty();
 
-    // 초기 위치 잡기
     USceneComponent* WeaponComp = GetMesh();
     TArray<UStaticMeshComponent*> StaticComps;
     GetComponents<UStaticMeshComponent>(StaticComps);
@@ -186,7 +173,6 @@ void APaladinCharacter::StartMeleeTrace()
         LastHammerLocation = GetActorLocation() + GetActorForwardVector() * 100.f;
     }
 
-    // 루프 타이머 시작 (0.015초마다 검사 = 매우 부드러움)
     GetWorldTimerManager().SetTimer(
         HitLoopTimerHandle,
         this,
@@ -195,7 +181,6 @@ void APaladinCharacter::StartMeleeTrace()
         true 
     );
 
-    // 일정 시간(HitDuration) 뒤에 판정 종료 예약
     FTimerHandle StopTimer;
     GetWorldTimerManager().SetTimer(StopTimer, this, &APaladinCharacter::StopMeleeTrace, HitDuration, false);
 }
@@ -205,7 +190,6 @@ void APaladinCharacter::StartMeleeTrace()
 // =========================================================
 void APaladinCharacter::PerformMeleeTrace()
 {
-    // 무기 컴포넌트 및 소켓 위치 찾기
     USceneComponent* WeaponComp = GetMesh();
     TArray<UStaticMeshComponent*> StaticComps;
     GetComponents<UStaticMeshComponent>(StaticComps);
@@ -228,24 +212,19 @@ void APaladinCharacter::PerformMeleeTrace()
         CurrentRot = GetActorQuat();
     }
 
-    // [Sweep] 이전 위치(Last) -> 현재 위치(Current) 연결해서 검사
     TArray<FHitResult> HitResults;
     FCollisionQueryParams Params;
     Params.AddIgnoredActor(this);
 
     bool bHit = GetWorld()->SweepMultiByChannel(
         HitResults,
-        LastHammerLocation, // 시작점
-        CurrentLoc,         // 끝점 (이 사이를 메꿔서 검사함)
-        CurrentRot,         // 회전
+        LastHammerLocation, 
+        CurrentLoc,         
+        CurrentRot,         
         ECC_Pawn,
         FCollisionShape::MakeBox(HammerHitBoxSize),
         Params
     );
-
-    // [디버그] 궤적 그리기 (주석 해제 시 보라색 잔상 보임)
-     DrawDebugBox(GetWorld(), CurrentLoc, HammerHitBoxSize, CurrentRot, FColor::Purple, false, 0.5f);
-     DrawDebugLine(GetWorld(), LastHammerLocation, CurrentLoc, FColor::Red, false, 0.5f, 0, 2.0f);
 
     if (bHit)
     {
@@ -253,7 +232,6 @@ void APaladinCharacter::PerformMeleeTrace()
         {
             AActor* HitActor = Hit.GetActor();
             
-            //  이번 스윙에 이미 맞은 놈은 건너뛰기
             if (HitActor && HitActor != this && !SwingDamagedActors.Contains(HitActor))
             {
                 UGameplayStatics::ApplyDamage(
@@ -264,13 +242,11 @@ void APaladinCharacter::PerformMeleeTrace()
                     UDamageType::StaticClass()
                 );
                 
-                // 목록에 추가
                 SwingDamagedActors.Add(HitActor);
             }
         }
     }
 
-    // 다음 프레임을 위해 현재 위치를 '과거'로 저장
     LastHammerLocation = CurrentLoc;
 }
 
@@ -283,34 +259,64 @@ void APaladinCharacter::StopMeleeTrace()
     SwingDamagedActors.Empty();
 }
 
+// =========================================================
+//   JobAbility (딜레이 적용 + 중복 제거됨)
+// =========================================================
 void APaladinCharacter::JobAbility()
 {
-    // 방패가 깨져있거나 HP가 바닥이면 요청도 안 보냄
+    // 방패가 깨져있거나 HP가 없으면 실행 안 함
     if (bIsShieldBroken || CurrentShieldHP <= 0.0f) return;
     
-    // 데이터 테이블 읽기
+    UAnimMontage* MontageToPlay = nullptr;
+    float ActivationDelay = 0.0f;
+
     if (SkillDataTable)
     {
         static const FString ContextString(TEXT("PaladinGuardContext"));
-        FSkillData* Data = SkillDataTable->FindRow<FSkillData>(FName("Paladin_Guard"), ContextString);
+        FSkillData* Data = SkillDataTable->FindRow<FSkillData>(FName("JobAbility"), ContextString);
         if (Data)
         {
-            GuardWalkSpeed = Data -> Duration > 0.0f ? Data->Duration : 250.0f;
+            MontageToPlay = Data->SkillMontage;
+            ActivationDelay = Data->ActionDelay; // 딜레이 시간 가져오기
         }
     }
     
+    // 1. 애니메이션은 즉시 재생
+    if (MontageToPlay)
+    {
+        PlayAnimMontage(MontageToPlay);
+        Server_PlayMontage(MontageToPlay);
+    }
+    
+    // 2. 방패 켜기는 딜레이 후 실행
+    if (ActivationDelay > 0.0f)
+    {
+        GetWorldTimerManager().SetTimer(ShieldActivationTimer, this, &APaladinCharacter::ActivateGuard, ActivationDelay, false);
+    }
+    else
+    {
+        ActivateGuard();
+    }
+}
+
+// [신규] 타이머가 호출하는 실제 방패 켜기 함수
+void APaladinCharacter::ActivateGuard()
+{
     Server_SetGuard(true);
 }
 
-// 방어 해제 (클라이언트 입력)
+// 3. 버튼 뗐을 때 (타이머 취소 포함)
 void APaladinCharacter::EndJobAbility()
 {
+    // 딜레이 중에 버튼 떼면 타이머 취소 (방패 안 나오게)
+    GetWorldTimerManager().ClearTimer(ShieldActivationTimer);
+
     Server_SetGuard(false);
+    StopAnimMontage();
 }
 
 void APaladinCharacter::Server_SetGuard_Implementation(bool bNewGuarding)
 {
-    // 방패가 깨진 상태면 강제로 false 처리
     if (bIsShieldBroken && bNewGuarding)
     {
         return;
@@ -322,15 +328,14 @@ void APaladinCharacter::Server_SetGuard_Implementation(bool bNewGuarding)
     if (bIsGuarding)
     {
         // 방패 들었음 -> 회복 중단
-        GetWorld()->GetTimerManager().ClearTimer(ShieldRegenTimer);
+        GetWorldTimerManager().ClearTimer(ShieldRegenTimer);
     }
     else
     {
         // 방패 내렸음 ->  Delay 뒤에 회복 시작
-        // 타이머 중복 실행 방지
-        if (!GetWorld()->GetTimerManager().IsTimerActive(ShieldRegenTimer))
+        if (!GetWorldTimerManager().IsTimerActive(ShieldRegenTimer))
         {
-            GetWorld()->GetTimerManager().SetTimer(ShieldRegenTimer, this , &APaladinCharacter::RegenShield,
+            GetWorldTimerManager().SetTimer(ShieldRegenTimer, this , &APaladinCharacter::RegenShield,
                 0.1f, true, ShieldRegenDelay);
         }
     }
@@ -339,21 +344,17 @@ void APaladinCharacter::Server_SetGuard_Implementation(bool bNewGuarding)
 
 void APaladinCharacter::OnRep_IsGuarding()
 {
-    // 이동속도 
-    if (bIsGuarding) GetCharacterMovement()->MaxWalkSpeed = GuardWalkSpeed;
-    else GetCharacterMovement()->MaxWalkSpeed = GuardWalkSpeed = 450.0f;
-    
-    // 방패 메쉬 켜기/ 끄기
-    SetShieldActive(bIsGuarding) ;
+    SetShieldActive(bIsGuarding);
 }
 
-// [보조] 방패 활성/비활성 처리
+// [수정 완료] 요청하신 대로 기본 충돌 로직으로 복구 (IgnoredActor 제거)
 void APaladinCharacter::SetShieldActive(bool bActive)
 {
     if (ShieldMeshComp)
     {
         ShieldMeshComp->SetVisibility(bActive);
-        // 켜지면 물리 충돌(BlockAllDynamic), 꺼지면 통과(NoCollision)
+        
+        // 해결하셨다고 했으니 기존 로직 사용
         ShieldMeshComp->SetCollisionProfileName(bActive ? TEXT("BlockAllDynamic") : TEXT("NoCollision"));
     }
 }
