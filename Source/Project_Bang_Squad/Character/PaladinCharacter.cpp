@@ -1,6 +1,7 @@
 #include "Project_Bang_Squad/Character/PaladinCharacter.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "Components/WidgetComponent.h"
 #include "EnhancedInputComponent.h"
 #include "Net/UnrealNetwork.h"
 #include "Engine/DataTable.h"
@@ -8,6 +9,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Engine/DamageEvents.h"
 #include "DrawDebugHelpers.h" 
+#include "Components/CapsuleComponent.h"
 
 APaladinCharacter::APaladinCharacter()
 {
@@ -37,6 +39,13 @@ APaladinCharacter::APaladinCharacter()
     ShieldMeshComp = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ShieldMesh"));
     ShieldMeshComp->SetupAttachment(GetMesh(), TEXT("Weapon_HitCenter"));
     
+    //6. 방패 체력바 위젯 생성
+    ShieldBarWidgetComp = CreateDefaultSubobject<UWidgetComponent>(TEXT("ShieldBarWidget"));
+    ShieldBarWidgetComp->SetupAttachment(ShieldMeshComp); // 방패에 붙임
+    ShieldBarWidgetComp->SetWidgetSpace(EWidgetSpace::World); // 월드 공간에 배치 (3D처럼)
+    ShieldBarWidgetComp->SetDrawSize(FVector2D(100.0f, 15.0f)); // 크기 설정
+    ShieldBarWidgetComp->SetVisibility(false);
+    
     // 기본적으로 꺼둠 & 충돌 없음
     ShieldMeshComp->SetVisibility(false);
     ShieldMeshComp->SetCollisionProfileName(TEXT("NoCollision"));
@@ -59,6 +68,11 @@ void APaladinCharacter::BeginPlay()
     {
         CurrentShieldHP = MaxShieldHP;
         bIsShieldBroken = false;
+    }
+    
+    if (GetCapsuleComponent() && ShieldMeshComp)
+    {
+        GetCapsuleComponent()->IgnoreComponentWhenMoving(ShieldMeshComp, true);
     }
 }
 
@@ -354,8 +368,31 @@ void APaladinCharacter::SetShieldActive(bool bActive)
     {
         ShieldMeshComp->SetVisibility(bActive);
         
-        // 해결하셨다고 했으니 기존 로직 사용
-        ShieldMeshComp->SetCollisionProfileName(bActive ? TEXT("BlockAllDynamic") : TEXT("NoCollision"));
+        // 체력바 UI는 오직 나에게 (팔라딘 유저에게만) 보이게 함
+        if (ShieldBarWidgetComp)
+        {
+            if (bActive && IsLocallyControlled())
+            {
+                ShieldBarWidgetComp->SetVisibility(true);
+            }
+            else
+            {
+                // 방패를 껐거나 남이 보는 내 캐릭터라면 UI 숨김
+                ShieldBarWidgetComp->SetVisibility(false);
+            }
+        }
+        if (bActive)
+        {
+            ShieldMeshComp->SetCollisionProfileName(TEXT("BlockAllDynamic"));
+            
+         
+            // 카메라는 무시
+            ShieldMeshComp->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+        }
+        else
+        {
+            ShieldMeshComp->SetCollisionProfileName(TEXT("NoCollision"));
+        }
     }
 }
 

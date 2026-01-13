@@ -74,8 +74,15 @@ protected:
     // =============================================================
     // [방패 시스템]
     // =============================================================
+    
+    // 방패 메쉬
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat")
     class UStaticMeshComponent* ShieldMeshComp;
+    
+    // 방패 체력바 위젯 컴포넌트
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
+    class UWidgetComponent* ShieldBarWidgetComp;
+    
     
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Shield")
     float MaxShieldHP = 200.0f;
