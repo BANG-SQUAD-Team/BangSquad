@@ -34,8 +34,11 @@ public:
 	// 캐릭터가 피격당했을 때 호출하는 함수
 	void OnDamaged(AActor* Attacker);
 
-	// [필수 추가] 사망 시 AI 정지 명령 함수
+	// 사망 시 AI 정지 명령 함수
 	void SetDeadState();
+
+	// 외부에서 공격 사거리를 설정할 수 있게 해주는 함수 데이터에셋가서 수정 하면 반영가능
+	void SetAttackRange(float NewRange) { AttackRange = NewRange; }
 
 protected:
 	virtual void OnPossess(APawn* InPawn) override;
@@ -61,4 +64,7 @@ protected:
 	float AttackRange = 150.0f;
 
 	FTimerHandle StateTimerHandle;
+
+	// [NEW] 한 번이라도 포효했는지 체크하는 플래그 (누락되었던 부분)
+	bool bHasRoared = false;
 };

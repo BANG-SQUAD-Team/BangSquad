@@ -33,6 +33,10 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Anim")
     TObjectPtr<UAnimMontage> HitReactMontage;
 
+    // 4. 사망 애니메이션 (죽었을 때 재생할 몽타주)
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Anim")
+    TObjectPtr<UAnimMontage> DeathMontage;
+
     // (추후 확장)
     // 보스 등장 몽타주, 전용 BGM 등은 여기에 추가하면 됩니다.
 };
