@@ -12,6 +12,20 @@ class PROJECT_BANG_SQUAD_API APaladinCharacter : public ABaseCharacter
 public:
     APaladinCharacter();
     
+    // =============================================================
+    // [네트워크 RPC]
+    // =============================================================
+    UFUNCTION(Server, Reliable)
+    void Server_PlayMontage(UAnimMontage* MontageToPlay);
+    
+    UFUNCTION(NetMulticast, Reliable)
+    void Multicast_PlayMontage(UAnimMontage* MontageToPlay);
+    
+    virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent,
+        class AController* EventInstigator, AActor* DamageCauser) override;
+    
+    virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;
+
 protected:
     virtual void BeginPlay() override;
     virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
@@ -21,34 +35,23 @@ protected:
     // =============================================================
     // [공격 판정 관련 변수 및 함수]
     // =============================================================
-protected:
-    // 스킬 데미지 캐싱용
     float CurrentSkillDamage = 0.0f;
     
-    // 망치 머리 크기 (절반 크기 Extent 입력, 예: 30, 30, 30)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
     FVector HammerHitBoxSize = FVector(30.0f, 30.0f, 30.0f);                       
     
-    // 공격 시작 딜레이 타이머
     FTimerHandle AttackHitTimerHandle;
-
-    // [추가] 궤적 판정 반복 타이머
     FTimerHandle HitLoopTimerHandle;
 
-    // [추가] 공격 판정 유지 시간 (망치를 휘두르는 시간, 예: 0.2~0.3초)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
     float HitDuration = 0.25f; 
 
-    // [추가] 이전 프레임의 망치 위치 (궤적 연결용)
     FVector LastHammerLocation;
-
-    // [추가] 한 번 휘두를 때 이미 맞은 적 목록 (중복 타격 방지)
     TSet<AActor*> SwingDamagedActors;
 
-    // [변경] 단발성 ExecuteMeleeHit 삭제 -> 3단계 함수로 분리
-    void StartMeleeTrace();   // 판정 시작 (딜레이 직후 호출)
-    void PerformMeleeTrace(); // 매 프레임 궤적 검사
-    void StopMeleeTrace();    // 판정 종료
+    void StartMeleeTrace();
+    void PerformMeleeTrace();
+    void StopMeleeTrace();
 
     // =============================================================
     // [콤보 및 데이터 테이블]
@@ -63,14 +66,53 @@ protected:
     void ProcessSkill(FName SkillRowName);
     
     // =============================================================
-    // [네트워크 RPC]
+    // [직업 능력 (방패)] 
     // =============================================================
-public:
-    UFUNCTION(Server, Reliable)
-    void Server_PlayMontage(UAnimMontage* MontageToPlay);
-    void Server_PlayMontage_Implementation(UAnimMontage* MontageToPlay);
+    virtual void JobAbility() override;
+    void EndJobAbility();
     
-    UFUNCTION(NetMulticast, Reliable)
-    void Multicast_PlayMontage(UAnimMontage* MontageToPlay);
-    void Multicast_PlayMontage_Implementation(UAnimMontage* MontageToPlay);
+    // =============================================================
+    // [방패 시스템]
+    // =============================================================
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat")
+    class UStaticMeshComponent* ShieldMeshComp;
+    
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Shield")
+    float MaxShieldHP = 200.0f;
+    
+    UPROPERTY(Replicated, BlueprintReadOnly, Category = "Shield")
+    float CurrentShieldHP;
+    
+    UPROPERTY(EditAnywhere, Category = "Shield")
+    float ShieldRegenRate = 5.0f;
+    
+    UPROPERTY(EditAnywhere, Category = "Shield")
+    float ShieldRegenDelay = 2.0f;
+    
+    // 상태 관리
+    UPROPERTY(Replicated, BlueprintReadOnly, Category = "Shield")
+    bool bIsShieldBroken;
+    
+    FTimerHandle ShieldRegenTimer;
+    
+    // 방패 생성 지연 타이머
+    FTimerHandle ShieldActivationTimer;
+    
+    // 타이머 끝나면 실제로 서버에 요청하는 함수
+    void ActivateGuard();
+    // 가드 상태 동기화 
+    UPROPERTY(ReplicatedUsing = OnRep_IsGuarding, BlueprintReadOnly, Category = "Combat")
+    bool bIsGuarding;
+    
+    UFUNCTION()
+    void OnRep_IsGuarding();
+    
+    UFUNCTION(Server, Reliable)
+    void Server_SetGuard(bool bNewGuarding);
+    
+    void RegenShield();
+    void OnShieldBroken();
+    void SetShieldActive(bool bActive);
+    
+    float GuardWalkSpeed = 250.0f;
 };
