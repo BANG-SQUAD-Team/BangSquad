@@ -21,23 +21,33 @@ struct FSkillData : public FTableRowBase
 	GENERATED_BODY()
 
 public:
+	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
 	FName SkillName;
 
+	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
 	float Damage;
 
+	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
 	class UAnimMontage* SkillMontage;
 
+	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
 	TSubclassOf<class AActor> ProjectileClass;
+
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
 	int32 RequiredStage = 0;
 	
+	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float ActionDelay = 0.0f;
+	
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
+	float Duration = 0.0f;
 };
 
 UCLASS()
