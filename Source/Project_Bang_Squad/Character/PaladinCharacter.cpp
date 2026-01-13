@@ -37,11 +37,35 @@ APaladinCharacter::APaladinCharacter()
        SpringArm->TargetOffset = FVector(0.0f, 0.0f, 150.0f); 
        SpringArm->ProbeSize = 12.0f; 
     }
+    
+    // 5. 방패 컴포넌트 생성
+    ShieldMeshComp = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ShieldMesh"));
+    ShieldMeshComp->SetupAttachment(GetMesh(), TEXT("Weapon_HitCenter"));
+    
+    // 기본적으로 꺼둠 & 충돌 없음
+    ShieldMeshComp -> SetVisibility(false);
+    ShieldMeshComp->SetCollisionProfileName(TEXT("NoCollision"));
+    
+    // 큐브 모양 임시 설정 (나중에 블루프린트에서 납작한 판으로 교체)
+    static ConstructorHelpers::FObjectFinder<UStaticMesh> CubeMesh(TEXT("/Engine/BasicShapes/Cube.Cube"));
+    if (CubeMesh.Succeeded())
+    {
+        ShieldMeshComp->SetStaticMesh(CubeMesh.Object);
+        ShieldMeshComp->SetRelativeScale3D(FVector(0.1f,2.5f,3.5f)); // 납작하고 넓게
+        ShieldMeshComp->SetRelativeLocation(FVector(50.0f, 0.0f, 0.0f));
+    }
 }
 
 void APaladinCharacter::BeginPlay()
 {
     Super::BeginPlay();
+    
+    // 서버에서만 HP 초기화
+    if (HasAuthority())
+    {
+        CurrentShieldHP = MaxShieldHP;
+        bIsShieldBroken = false;
+    }
 }
 
 void APaladinCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -50,21 +74,21 @@ void APaladinCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
     
     if (UEnhancedInputComponent* EIC = Cast<UEnhancedInputComponent>(PlayerInputComponent))
     {
-       if (JumpAction)
-       {
-          EIC->BindAction(JumpAction, ETriggerEvent::Started, this, &ACharacter::Jump);
-          EIC->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
-       }
-       if (AttackAction)
-       {
-          EIC->BindAction(AttackAction, ETriggerEvent::Started, this, &APaladinCharacter::Attack);
-       }
+        // JobAbilityAction은 protected 변수라 자식이 접근 가능
+        if (JobAbilityAction)
+        {
+            EIC->BindAction(JobAbilityAction, ETriggerEvent::Completed, this, &APaladinCharacter::EndJobAbility);
+        }
+        
     }
 }
 
 void APaladinCharacter::Attack()
 {
     if (!CanAttack()) return;
+    
+    // 방어중에는 공격 불가
+    if (bIsGuarding) return;
     
     StartAttackCooldown();
     
@@ -134,6 +158,7 @@ void APaladinCharacter::ProcessSkill(FName SkillRowName)
        }
     }
 }
+
 
 // =========================================================
 // [1단계] 공격 판정 시작 (궤적 초기화)
@@ -256,6 +281,157 @@ void APaladinCharacter::StopMeleeTrace()
 {
     GetWorldTimerManager().ClearTimer(HitLoopTimerHandle);
     SwingDamagedActors.Empty();
+}
+
+void APaladinCharacter::JobAbility()
+{
+    // 방패가 깨져있거나 HP가 바닥이면 요청도 안 보냄
+    if (bIsShieldBroken || CurrentShieldHP <= 0.0f) return;
+    
+    // 데이터 테이블 읽기
+    if (SkillDataTable)
+    {
+        static const FString ContextString(TEXT("PaladinGuardContext"));
+        FSkillData* Data = SkillDataTable->FindRow<FSkillData>(FName("Paladin_Guard"), ContextString);
+        if (Data)
+        {
+            GuardWalkSpeed = Data -> Duration > 0.0f ? Data->Duration : 250.0f;
+        }
+    }
+    
+    Server_SetGuard(true);
+}
+
+// 방어 해제 (클라이언트 입력)
+void APaladinCharacter::EndJobAbility()
+{
+    Server_SetGuard(false);
+}
+
+void APaladinCharacter::Server_SetGuard_Implementation(bool bNewGuarding)
+{
+    // 방패가 깨진 상태면 강제로 false 처리
+    if (bIsShieldBroken && bNewGuarding)
+    {
+        return;
+    }
+    
+    bIsGuarding = bNewGuarding;
+    
+    // [서버 로직] 타이머 정리
+    if (bIsGuarding)
+    {
+        // 방패 들었음 -> 회복 중단
+        GetWorld()->GetTimerManager().ClearTimer(ShieldRegenTimer);
+    }
+    else
+    {
+        // 방패 내렸음 ->  Delay 뒤에 회복 시작
+        // 타이머 중복 실행 방지
+        if (!GetWorld()->GetTimerManager().IsTimerActive(ShieldRegenTimer))
+        {
+            GetWorld()->GetTimerManager().SetTimer(ShieldRegenTimer, this , &APaladinCharacter::RegenShield,
+                0.1f, true, ShieldRegenDelay);
+        }
+    }
+    OnRep_IsGuarding();
+}
+
+void APaladinCharacter::OnRep_IsGuarding()
+{
+    // 이동속도 
+    if (bIsGuarding) GetCharacterMovement()->MaxWalkSpeed = GuardWalkSpeed;
+    else GetCharacterMovement()->MaxWalkSpeed = GuardWalkSpeed = 450.0f;
+    
+    // 방패 메쉬 켜기/ 끄기
+    SetShieldActive(bIsGuarding) ;
+}
+
+// [보조] 방패 활성/비활성 처리
+void APaladinCharacter::SetShieldActive(bool bActive)
+{
+    if (ShieldMeshComp)
+    {
+        ShieldMeshComp->SetVisibility(bActive);
+        // 켜지면 물리 충돌(BlockAllDynamic), 꺼지면 통과(NoCollision)
+        ShieldMeshComp->SetCollisionProfileName(bActive ? TEXT("BlockAllDynamic") : TEXT("NoCollision"));
+    }
+}
+
+// 5. 데미지 로직 (서버 권한)
+float APaladinCharacter::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
+{
+    float ActualDamage = DamageAmount;
+
+    // 서버이고, 방어 중이고, 방패가 멀쩡하고, 때린 놈이 있을 때
+    if (HasAuthority() && bIsGuarding && !bIsShieldBroken && DamageCauser)
+    {
+        // 전방(내적 > 0) 체크
+        FVector MyForward = GetActorForwardVector();
+        FVector ToAttacker = (DamageCauser->GetActorLocation() - GetActorLocation()).GetSafeNormal();
+
+        if (FVector::DotProduct(MyForward, ToAttacker) > 0.0f)
+        {
+            // 플레이어 데미지 무효화
+            ActualDamage = 0.0f; 
+
+            // 방패 HP 감소
+            CurrentShieldHP -= DamageAmount;
+            
+            // 파괴 체크
+            if (CurrentShieldHP <= 0.0f)
+            {
+                OnShieldBroken();
+            }
+        }
+    }
+
+    return Super::TakeDamage(ActualDamage, DamageEvent, EventInstigator, DamageCauser);
+}
+
+// 6. 방패 파괴 처리 (서버 전용)
+void APaladinCharacter::OnShieldBroken()
+{
+    bIsShieldBroken = true;
+    CurrentShieldHP = 0.0f;
+    
+    // 강제로 가드 해제 (Server_SetGuard 호출 -> OnRep 실행 -> 방패 꺼짐)
+    Server_SetGuard(false);
+    
+    // (옵션) 파괴 사운드는 여기서 Multicast RPC로 뿌리면 됨
+    UE_LOG(LogTemp, Warning, TEXT("Shield Broken!!"));
+}
+
+// 7. 방패 회복 (서버 전용)
+void APaladinCharacter::RegenShield()
+{
+    // 방어 중이면 회복 X
+    if (bIsGuarding) return;
+
+    CurrentShieldHP += ShieldRegenRate * 0.1f; // 0.1초마다
+
+    // 최대치 도달 시
+    if (CurrentShieldHP >= MaxShieldHP)
+    {
+        CurrentShieldHP = MaxShieldHP;
+        bIsShieldBroken = false;
+        GetWorldTimerManager().ClearTimer(ShieldRegenTimer); // 회복 끝
+    }
+    // 깨진 상태였는데 30% 이상 차면 '사용 가능' 상태로 복구
+    else if (bIsShieldBroken && CurrentShieldHP > MaxShieldHP * 0.3f)
+    {
+        bIsShieldBroken = false;
+    }
+}
+
+// 8. 리플리케이션 변수 등록
+void APaladinCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+    Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+    
+    DOREPLIFETIME(APaladinCharacter, bIsGuarding);
+    DOREPLIFETIME(APaladinCharacter, CurrentShieldHP);
+    DOREPLIFETIME(APaladinCharacter, bIsShieldBroken);
 }
 
 // =========================================================
