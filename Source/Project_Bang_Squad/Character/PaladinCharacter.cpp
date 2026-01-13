@@ -74,6 +74,19 @@ void APaladinCharacter::BeginPlay()
     {
         GetCapsuleComponent()->IgnoreComponentWhenMoving(ShieldMeshComp, true);
     }
+    
+    // [최적화] 시작할 때 무기 컴포넌트 미리 찾아서 저장 (캐싱)
+    TArray<UStaticMeshComponent*> StaticComps;
+    GetComponents<UStaticMeshComponent>(StaticComps);
+    for (UStaticMeshComponent* Comp : StaticComps)
+    {
+        // 소켓 이름이 맞는 컴포넌트를 찾으면 저장하고 루프 종료
+        if (Comp && Comp->DoesSocketExist(TEXT("Weapon_HitCenter"))) 
+        { 
+            CachedWeaponMesh = Comp; 
+            break; 
+        }
+    }
 }
 
 void APaladinCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -87,6 +100,16 @@ void APaladinCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
             EIC->BindAction(JobAbilityAction, ETriggerEvent::Completed, this, &APaladinCharacter::EndJobAbility);
         }
     }
+}
+
+void APaladinCharacter::OnDeath()
+{
+    SetShieldActive(false);
+    bIsGuarding = false;
+    
+    StopAnimMontage();
+    
+    Super::OnDeath();
 }
 
 void APaladinCharacter::Attack()
@@ -207,6 +230,12 @@ void APaladinCharacter::PerformMeleeTrace()
     USceneComponent* WeaponComp = GetMesh();
     TArray<UStaticMeshComponent*> StaticComps;
     GetComponents<UStaticMeshComponent>(StaticComps);
+    
+    if (CachedWeaponMesh) 
+    {
+        WeaponComp = CachedWeaponMesh;
+    }
+    
     for (UStaticMeshComponent* Comp : StaticComps)
     {
         if (Comp && Comp->DoesSocketExist(TEXT("Weapon_HitCenter"))) { WeaponComp = Comp; break; }
@@ -313,7 +342,7 @@ void APaladinCharacter::JobAbility()
     }
 }
 
-// [신규] 타이머가 호출하는 실제 방패 켜기 함수
+// 타이머가 호출하는 실제 방패 켜기 함수
 void APaladinCharacter::ActivateGuard()
 {
     Server_SetGuard(true);
@@ -361,7 +390,7 @@ void APaladinCharacter::OnRep_IsGuarding()
     SetShieldActive(bIsGuarding);
 }
 
-// [수정 완료] 요청하신 대로 기본 충돌 로직으로 복구 (IgnoredActor 제거)
+// 기본 충돌 로직
 void APaladinCharacter::SetShieldActive(bool bActive)
 {
     if (ShieldMeshComp)

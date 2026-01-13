@@ -86,6 +86,23 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+	
+	// HealthComponent의 OnDead 신호를 받을 함수
+	UFUNCTION()
+	virtual void OnDeath();
+	
+	// 중복 사망 방지용 플래그
+	bool bIsDead = false;
+	
+	// 죽을 때 재생할 몽타주 (에디터에서 지정)
+	UPROPERTY(EditDefaultsOnly, Category = "Combat")
+	UAnimMontage* DeathMontage;
+	
+	// 애니메이션 정지용 타이머
+	FTimerHandle DeathTimerHandle;
+	
+	// 타이머가 끝나면 실행될 함수 
+	void FreezeAnimation();
 
 	//  착지(Landed) 이벤트 오버라이드 (낙하 데미지 및 로직 처리용)
 	virtual void Landed(const FHitResult& Hit) override;

@@ -29,7 +29,7 @@ public:
 protected:
     virtual void BeginPlay() override;
     virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
-    
+    virtual void OnDeath() override;
     virtual void Attack() override;
 
     // =============================================================
@@ -122,4 +122,9 @@ protected:
     void SetShieldActive(bool bActive);
     
     float GuardWalkSpeed = 250.0f;
+    
+private:
+    // 무기 컴포넌트를 미리 저장해둘 변수
+    UPROPERTY()
+    UStaticMeshComponent* CachedWeaponMesh;
 };
