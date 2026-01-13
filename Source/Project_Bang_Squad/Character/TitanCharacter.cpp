@@ -4,8 +4,14 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Camera/CameraComponent.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "Kismet/GameplayStatics.h" 
 #include "TimerManager.h"
 #include "Engine/DataTable.h"
+#include "AIController.h"
+#include "BrainComponent.h"
+#include "Net/UnrealNetwork.h"
+#include "Project_Bang_Squad/Character/Enemy/EnemyNormal.h"
+#include "Net/UnrealNetwork.h"
 
 ATitanCharacter::ATitanCharacter()
 {
@@ -16,6 +22,12 @@ ATitanCharacter::ATitanCharacter()
 void ATitanCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// [핵심 수정 사항] 캡슐 컴포넌트의 오버랩(겹침) 이벤트에 함수를 등록합니다.
+	GetCapsuleComponent()->OnComponentBeginOverlap.AddDynamic(this, &ATitanCharacter::OnChargeOverlap);
+
+	// [추가] 벽 충돌(Hit) 함수도 만들어 두셨으니, 이것도 등록해야 벽에 박았을 때 멈춥니다.
+	GetCapsuleComponent()->OnComponentHit.AddDynamic(this, &ATitanCharacter::OnChargeHit);
 }
 
 void ATitanCharacter::Tick(float DeltaTime)
@@ -86,17 +98,25 @@ void ATitanCharacter::TryGrab()
 void ATitanCharacter::ExecuteGrab()
 {
 	if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Magenta, TEXT("ExecuteGrab Called!"));
+
 	// 타겟이 없거나 잡기 상태가 아니면 무시
 	if (!GrabbedActor || !bIsGrabbing) return;
 
+	// [수정] ACharacter면 SetHeldState로 확실하게 AI랑 물리를 끕니다.
 	if (ACharacter* Victim = Cast<ACharacter>(GrabbedActor))
 	{
-		// 물리를 끕니다 (튕겨나감 방지)
-		Victim->GetMesh()->SetSimulatePhysics(false);
-		Victim->GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		SetHeldState(Victim, true);
+	}
+	else
+	{
+		// 캐릭터가 아닌 물체라면 기존 방식대로 물리만 끔
+		if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(GrabbedActor->GetRootComponent()))
+		{
+			RootComp->SetSimulatePhysics(false);
+		}
 	}
 
-	// 손에 부착! (이게 8프레임에 실행됨)
+	// 손에 부착!
 	GrabbedActor->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, TEXT("Hand_R_Socket"));
 
 	// 자동 던지기 타이머 시작
@@ -112,36 +132,37 @@ void ATitanCharacter::ThrowTarget()
 	ProcessSkill(TEXT("JobAbility"), TEXT("Throw"));
 	SetHighlight(GrabbedActor, false);
 
-	// 손에서 떼기
 	GrabbedActor->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+
+	// 캐릭터 기울어짐 방지 및 바닥 끼임 방지 (필수 수정)
+	FRotator ActorRot = GrabbedActor->GetActorRotation();
+	GrabbedActor->SetActorRotation(FRotator(0.f, ActorRot.Yaw, 0.f));
+	GrabbedActor->AddActorWorldOffset(FVector(0.f, 0.f, 50.f), false, nullptr, ETeleportType::TeleportPhysics);
 
 	if (ACharacter* Victim = Cast<ACharacter>(GrabbedActor))
 	{
-		// 1. 잡혔을 때 껐던 캡슐 콜리전 복구 (이거 안 켜면 땅 뚫고 떨어짐)
-		Victim->GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+		SetHeldState(Victim, false);
 
-		// 2. 물리 시뮬레이션 끄기 (혹시 켜져있을 경우 대비 안전장치)
-		Victim->GetMesh()->SetSimulatePhysics(false);
-
-		// 3. 던지는 방향 및 힘 계산
-		// LaunchCharacter는 질량 무시하고 속도를 바로 꽂으므로 1500~4000 정도면 충분함
 		FVector ThrowDir = GetControlRotation().Vector();
-		ThrowDir = (ThrowDir + FVector(0.f, 0.f, 0.25f)).GetSafeNormal(); // 살짝 위로
-
-		// ThrowForce (헤더에 있는 3500.f 사용)
+		ThrowDir = (ThrowDir + FVector(0.f, 0.f, 0.25f)).GetSafeNormal();
 		FVector LaunchVelocity = ThrowDir * ThrowForce;
 
-		// 4. Launch Character 발동! (XY, Z 모두 override해서 강제로 날림)
 		Victim->LaunchCharacter(LaunchVelocity, true, true);
 	}
+	else
+	{
+		if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(GrabbedActor->GetRootComponent()))
+		{
+			RootComp->SetSimulatePhysics(true);
+			RootComp->AddImpulse(GetControlRotation().Vector() * ThrowForce * 50.f);
+		}
+	}
 
-	// 5. 기상/상태 복구 타이머 (Launch는 착지하면 알아서 걷기로 바뀌지만, 안전하게 상태 확인)
 	if (ACharacter* Victim = Cast<ACharacter>(GrabbedActor))
 	{
 		FTimerHandle RecoveryHandle;
 		FTimerDelegate Delegate;
 		Delegate.BindUFunction(this, TEXT("RecoverCharacter"), Victim);
-		// 날아가는 시간 대충 고려해서 1.5초 뒤 체크
 		GetWorldTimerManager().SetTimer(RecoveryHandle, Delegate, 1.5f, false);
 	}
 
@@ -208,21 +229,80 @@ void ATitanCharacter::UpdateHoverHighlight()
 
 void ATitanCharacter::RecoverCharacter(ACharacter* Victim)
 {
-	// Launch Character는 랙돌과 달리 메시가 분리되지 않으므로 복잡한 복구 로직이 필요 없음.
-	// 혹시 모를 꼬임 방지용 안전장치만 수행.
-
 	if (!Victim || !Victim->IsValidLowLevel()) return;
 
-	// 캡슐 콜리전 확실하게 켜기
+	// 1. 혹시 던져지고 나서도 기울어져 있다면 강제로 다시 세움
+	FRotator CurrentRot = Victim->GetActorRotation();
+	if (!FMath::IsNearlyZero(CurrentRot.Pitch) || !FMath::IsNearlyZero(CurrentRot.Roll))
+	{
+		Victim->SetActorRotation(FRotator(0.f, CurrentRot.Yaw, 0.f));
+	}
+
+	// 2. 캡슐 콜리전 확실하게 켜기 (Physics 타입이어야 함)
 	if (Victim->GetCapsuleComponent()->GetCollisionEnabled() != ECollisionEnabled::QueryAndPhysics)
 	{
 		Victim->GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 	}
 
-	// 움직임 모드 확인 (날아가다가 끼었을 때 강제로 걷기로 전환)
-	if (Victim->GetCharacterMovement() && Victim->GetCharacterMovement()->MovementMode == MOVE_None)
+	// 3. 움직임 모드 강제 전환 (Falling 상태에서 굳는 걸 방지)
+	if (Victim->GetCharacterMovement())
 	{
-		Victim->GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+		// 만약 여전히 Falling이나 None 상태라면 Walking으로 강제 전환 시도
+		if (Victim->GetCharacterMovement()->MovementMode == MOVE_None ||
+			Victim->GetCharacterMovement()->MovementMode == MOVE_Falling)
+		{
+			Victim->GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+		}
+
+		// 속도 초기화 (미끄러짐 방지)
+		Victim->GetCharacterMovement()->StopMovementImmediately();
+	}
+}
+
+void ATitanCharacter::SetHeldState(ACharacter* Target, bool bIsHeld)
+{
+	if (!Target) return;
+
+	AController* TargetCon = Target->GetController();
+	AAIController* AIC = Cast<AAIController>(TargetCon);
+	UCharacterMovementComponent* CMC = Target->GetCharacterMovement();
+	UCapsuleComponent* Capsule = Target->GetCapsuleComponent();
+
+	if (bIsHeld) // 잡혔을 때
+	{
+		// 1. 공격 중이던 몽타주 강제 취소 (제일 중요: 칼질 멈춤)
+		Target->StopAnimMontage();
+
+		// 2. 물리/이동 봉인
+		if (CMC)
+		{
+			CMC->StopMovementImmediately();
+			CMC->DisableMovement();
+		}
+
+		// 3. 충돌 끄기 (타이탄과 비벼서 날아가는거 방지)
+		if (Capsule) Capsule->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+		// 4. [핵심] AI 뇌 정지 (Behavior Tree 멈춤 -> 공격 시도 안 함)
+		if (AIC && AIC->GetBrainComponent())
+		{
+			AIC->GetBrainComponent()->StopLogic(TEXT("Grabbed"));
+			AIC->StopMovement();
+		}
+	}
+	else // 풀려났을 때 (던져질 때)
+	{
+		// 1. 충돌 다시 켜기
+		if (Capsule) Capsule->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+
+		// 2. [핵심] 던져질 때는 Falling 모드여야 날아감 (Walking이면 제자리 멈춤)
+		if (CMC) CMC->SetMovementMode(MOVE_Falling);
+
+		// 3. AI 다시 작동
+		if (AIC && AIC->GetBrainComponent())
+		{
+			AIC->GetBrainComponent()->RestartLogic();
+		}
 	}
 }
 
@@ -245,4 +325,152 @@ void ATitanCharacter::ResetCooldown()
 }
 
 void ATitanCharacter::Skill1() { ProcessSkill(TEXT("Skill1")); }
-void ATitanCharacter::Skill2() { ProcessSkill(TEXT("Skill2")); }
+void ATitanCharacter::Skill2()
+{
+	// 쿨타임이면 실행 안 함
+	if (bIsSkill2Cooldown)
+	{
+		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Yellow, TEXT("Charge skill is on cooldown."));
+		return;
+	}
+
+	// 서버로 실행 요청 (멀티플레이어 대응)
+	Server_Skill2();
+}
+
+// [서버] 돌진 실행
+void ATitanCharacter::Server_Skill2_Implementation()
+{
+	// 1. 데이터 테이블에서 몽타주 가져오기
+	if (!SkillDataTable) return;
+	static const FString ContextString(TEXT("Skill2 Context"));
+	FSkillData* Row = SkillDataTable->FindRow<FSkillData>(TEXT("Skill2"), ContextString);
+
+	if (Row)
+	{
+		if (!IsSkillUnlocked(Row->RequiredStage)) return;
+		CurrentSkillDamage = Row->Damage;
+		if (Row->SkillMontage) PlayAnimMontage(Row->SkillMontage);
+	}
+
+	// 2. 이미 돌진 중이 아니면 물리 설정 변경 후 발사
+	if (!bIsCharging)
+	{
+		bIsCharging = true;
+		HitVictims.Empty(); // 타격 리스트 초기화
+
+		// 물리 설정 저장 (끝나고 복구용)
+		DefaultGroundFriction = GetCharacterMovement()->GroundFriction;
+		DefaultGravityScale = GetCharacterMovement()->GravityScale;
+
+		// 마찰력과 중력을 0으로 (미끄러지듯 날아가게)
+		GetCharacterMovement()->GroundFriction = 0.0f;
+		GetCharacterMovement()->GravityScale = 0.0f;
+		GetCharacterMovement()->BrakingDecelerationFlying = 0.0f;
+
+		// 폰(Pawn)끼리 충돌하면 멈추지 않고 뚫고 지나가면서 데미지(Overlap)를 주기 위함
+		GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+		GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Overlap);
+		GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_PhysicsBody, ECR_Overlap);
+
+		// 3. 실제 발사 (Launch) - 보는 방향으로 3000 힘으로 발사
+		FVector LaunchDir = GetActorForwardVector();
+		LaunchCharacter(LaunchDir * 3000.f, true, true);
+
+		// 4. 타이머 설정 (0.3초 뒤 정지, 쿨타임 시작)
+		bIsSkill2Cooldown = true;
+		GetWorldTimerManager().SetTimer(Skill2CooldownTimerHandle, this, &ATitanCharacter::ResetSkill2Cooldown, Skill2CooldownTime, false);
+		GetWorldTimerManager().SetTimer(ChargeTimerHandle, this, &ATitanCharacter::StopCharge, 0.3f, false);
+
+		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Cyan, TEXT("Charge initiated."));
+	}
+}
+
+// [충돌 감지] 돌진 중에 누가 닿으면 호출됨
+void ATitanCharacter::OnChargeOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
+{
+	if (!HasAuthority()) return; // 서버만 처리
+
+	// 돌진 중이 아니거나, 자기 자신이거나, 이미 때린 놈이면 패스
+	if (!bIsCharging || OtherActor == this || HitVictims.Contains(OtherActor)) return;
+
+	if (ACharacter* VictimChar = Cast<ACharacter>(OtherActor))
+	{
+		// 충돌 시 서로 밀려나지 않게 무시 설정
+		GetCapsuleComponent()->IgnoreActorWhenMoving(VictimChar, true);
+		VictimChar->GetCapsuleComponent()->IgnoreActorWhenMoving(this, true);
+
+		HitVictims.Add(VictimChar);
+
+		// 1. 데미지 적용
+		UGameplayStatics::ApplyDamage(OtherActor, CurrentSkillDamage, GetController(), this, UDamageType::StaticClass());
+
+		// 2. 넉백 (BaseCharacter나 EnemyNormal만 날려버림)
+		bool bIsBase = OtherActor->IsA(ABaseCharacter::StaticClass());
+		bool bIsNormalEnemy = OtherActor->IsA(AEnemyNormal::StaticClass());
+
+		if (bIsBase || bIsNormalEnemy)
+		{
+			FVector KnockbackDir = GetActorForwardVector();
+			FVector LaunchForce = (KnockbackDir * 500.f) + FVector(0, 0, 1000.f); // 앞으로 살짝 + 위로 띄움
+			VictimChar->LaunchCharacter(LaunchForce, true, true);
+		}
+	}
+}
+
+// [정지] 돌진 끝날 때 호출
+void ATitanCharacter::StopCharge()
+{
+	bIsCharging = false;
+	GetCharacterMovement()->StopMovementImmediately();
+
+	// 물리 복구 (원래대로)
+	GetCharacterMovement()->GroundFriction = DefaultGroundFriction;
+	GetCharacterMovement()->GravityScale = DefaultGravityScale;
+
+	// 충돌 설정 복구 (다시 막히게)
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Block);
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_PhysicsBody, ECR_Block);
+
+	// 무시했던 애들 다시 인식하게 복구
+	for (AActor* IgnoredActor : HitVictims)
+	{
+		if (IgnoredActor)
+		{
+			GetCapsuleComponent()->IgnoreActorWhenMoving(IgnoredActor, false);
+			if (ACharacter* IgnoredChar = Cast<ACharacter>(IgnoredActor))
+			{
+				IgnoredChar->GetCapsuleComponent()->IgnoreActorWhenMoving(this, false);
+			}
+		}
+	}
+	HitVictims.Empty();
+}
+
+void ATitanCharacter::ResetSkill2Cooldown()
+{
+	bIsSkill2Cooldown = false;
+	if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Green, TEXT("Charge skill ready."));
+}
+
+void ATitanCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	// 잡고 있는 대상을 네트워크 동기화 목록에 추가
+	DOREPLIFETIME(ATitanCharacter, GrabbedActor);
+}
+
+// [벽 충돌] 벽에 박으면 멈춤
+void ATitanCharacter::OnChargeHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
+{
+	if (!HasAuthority()) return;
+	if (!bIsCharging) return;
+
+	// 고정된 물체(벽)에 박으면 즉시 정지
+	if (OtherActor->IsRootComponentStatic())
+	{
+		StopCharge();
+	}
+}
