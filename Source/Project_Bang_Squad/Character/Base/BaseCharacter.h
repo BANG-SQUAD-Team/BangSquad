@@ -146,7 +146,7 @@ protected:
 	bool bCanJump = true;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement")
-	float JumpCooldownTimer = 0.0f;
+	float JumpCooldownTimer = 1.2f;
 
 	UFUNCTION()
 	void ResetJump();

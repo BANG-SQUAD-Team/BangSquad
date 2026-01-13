@@ -21,7 +21,11 @@ ABaseCharacter::ABaseCharacter()
 	UCharacterMovementComponent* MoveComp = GetCharacterMovement();
 	MoveComp->bOrientRotationToMovement = true;
 	MoveComp->RotationRate = FRotator(0.f, 720.f, 0.f);
-	MoveComp->MaxWalkSpeed = 600.f;
+	MoveComp->MaxWalkSpeed = 550.f;
+	MoveComp->JumpZVelocity = 500.f;
+	MoveComp->AirControl = 0.5f;
+	
+	JumpCooldownTimer = 1.2f;
 
 	SpringArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("SpringArm"));
 	SpringArm->SetupAttachment(GetRootComponent());
