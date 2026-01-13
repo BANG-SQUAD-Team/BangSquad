@@ -16,7 +16,7 @@ class PROJECT_BANG_SQUAD_API UHealthComponent : public UActorComponent
 public: 
 	UHealthComponent();
 
-	// [필수] 변수 동기화 목록 등록
+	//  변수 동기화 목록 등록
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
     
 protected:
@@ -27,7 +27,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Health")
 	float MaxHealth = 100;
     
-	// [중요] 현재 체력 (ReplicatedUsing 추가 -> 서버에서 바뀌면 클라이언트의 OnRep_CurrentHealth 실행)
+	//  현재 체력 (ReplicatedUsing 추가 -> 서버에서 바뀌면 클라이언트의 OnRep_CurrentHealth 실행)
 	UPROPERTY(ReplicatedUsing = OnRep_CurrentHealth, VisibleAnywhere, BlueprintReadWrite, Category = "Health")
 	float CurrentHealth;
 
@@ -52,7 +52,6 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Health")
 	bool IsDead() const;
 
-	// [변경] BaseCharacter의 TakeDamage에서 직접 호출할 함수
-	// (기존 DamageTaken 대신 이 함수가 데미지 처리를 담당)
+	//  BaseCharacter의 TakeDamage에서 직접 호출할 함수
 	void ApplyDamage(float DamageAmount);
 };

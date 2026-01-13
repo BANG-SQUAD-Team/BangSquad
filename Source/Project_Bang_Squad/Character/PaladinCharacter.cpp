@@ -1,6 +1,7 @@
 #include "Project_Bang_Squad/Character/PaladinCharacter.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "Components/WidgetComponent.h"
 #include "EnhancedInputComponent.h"
 #include "Net/UnrealNetwork.h"
 #include "Engine/DataTable.h"
@@ -8,6 +9,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Engine/DamageEvents.h"
 #include "DrawDebugHelpers.h" 
+#include "Components/CapsuleComponent.h"
 
 APaladinCharacter::APaladinCharacter()
 {
@@ -37,6 +39,13 @@ APaladinCharacter::APaladinCharacter()
     ShieldMeshComp = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ShieldMesh"));
     ShieldMeshComp->SetupAttachment(GetMesh(), TEXT("Weapon_HitCenter"));
     
+    //6. 방패 체력바 위젯 생성
+    ShieldBarWidgetComp = CreateDefaultSubobject<UWidgetComponent>(TEXT("ShieldBarWidget"));
+    ShieldBarWidgetComp->SetupAttachment(ShieldMeshComp); // 방패에 붙임
+    ShieldBarWidgetComp->SetWidgetSpace(EWidgetSpace::World); // 월드 공간에 배치 (3D처럼)
+    ShieldBarWidgetComp->SetDrawSize(FVector2D(100.0f, 15.0f)); // 크기 설정
+    ShieldBarWidgetComp->SetVisibility(false);
+    
     // 기본적으로 꺼둠 & 충돌 없음
     ShieldMeshComp->SetVisibility(false);
     ShieldMeshComp->SetCollisionProfileName(TEXT("NoCollision"));
@@ -60,6 +69,24 @@ void APaladinCharacter::BeginPlay()
         CurrentShieldHP = MaxShieldHP;
         bIsShieldBroken = false;
     }
+    
+    if (GetCapsuleComponent() && ShieldMeshComp)
+    {
+        GetCapsuleComponent()->IgnoreComponentWhenMoving(ShieldMeshComp, true);
+    }
+    
+    // [최적화] 시작할 때 무기 컴포넌트 미리 찾아서 저장 (캐싱)
+    TArray<UStaticMeshComponent*> StaticComps;
+    GetComponents<UStaticMeshComponent>(StaticComps);
+    for (UStaticMeshComponent* Comp : StaticComps)
+    {
+        // 소켓 이름이 맞는 컴포넌트를 찾으면 저장하고 루프 종료
+        if (Comp && Comp->DoesSocketExist(TEXT("Weapon_HitCenter"))) 
+        { 
+            CachedWeaponMesh = Comp; 
+            break; 
+        }
+    }
 }
 
 void APaladinCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -73,6 +100,16 @@ void APaladinCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
             EIC->BindAction(JobAbilityAction, ETriggerEvent::Completed, this, &APaladinCharacter::EndJobAbility);
         }
     }
+}
+
+void APaladinCharacter::OnDeath()
+{
+    SetShieldActive(false);
+    bIsGuarding = false;
+    
+    StopAnimMontage();
+    
+    Super::OnDeath();
 }
 
 void APaladinCharacter::Attack()
@@ -193,6 +230,12 @@ void APaladinCharacter::PerformMeleeTrace()
     USceneComponent* WeaponComp = GetMesh();
     TArray<UStaticMeshComponent*> StaticComps;
     GetComponents<UStaticMeshComponent>(StaticComps);
+    
+    if (CachedWeaponMesh) 
+    {
+        WeaponComp = CachedWeaponMesh;
+    }
+    
     for (UStaticMeshComponent* Comp : StaticComps)
     {
         if (Comp && Comp->DoesSocketExist(TEXT("Weapon_HitCenter"))) { WeaponComp = Comp; break; }
@@ -299,7 +342,7 @@ void APaladinCharacter::JobAbility()
     }
 }
 
-// [신규] 타이머가 호출하는 실제 방패 켜기 함수
+// 타이머가 호출하는 실제 방패 켜기 함수
 void APaladinCharacter::ActivateGuard()
 {
     Server_SetGuard(true);
@@ -347,15 +390,38 @@ void APaladinCharacter::OnRep_IsGuarding()
     SetShieldActive(bIsGuarding);
 }
 
-// [수정 완료] 요청하신 대로 기본 충돌 로직으로 복구 (IgnoredActor 제거)
+// 기본 충돌 로직
 void APaladinCharacter::SetShieldActive(bool bActive)
 {
     if (ShieldMeshComp)
     {
         ShieldMeshComp->SetVisibility(bActive);
         
-        // 해결하셨다고 했으니 기존 로직 사용
-        ShieldMeshComp->SetCollisionProfileName(bActive ? TEXT("BlockAllDynamic") : TEXT("NoCollision"));
+        // 체력바 UI는 오직 나에게 (팔라딘 유저에게만) 보이게 함
+        if (ShieldBarWidgetComp)
+        {
+            if (bActive && IsLocallyControlled())
+            {
+                ShieldBarWidgetComp->SetVisibility(true);
+            }
+            else
+            {
+                // 방패를 껐거나 남이 보는 내 캐릭터라면 UI 숨김
+                ShieldBarWidgetComp->SetVisibility(false);
+            }
+        }
+        if (bActive)
+        {
+            ShieldMeshComp->SetCollisionProfileName(TEXT("BlockAllDynamic"));
+            
+         
+            // 카메라는 무시
+            ShieldMeshComp->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+        }
+        else
+        {
+            ShieldMeshComp->SetCollisionProfileName(TEXT("NoCollision"));
+        }
     }
 }
 

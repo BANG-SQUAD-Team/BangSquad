@@ -29,7 +29,7 @@ public:
 protected:
     virtual void BeginPlay() override;
     virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
-    
+    virtual void OnDeath() override;
     virtual void Attack() override;
 
     // =============================================================
@@ -74,8 +74,15 @@ protected:
     // =============================================================
     // [방패 시스템]
     // =============================================================
+    
+    // 방패 메쉬
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat")
     class UStaticMeshComponent* ShieldMeshComp;
+    
+    // 방패 체력바 위젯 컴포넌트
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
+    class UWidgetComponent* ShieldBarWidgetComp;
+    
     
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Shield")
     float MaxShieldHP = 200.0f;
@@ -115,4 +122,9 @@ protected:
     void SetShieldActive(bool bActive);
     
     float GuardWalkSpeed = 250.0f;
+    
+private:
+    // 무기 컴포넌트를 미리 저장해둘 변수
+    UPROPERTY()
+    UStaticMeshComponent* CachedWeaponMesh;
 };

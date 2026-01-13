@@ -30,10 +30,7 @@ void UHealthComponent::BeginPlay()
     {
         CurrentHealth = MaxHealth;
     }
-
-    // [삭제됨] Owner->OnTakeAnyDamage.AddDynamic(...) 
-    // 이유: BaseCharacter::TakeDamage 안에서 ApplyDamage를 직접 호출하므로, 
-    // 여기서 또 바인딩하면 데미지가 2배로 들어갈 위험이 있음.
+    
 }
 
 void UHealthComponent::SetMaxHealth(float NewMaxHealth)

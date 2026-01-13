@@ -1,6 +1,7 @@
 #include "BaseCharacter.h" 
 #include "Project_Bang_Squad/Character/Component/HealthComponent.h"
 #include "Camera/CameraComponent.h"
+#include "Components/CapsuleComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "EnhancedInputComponent.h"
@@ -50,7 +51,15 @@ ABaseCharacter::ABaseCharacter()
 void ABaseCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+	
+	// HealthComponent가 있으면 '사망 이벤트'를 내 함수 OnDeath에 연결
+	if (HealthComp)
+	{
+		HealthComp->OnDead.AddDynamic(this, &ABaseCharacter::OnDeath);
+	}
 }
+
+
 
 void ABaseCharacter::Tick(float DeltaTime)
 {
@@ -77,9 +86,57 @@ float ABaseCharacter::TakeDamage(float DamageAmount, struct FDamageEvent const& 
 	return ActualDamage;
 }
 
+void ABaseCharacter::OnDeath()
+{
+	
+	// 이미 죽었으면 무시
+	if (bIsDead) return;
+	bIsDead = true;
+	
+	// 1. 컨트롤러 입력 차단 (이동 불가)
+	if (Controller)
+	{
+		Controller->SetIgnoreMoveInput(true);
+		Controller->SetIgnoreLookInput(true);
+	}
+	
+	// 2. 이동 멈추기 (관성 제거)
+	GetCharacterMovement()->StopMovementImmediately();
+	GetCharacterMovement()->DisableMovement(); // 중력 이동 등 로직 중단
+	
+	// 3. 캡슐 컴포넌트 충돌 끄기 (다른 사람이 통과할 수 있게)
+	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	
+	GetMesh()->SetCollisionProfileName(TEXT("NoCollision"));
+	// 4. 사망 몽타주 재생
+	float MontageDuration = 0.0f;
+	if (DeathMontage)
+	{
+		MontageDuration = PlayAnimMontage(DeathMontage);
+	}
+	// 5. 몽타주가 끝나는 시점에 몸을 굳히기 (Freeze) 위해 타이머 설정
+	// 몽타주가 없으면 0초 뒤 바로 굳음
+	float FreezeDelay = (MontageDuration > 0.0f) ? (MontageDuration - 0.1f) : 0.0f; // 0.1초 정도 여유를 두고
+	
+	GetWorldTimerManager().SetTimer(DeathTimerHandle, this, &ABaseCharacter::FreezeAnimation,
+		FreezeDelay, false);
+}
+
+void ABaseCharacter::FreezeAnimation()
+{
+	if (GetMesh())
+	{
+		// 애니메이션 업데이트를 멈춤 -> 마지막 포즈로 고정됨
+		GetMesh()->bPauseAnims = true;
+		
+		// 뼈대 업데이트도 멈춤 (성능 최적화)
+		GetMesh()->bNoSkeletonUpdate = true;
+	}
+}
+
 bool ABaseCharacter::CanAttack() const
 {
-	return !bIsAttackCoolingDown;
+	return !bIsDead && !bIsAttackCoolingDown;
 }
 
 void ABaseCharacter::StartAttackCooldown()
