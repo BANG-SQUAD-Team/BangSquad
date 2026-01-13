@@ -22,13 +22,10 @@ AMageCharacter::AMageCharacter()
     
     GetCharacterMovement()->bOrientRotationToMovement = false;
     GetCharacterMovement()->RotationRate = FRotator(0.0f, 720.0f, 0.0f);
-    GetCharacterMovement()->MaxWalkSpeed = 500.f;
     
     // 공격 쿨타임
     AttackCooldownTime = 1.f;
     
-    // 점프 쿨타임
-    JumpCooldownTimer = 1.0f;
     
     //해금 레벨
     UnlockedStageLevel = 1;
