@@ -3,76 +3,98 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Project_Bang_Squad/Character/MonsterBase/EnemyCharacterBase.h" // 부모 클래스
-#include "Project_Bang_Squad/Character/MonsterBase/EnemyBossData.h"      // 데이터 에셋
-#include "Project_Bang_Squad/Character/Component/HealthComponent.h"      // 헬스 컴포넌트
+#include "Project_Bang_Squad/Character/MonsterBase/EnemyCharacterBase.h"
+#include "Project_Bang_Squad/Character/MonsterBase/EnemyBossData.h"
+#include "Project_Bang_Squad/Character/Component/HealthComponent.h"
 #include "EnemyMidBoss.generated.h"
+
+// [NEW] 전방 선언
+class UBoxComponent;
 
 // 보스 페이즈 관리용 Enum
 UENUM(BlueprintType)
 enum class EMidBossPhase : uint8
 {
-    Normal      UMETA(DisplayName = "Normal Phase"),
-    Gimmick     UMETA(DisplayName = "Gimmick Phase"),
-    Enraged     UMETA(DisplayName = "Enraged Phase"),
-    Dead        UMETA(DisplayName = "Dead")
+	Normal      UMETA(DisplayName = "Normal Phase"),
+	Gimmick     UMETA(DisplayName = "Gimmick Phase"),
+	Enraged     UMETA(DisplayName = "Enraged Phase"),
+	Dead        UMETA(DisplayName = "Dead")
 };
 
 /**
- * [EnemyMidBoss] 통합 버전
- * 1. Data Asset 기반 외형/스탯 초기화
- * 2. Network Phase 동기화 (RepNotify)
- * 3. HealthComponent & AIController 연동 (TakeDamage)
- * 4. Animation Montage 헬퍼 함수 제공
+ * [EnemyMidBoss] 최종 통합 버전
+ * 1. Data Asset: 외형, 스탯, 애니메이션
+ * 2. Network: 페이즈 동기화, 사망 처리
+ * 3. AI: HealthComponent 및 AIController 연동
+ * 4. Combat: 무기 충돌 박스 및 데미지 처리 (추가됨)
  */
 UCLASS()
 class PROJECT_BANG_SQUAD_API AEnemyMidBoss : public AEnemyCharacterBase
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
 public:
-    AEnemyMidBoss();
+	AEnemyMidBoss();
 
-    // [Network] 변수 복제 설정
-    virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+	virtual void OnConstruction(const FTransform& Transform) override;
 
-    // [Editor] 외형 실시간 갱신
-    virtual void OnConstruction(const FTransform& Transform) override;
+	// 피격 처리
+	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser) override;
 
-    // [Combat] 데미지 처리 (HealthComponent + AI 알림)
-    virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser) override;
+	/* --- [Combat: Weapon Collision] --- */
+	// AnimNotify에서 호출하여 공격 판정 켜기
+	UFUNCTION(BlueprintCallable, Category = "Combat")
+	void EnableWeaponCollision();
 
-    /* --- [Animation Helpers] --- */
-    // AI Controller에서 쉽게 호출하기 위한 헬퍼 함수들
-    float PlayAggroAnim();      // 포효
-    float PlayRandomAttack();   // 랜덤 공격
-    float PlayHitReactAnim();   // 피격 리액션
+	// AnimNotify에서 호출하여 공격 판정 끄기
+	UFUNCTION(BlueprintCallable, Category = "Combat")
+	void DisableWeaponCollision();
+
+	/* --- [Animation Helpers] --- */
+	float PlayAggroAnim();
+	float PlayRandomAttack();
+	float PlayHitReactAnim();
 
 protected:
-    virtual void BeginPlay() override;
+	virtual void BeginPlay() override;
 
-    /* --- [Phase Control] --- */
+	// [NEW] 무기 충돌 감지 함수
+	UFUNCTION()
+	void OnWeaponOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
+		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
+		bool bFromSweep, const FHitResult& SweepResult);
+
+	/* --- [Phase Control] --- */
 public:
-    // 서버에서 페이즈 변경 시 호출
-    void SetPhase(EMidBossPhase NewPhase);
-
-    // 현재 페이즈 가져오기 (Getter)
-    EMidBossPhase GetPhase() const { return CurrentPhase; }
+	void SetPhase(EMidBossPhase NewPhase);
+	EMidBossPhase GetPhase() const { return CurrentPhase; }
 
 protected:
-    // --- [Components] ---
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-    TObjectPtr<UHealthComponent> HealthComponent;
+	// --- [Components] ---
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<UHealthComponent> HealthComponent;
 
-    // --- [Data Asset] ---
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Data")
-    TObjectPtr<UEnemyBossData> BossData;
+	// [NEW] 무기 충돌 박스
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat")
+	TObjectPtr<UBoxComponent> WeaponCollisionBox;
 
-    // --- [State (Replicated)] ---
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_CurrentPhase, Category = "Boss|State")
-    EMidBossPhase CurrentPhase;
+	// --- [Data Asset] ---
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Data")
+	TObjectPtr<UEnemyBossData> BossData;
 
-    // 클라이언트 연출 동기화 함수
-    UFUNCTION()
-    void OnRep_CurrentPhase();
+	// --- [Combat Stats] ---
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
+	float AttackDamage = 20.0f; // 기본 공격력
+
+	// --- [State] ---
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_CurrentPhase, Category = "Boss|State")
+	EMidBossPhase CurrentPhase;
+
+	UFUNCTION()
+	void OnRep_CurrentPhase();
+
+	// HealthComponent 사망 신호 처리
+	UFUNCTION()
+	void OnDeath();
 };
