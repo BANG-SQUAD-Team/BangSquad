@@ -29,11 +29,39 @@ void AStrikerCharacter::Landed(const FHitResult& Hit)
 	}
 }
 
+void AStrikerCharacter::OnDeath()
+{
+	// ì´ë¯¸ ì£½ì—ˆìœ¼ë©´ ë¬´ì‹œ
+	if (bIsDead) return;
+	
+	// 1. Skill 1 ì •ë¦¬ ê³µì¤‘ì— ë„ì›Œë‘” ì ì´ ìžˆë‹¤ë©´ í•´ë°©ì‹œì¼œì¤Œ
+	// ì´ê±¸ ì•ˆí•˜ë©´ ìŠ¤íŠ¸ë¼ì´ì»¤ê°€ ì£½ì—ˆì„ë•Œ ì ì´ ì˜ì›ížˆ í•˜ëŠ˜ì— ë– ìžˆì–´ì„œ ì¶”ê°€
+	if (CurrentComboTarget)
+	{
+		ReleaseTarget(CurrentComboTarget); // ìž¡ì€ ë†ˆ ì¤‘ë ¥ ë³µêµ¬ì™€ Movement ë³µêµ¬
+		CurrentComboTarget = nullptr;
+	}
+	
+	GetWorldTimerManager().ClearTimer(Skill1TimerHandle);
+	
+	// 2. Skill2 ì •ë¦¬ ë‚´ë ¤ì°ê¸° ìƒíƒœ í•´ì œ
+	// ì´ê±¸ ì•ˆí•˜ë©´ ì‹œì²´ê°€ ë°”ë‹¥ì— ë‹¿ì„ ë•Œ Server_Skill2Impactê°€ ë°œë™ ë¨
+	bIsSlamming = false;
+	
+	// 3. ëª½íƒ€ì£¼ ì •ì§€
+	StopAnimMontage();
+	
+	// 4. ë¶€ëª¨ í´ëž˜ìŠ¤(BaseCharacter) ì‚¬ë§ ë¡œì§
+	Super::OnDeath();
+}
+
 // =============================================================
-// [ÆòÅ¸] °Ù¾ÚÇÁµå ½ºÅ¸ÀÏ
+// [ï¿½ï¿½Å¸] ï¿½Ù¾ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½Å¸ï¿½ï¿½
 // =============================================================
 void AStrikerCharacter::Attack()
 {
+	if (bIsDead) return;
+	
 	ProcessSkill(TEXT("Attack"));
 
 	FVector ForwardDir = GetActorForwardVector();
@@ -43,20 +71,35 @@ void AStrikerCharacter::Attack()
 
 void AStrikerCharacter::Skill1()
 {
-	// [·Î±× 1] Å° ÀÔ·Â È®ÀÎ
+	if (bIsDead) return;
+	
+	// [ï¿½Î±ï¿½ 1] Å° ï¿½Ô·ï¿½ È®ï¿½ï¿½
 	if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Yellow, TEXT(">> [Skill1] Input Pressed!"));
 
 	AActor* Target = FindBestAirborneTarget();
 	if (Target)
 	{
-		// [·Î±× 2] Å¸°Ù ¹ß°ß ¼º°ø
+		// [ï¿½Î±ï¿½ 2] Å¸ï¿½ï¿½ ï¿½ß°ï¿½ ï¿½ï¿½ï¿½ï¿½
 		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Green, FString::Printf(TEXT(">> [Skill1] Client: Found Target [%s]"), *Target->GetName()));
 		Server_TrySkill1(Target);
 	}
 	else
 	{
-		// [·Î±× 3] Å¸°Ù ¾øÀ½ -> ¿©±â¼­ ¶ß¸é FindBestAirborneTarget ·ÎÁ÷ ¹®Á¦
+		// [ï¿½Î±ï¿½ 3] Å¸ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ -> ï¿½ï¿½ï¿½â¼­ ï¿½ß¸ï¿½ FindBestAirborneTarget ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, TEXT(">> [Skill1] Client: No Airborne Target Found!"));
+	}
+}
+
+void AStrikerCharacter::EndSkill1()
+{
+	// ë‚˜ ìžì‹ ì˜ ì¤‘ë ¥ ë³µêµ¬
+	GetCharacterMovement()->GravityScale = 1.0f;
+	
+	// íƒ€ê²Ÿ í’€ì–´ì£¼ê¸°
+	if (CurrentComboTarget)
+	{
+		ReleaseTarget(CurrentComboTarget);
+		CurrentComboTarget = nullptr;
 	}
 }
 
@@ -64,7 +107,7 @@ AActor* AStrikerCharacter::FindBestAirborneTarget()
 {
 	FVector MyLoc = GetActorLocation();
 	FVector CamFwd = GetControlRotation().Vector();
-	CamFwd.Z = 0.f; // ¼öÆò ½Ã¾ß
+	CamFwd.Z = 0.f; // ï¿½ï¿½ï¿½ï¿½ ï¿½Ã¾ï¿½
 	CamFwd.Normalize();
 
 	TArray<AActor*> OverlappingActors;
@@ -73,7 +116,7 @@ AActor* AStrikerCharacter::FindBestAirborneTarget()
 
 	UKismetSystemLibrary::SphereOverlapActors(GetWorld(), MyLoc, 1200.f,
 		ObjectTypes, ACharacter::StaticClass(), { this }, OverlappingActors);
-
+ 
 	AActor* BestTarget = nullptr;
 	float BestDot = -1.0f;
 
@@ -82,27 +125,27 @@ AActor* AStrikerCharacter::FindBestAirborneTarget()
 		ACharacter* CharActor = Cast<ACharacter>(Actor);
 		if (!CharActor) continue;
 
-		// 1. Àû±º ÆÇº° (EnemyNormal ¶Ç´Â EnemyMidBoss)
+		// 1. ï¿½ï¿½ï¿½ï¿½ ï¿½Çºï¿½ (EnemyNormal ï¿½Ç´ï¿½ EnemyMidBoss)
 		bool bIsNormal = Actor->IsA(AEnemyNormal::StaticClass());
 		bool bIsMidBoss = Actor->IsA(AEnemyMidBoss::StaticClass());
 
-		// ÀûÀÌ ¾Æ´Ï¸é(ÆÀ¿øÀÌ¸é) 1¹ø ½ºÅ³ ´ë»ó ¾Æ´Ô -> ÆÐ½º
+		// ï¿½ï¿½ï¿½ï¿½ ï¿½Æ´Ï¸ï¿½(ï¿½ï¿½ï¿½ï¿½ï¿½Ì¸ï¿½) 1ï¿½ï¿½ ï¿½ï¿½Å³ ï¿½ï¿½ï¿½ ï¿½Æ´ï¿½ -> ï¿½Ð½ï¿½
 		if (!bIsNormal && !bIsMidBoss) continue;
 
-		// 2. °øÁß Ã¼Å©
+		// 2. ï¿½ï¿½ï¿½ï¿½ Ã¼Å©
 		bool bIsFalling = CharActor->GetCharacterMovement()->IsFalling();
-		// (Å×½ºÆ®¿ë °­Á¦ true ÇÊ¿äÇÏ¸é ÁÖ¼® ÇØÁ¦)
+		// (ï¿½×½ï¿½Æ®ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ true ï¿½Ê¿ï¿½ï¿½Ï¸ï¿½ ï¿½Ö¼ï¿½ ï¿½ï¿½ï¿½ï¿½)
 		// bIsFalling = true; 
 
 		if (bIsFalling)
 		{
-			// 3. [Ãß°¡] ³ôÀÌ Ã¼Å© (¶¥¿¡¼­ ¾ó¸¶³ª ¶¹´ÂÁö)
-			// ÀûÀÇ ¹ß¹Ø ³ôÀÌ - ³» ¹ß¹Ø ³ôÀÌ
+			// 3. [ï¿½ß°ï¿½] ï¿½ï¿½ï¿½ï¿½ Ã¼Å© (ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ó¸¶³ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½)
+			// ï¿½ï¿½ï¿½ï¿½ ï¿½ß¹ï¿½ ï¿½ï¿½ï¿½ï¿½ - ï¿½ï¿½ ï¿½ß¹ï¿½ ï¿½ï¿½ï¿½ï¿½
 			float HeightDiff = CharActor->GetActorLocation().Z - MyLoc.Z;
 
 			if (HeightDiff < Skill1RequiredHeight)
 			{
-				// ³Ê¹« ³·°Ô ¶° ÀÖÀ¸¸é ¾È ¾¸
+				// ï¿½Ê¹ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½
 				continue;
 			}
 
@@ -125,7 +168,7 @@ AActor* AStrikerCharacter::FindBestAirborneTarget()
 
 void AStrikerCharacter::Server_TrySkill1_Implementation(AActor* TargetActor)
 {
-	// [·Î±× 7] ¼­¹ö µµÂø È®ÀÎ
+	// [ï¿½Î±ï¿½ 7] ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ È®ï¿½ï¿½
 	if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Blue, TEXT(">> [Server] Request Received"));
 
 	ACharacter* TargetChar = Cast<ACharacter>(TargetActor);
@@ -134,7 +177,7 @@ void AStrikerCharacter::Server_TrySkill1_Implementation(AActor* TargetActor)
 	float DistSq = FVector::DistSquared(GetActorLocation(), TargetActor->GetActorLocation());
 	if (DistSq > 1500.f * 1500.f)
 	{
-		// [·Î±× 8] °Å¸® ³Ê¹« ¸ÖÀ½
+		// [ï¿½Î±ï¿½ 8] ï¿½Å¸ï¿½ ï¿½Ê¹ï¿½ ï¿½ï¿½ï¿½ï¿½
 		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, TEXT(">> [Server] Target too far!"));
 		return;
 	}
@@ -148,7 +191,7 @@ void AStrikerCharacter::Server_TrySkill1_Implementation(AActor* TargetActor)
 
 		if (Data)
 		{
-			// [·Î±× 9] µ¥ÀÌÅÍ Å×ÀÌºí ·Îµå ¼º°ø ¹× Àá±Ý È®ÀÎ
+			// [ï¿½Î±ï¿½ 9] ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Ìºï¿½ ï¿½Îµï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ È®ï¿½ï¿½
 			if (!IsSkillUnlocked(Data->RequiredStage))
 			{
 				if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, TEXT(">> [Server] Skill Locked!"));
@@ -159,13 +202,13 @@ void AStrikerCharacter::Server_TrySkill1_Implementation(AActor* TargetActor)
 		}
 		else
 		{
-			// [·Î±× 10] µ¥ÀÌÅÍ Å×ÀÌºí ·Î¿ì ¾øÀ½
+			// [ï¿½Î±ï¿½ 10] ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Ìºï¿½ ï¿½Î¿ï¿½ ï¿½ï¿½ï¿½ï¿½
 			if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, TEXT(">> [Server] 'Skill1' Row Not Found in DataTable!"));
 		}
 	}
 	else
 	{
-		// [·Î±× 11] µ¥ÀÌÅÍ Å×ÀÌºí ÀÚÃ¼°¡ Null
+		// [ï¿½Î±ï¿½ 11] ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Ìºï¿½ ï¿½ï¿½Ã¼ï¿½ï¿½ Null
 		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, TEXT(">> [Server] SkillDataTable is NULL!"));
 	}
 
@@ -182,12 +225,20 @@ void AStrikerCharacter::Server_TrySkill1_Implementation(AActor* TargetActor)
 	GetCharacterMovement()->GravityScale = 0.f;
 	GetCharacterMovement()->Velocity = FVector::ZeroVector;
 
-	FTimerHandle Handle;
-	GetWorld()->GetTimerManager().SetTimer(Handle, [this, TargetChar]()
-		{
-			GetCharacterMovement()->GravityScale = 1.0f;
-			ReleaseTarget(TargetChar);
-		}, 1.0f, false);
+	// íƒ€ê²Ÿì„ ë©¤ë²„ ë³€ìˆ˜ì— ì €ìž¥ (ì£½ì„ ë•Œ ë†”ì£¼ê¸° ìœ„í•¨)
+	CurrentComboTarget = TargetChar;
+	
+	// ëžŒë‹¤ í•¨ìˆ˜ë¡œ íƒ€ì´ë¨¸ ëŒë¦¬ë‹ˆê¹Œ OnDeath í•¨ìˆ˜í•œí…Œ íƒ€ì´ë¨¸ ì·¨ì†Œí•˜ë¼ê³  ëª…ë ¹í•  ë°©ë²•ì´ ì—†ìŒ
+	// ê·¸ëž˜ì„œ EndSkill1 í•¨ìˆ˜ë¡œ ë¹¼ì„œ ì£½ì—ˆì„ë•Œ íƒ€ì´ë¨¸ í•¸ë“¤ë¡œ ì·¨ì†Œí•  ìˆ˜ ìžˆê²Œ êµ¬ì¡°ë§Œ ë°”ê¿¨ìŒ
+	GetWorldTimerManager().SetTimer(Skill1TimerHandle, this,
+		&AStrikerCharacter::EndSkill1,1.0f,false);
+	
+	// FTimerHandle Handle;
+	// GetWorld()->GetTimerManager().SetTimer(Handle, [this, TargetChar]()
+	// 	{
+	// 		GetCharacterMovement()->GravityScale = 1.0f;
+	// 		ReleaseTarget(TargetChar);
+	// 	}, 1.0f, false);
 }
 
 void AStrikerCharacter::Multicast_PlaySkill1FX_Implementation(AActor* Target)
@@ -197,14 +248,15 @@ void AStrikerCharacter::Multicast_PlaySkill1FX_Implementation(AActor* Target)
 }
 
 // =============================================================
-// [Á÷¾÷ ´É·Â] Àü¹æ Á÷»ç°¢Çü ¹üÀ§ ¶ç¿ì±â
+// [ï¿½ï¿½ï¿½ï¿½ ï¿½É·ï¿½] ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ç°¢ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 // =============================================================
 void AStrikerCharacter::JobAbility()
 {
+	if (bIsDead) return;
 	float CurrentTime = GetWorld()->GetTimeSeconds();
 	if (CurrentTime < JobAbilityCooldownTime)
 	{
-		// [¼öÁ¤] FColor::Gray -> FColor::Silver
+		// [ï¿½ï¿½ï¿½ï¿½] FColor::Gray -> FColor::Silver
 		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Silver, TEXT("Job Ability Cooldown!"));
 		return;
 	}
@@ -218,7 +270,7 @@ void AStrikerCharacter::Server_UseJobAbility_Implementation()
 	float AbilityDamage = 50.f;
 	ProcessSkill(TEXT("JobAbility"));
 
-	// µ¥ÀÌÅÍ Å×ÀÌºí µ¥¹ÌÁö °¡Á®¿À±â
+	// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Ìºï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 	if (SkillDataTable)
 	{
 		static const FString ContextString(TEXT("Striker JobAbility Damage"));
@@ -244,9 +296,9 @@ void AStrikerCharacter::Server_UseJobAbility_Implementation()
 
 		bool bIsNormal = Actor->IsA(AEnemyNormal::StaticClass());
 		bool bIsMidBoss = Actor->IsA(AEnemyMidBoss::StaticClass());
-		bool bIsBaseChar = Actor->IsA(ABaseCharacter::StaticClass()); // ÆÀ¿ø Æ÷ÇÔ
+		bool bIsBaseChar = Actor->IsA(ABaseCharacter::StaticClass()); // ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 
-		// 1. EnemyNormal (ÂÌ¸÷): µ¥¹ÌÁö O, ¶ç¿ì±â O
+		// 1. EnemyNormal (ï¿½Ì¸ï¿½): ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ O, ï¿½ï¿½ï¿½ï¿½ O
 		if (bIsNormal)
 		{
 			UGameplayStatics::ApplyDamage(TargetChar, AbilityDamage, GetController(), this, UDamageType::StaticClass());
@@ -254,22 +306,24 @@ void AStrikerCharacter::Server_UseJobAbility_Implementation()
 			FVector LaunchVel = FVector(0.f, 0.f, 1000.f);
 			TargetChar->LaunchCharacter(LaunchVel, true, true);
 		}
-		// 2. Team (ÆÀ¿ø): µ¥¹ÌÁö X, ¶ç¿ì±â O (È¿°ú ¹ÞÀ½)
+		// 2. Team (ï¿½ï¿½ï¿½ï¿½): ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ X, ï¿½ï¿½ï¿½ï¿½ O (È¿ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½)
 		else if (bIsBaseChar && !bIsNormal && !bIsMidBoss)
 		{
 			FVector LaunchVel = FVector(0.f, 0.f, 1000.f);
 			TargetChar->LaunchCharacter(LaunchVel, true, true);
 		}
-		// 3. Boss (º¸½º): ¸é¿ª (¾Æ¹«°Íµµ ¾È ÇÔ)
-		// (º¸½º´Â ¹«°Å¿ö¼­ ¾È ¶á´Ù´Â ÄÁ¼Á)
+		// 3. Boss (ï¿½ï¿½ï¿½ï¿½): ï¿½é¿ª (ï¿½Æ¹ï¿½ï¿½Íµï¿½ ï¿½ï¿½ ï¿½ï¿½)
+		// (ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Å¿ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½Ù´ï¿½ ï¿½ï¿½ï¿½ï¿½)
 	}
 }
 
 // =============================================================
-// [½ºÅ³ 2] °øÁß Âï±â
+// [ï¿½ï¿½Å³ 2] ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½
 // =============================================================
 void AStrikerCharacter::Skill2()
 {
+	if (bIsDead) return; 
+	
 	if (GetCharacterMovement()->IsFalling())
 	{
 		ProcessSkill(TEXT("Skill2"));
@@ -312,7 +366,7 @@ void AStrikerCharacter::Server_Skill2Impact_Implementation()
 		bool bIsMidBoss = Actor->IsA(AEnemyMidBoss::StaticClass());
 		bool bIsBaseChar = Actor->IsA(ABaseCharacter::StaticClass());
 
-		// 1. EnemyNormal (ÂÌ¸÷): µ¥¹ÌÁö O + ´ç°Ü¿À±â
+		// 1. EnemyNormal (ï¿½Ì¸ï¿½): ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ O + ï¿½ï¿½Ü¿ï¿½ï¿½ï¿½
 		if (bIsNormal)
 		{
 			UGameplayStatics::ApplyDamage(TargetChar, SlamDamage, GetController(), this, UDamageType::StaticClass());
@@ -321,14 +375,14 @@ void AStrikerCharacter::Server_Skill2Impact_Implementation()
 			FVector PullVel = (PullDir * 1500.f) + FVector(0.f, 0.f, 300.f);
 			TargetChar->LaunchCharacter(PullVel, true, true);
 		}
-		// 2. Team (ÆÀ¿ø): µ¥¹ÌÁö X + ¹ÐÃÄ³»±â (È¿°ú ¹ÞÀ½)
+		// 2. Team (ï¿½ï¿½ï¿½ï¿½): ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ X + ï¿½ï¿½ï¿½Ä³ï¿½ï¿½ï¿½ (È¿ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½)
 		else if (bIsBaseChar && !bIsMidBoss)
 		{
 			FVector PushDir = (TargetChar->GetActorLocation() - MyLoc).GetSafeNormal();
 			FVector PushVel = (PushDir * 800.f) + FVector(0.f, 0.f, 200.f);
 			TargetChar->LaunchCharacter(PushVel, true, true);
 		}
-		// 3. Boss (º¸½º): ¸é¿ª (2¹ø ½ºÅ³Àº ÂÌ¸÷¸¸)
+		// 3. Boss (ï¿½ï¿½ï¿½ï¿½): ï¿½é¿ª (2ï¿½ï¿½ ï¿½ï¿½Å³ï¿½ï¿½ ï¿½Ì¸ï¿½ï¿½ï¿½)
 	}
 }
 
