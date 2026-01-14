@@ -56,10 +56,21 @@ public:
 	float PlayRandomAttack();
 	float PlayHitReactAnim();
 
+	// [NEW] AnimNotify에서 호출할 발사 함수
+	UFUNCTION(BlueprintCallable, Category = "Combat")
+	void FireSlashProjectile();
+
+	// [NEW] AI가 호출할 패턴 시작 함수
+	void PlaySlashPattern();
+
 protected:
 	virtual void BeginPlay() override;
 
-	// [NEW] 무기 충돌 감지 함수
+	// 멀티캐스트용 함수 추가
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_PlayAttackMontage(UAnimMontage* MontageToPlay);
+
+	// 무기 충돌 감지 함수
 	UFUNCTION()
 	void OnWeaponOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
 		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
@@ -97,4 +108,7 @@ protected:
 	// HealthComponent 사망 신호 처리
 	UFUNCTION()
 	void OnDeath();
+
+	UFUNCTION(Server, Reliable)
+	void Server_SpawnSlashProjectile(FVector SpawnLoc, FRotator SpawnRot);
 };

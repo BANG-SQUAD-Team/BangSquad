@@ -17,8 +17,9 @@ public:
 protected:
 	virtual void BeginPlay() override;
 	virtual void Landed(const FHitResult& Hit) override;
+	virtual void OnDeath() override;
 
-	// === ½ºÅ³ ¿À¹ö¶óÀÌµå ===
+	// === ï¿½ï¿½Å³ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ìµï¿½ ===
 	virtual void Attack() override;
 	virtual void Skill1() override;
 	virtual void Skill2() override;
@@ -27,7 +28,7 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Data")
 	class UDataTable* SkillDataTable;
 
-	// [¼öÁ¤] ½ºÅ³ ÄğÅ¸ÀÓ °ü¸®¿ë º¯¼öµé (Å¸ÀÓ½ºÅÆÇÁ ¹æ½Ä)
+	// [ï¿½ï¿½ï¿½ï¿½] ï¿½ï¿½Å³ ï¿½ï¿½Å¸ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ (Å¸ï¿½Ó½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½)
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat")
 	float JobAbilityCooldownTime = 0.f;
 
@@ -44,10 +45,10 @@ protected:
 	float Skill1RequiredHeight = 150.0f;
 
 private:
-	// °øÅë ½ºÅ³ µ¥ÀÌÅÍ Ã³¸®
+	// ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½Å³ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ Ã³ï¿½ï¿½
 	void ProcessSkill(FName SkillRowName);
 
-	// === [½ºÅ³ 2: °øÁß Âï±â] ===
+	// === [ï¿½ï¿½Å³ 2: ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½] ===
 	bool bIsSlamming = false;
 
 	UFUNCTION(Server, Reliable)
@@ -56,7 +57,7 @@ private:
 	UFUNCTION(NetMulticast, Unreliable)
 	void Multicast_PlaySlamFX();
 
-	// === [½ºÅ³ 1: ¾ß½º¿À ±Ã] ===
+	// === [ï¿½ï¿½Å³ 1: ï¿½ß½ï¿½ï¿½ï¿½ ï¿½ï¿½] ===
 	AActor* FindBestAirborneTarget();
 
 	UFUNCTION(Server, Reliable)
@@ -70,7 +71,17 @@ private:
 	UFUNCTION(NetMulticast, Unreliable)
 	void Multicast_PlaySkill1FX(AActor* Target);
 
-	// === [Á÷¾÷ ´É·Â: Àü¹æ ¶ç¿ì±â] ===
+	// === [ï¿½ï¿½ï¿½ï¿½ ï¿½É·ï¿½: ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½] ===
 	UFUNCTION(Server, Reliable)
 	void Server_UseJobAbility();
+	
+	// Skill1 ìƒíƒœ ê´€ë¦¬ìš©
+	void EndSkill1();
+	
+	// í˜„ì¬ ê³µì¤‘ ì½¤ë³´ë¡œ ì¡ì•„ë‘” íƒ€ê²Ÿ (ì£½ì„ ë•Œ ë†”ì£¼ê¸° ìœ„í•´ì„œ ê¸°ì–µ)
+	UPROPERTY()
+	ACharacter* CurrentComboTarget;
+	
+	// ì½¤ë³´ ëë‚˜ëŠ” íƒ€ì´ë¨¸ í•¸ë“¤
+	FTimerHandle Skill1TimerHandle;
 };

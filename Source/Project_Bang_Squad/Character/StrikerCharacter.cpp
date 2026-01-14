@@ -29,30 +29,53 @@ void AStrikerCharacter::Landed(const FHitResult& Hit)
 	}
 }
 
-// =============================================================
-// [ÆòÅ¸] °Ù¾ÚÇÁµå ½ºÅ¸ÀÏ (µ¥ÀÌÅÍ Å×ÀÌºí ÄðÅ¸ÀÓ Àû¿ë)
-// =============================================================
+void AStrikerCharacter::OnDeath()
+{
+	// ì´ë¯¸ ì£½ì—ˆìœ¼ë©´ ë¬´ì‹œ
+	if (bIsDead) return;
+	
+	// 1. Skill 1 ì •ë¦¬ ê³µì¤‘ì— ë„ì›Œë‘” ì ì´ ìžˆë‹¤ë©´ í•´ë°©ì‹œì¼œì¤Œ
+	// ì´ê±¸ ì•ˆí•˜ë©´ ìŠ¤íŠ¸ë¼ì´ì»¤ê°€ ì£½ì—ˆì„ë•Œ ì ì´ ì˜ì›ížˆ í•˜ëŠ˜ì— ë– ìžˆì–´ì„œ ì¶”ê°€
+	if (CurrentComboTarget)
+	{
+		ReleaseTarget(CurrentComboTarget); // ìž¡ì€ ë†ˆ ì¤‘ë ¥ ë³µêµ¬ì™€ Movement ë³µêµ¬
+		CurrentComboTarget = nullptr;
+	}
+	
+	GetWorldTimerManager().ClearTimer(Skill1TimerHandle);
+	
+	// 2. Skill2 ì •ë¦¬ ë‚´ë ¤ì°ê¸° ìƒíƒœ í•´ì œ
+	// ì´ê±¸ ì•ˆí•˜ë©´ ì‹œì²´ê°€ ë°”ë‹¥ì— ë‹¿ì„ ë•Œ Server_Skill2Impactê°€ ë°œë™ ë¨
+	bIsSlamming = false;
+	
+	// 3. ëª½íƒ€ì£¼ ì •ì§€
+	StopAnimMontage();
+	
+	// 4. ë¶€ëª¨ í´ëž˜ìŠ¤(BaseCharacter) ì‚¬ë§ ë¡œì§
+	Super::OnDeath();
+}
+
 void AStrikerCharacter::Attack()
 {
-	// 1. ÄðÅ¸ÀÓ ¹× »óÅÂ È®ÀÎ
+	// 1. ï¿½ï¿½Å¸ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ È®ï¿½ï¿½
 	if (!CanAttack()) return;
 
-	// 2. µ¥ÀÌÅÍ Å×ÀÌºí¿¡¼­ ÄðÅ¸ÀÓ ¼³Á¤
+	// 2. ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Ìºï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½Å¸ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 	if (SkillDataTable)
 	{
 		static const FString ContextString(TEXT("StrikerAttack"));
 		FSkillData* Row = SkillDataTable->FindRow<FSkillData>(TEXT("Attack"), ContextString);
-		// µ¥ÀÌÅÍ Å×ÀÌºí¿¡ °ªÀÌ ÀÖ°í 0º¸´Ù Å©¸é ±× °ªÀ¸·Î ÄðÅ¸ÀÓ °»½Å
+		// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Ìºï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½Ö°ï¿½ 0ï¿½ï¿½ï¿½ï¿½ Å©ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½Å¸ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 		if (Row && Row->Cooldown > 0.0f)
 		{
 			AttackCooldownTime = Row->Cooldown;
 		}
 	}
 
-	// 3. ÄðÅ¸ÀÓ ½ÃÀÛ (BaseCharacter ±â´É)
+	// 3. ï¿½ï¿½Å¸ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ (BaseCharacter ï¿½ï¿½ï¿½)
 	StartAttackCooldown();
 
-	// 4. ½ÇÇà
+	// 4. ï¿½ï¿½ï¿½ï¿½
 	ProcessSkill(TEXT("Attack"));
 
 	FVector ForwardDir = GetActorForwardVector();
@@ -61,11 +84,11 @@ void AStrikerCharacter::Attack()
 }
 
 // =============================================================
-// [½ºÅ³ 1] ¾ß½º¿À ±Ã (µ¥ÀÌÅÍ Å×ÀÌºí ÄðÅ¸ÀÓ Àû¿ë)
+// [ï¿½ï¿½Å³ 1] ï¿½ß½ï¿½ï¿½ï¿½ ï¿½ï¿½ (ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Ìºï¿½ ï¿½ï¿½Å¸ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½)
 // =============================================================
 void AStrikerCharacter::Skill1()
 {
-	// 1. ÄðÅ¸ÀÓ Ã¼Å© (ÇöÀç ½Ã°£ÀÌ ÁØºñ ½Ã°£º¸´Ù ÀÛÀ¸¸é ÄðÅ¸ÀÓ Áß)
+	// 1. ï¿½ï¿½Å¸ï¿½ï¿½ Ã¼Å© (ï¿½ï¿½ï¿½ï¿½ ï¿½Ã°ï¿½ï¿½ï¿½ ï¿½Øºï¿½ ï¿½Ã°ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½Å¸ï¿½ï¿½ ï¿½ï¿½)
 	float CurrentTime = GetWorld()->GetTimeSeconds();
 	if (CurrentTime < Skill1ReadyTime)
 	{
@@ -73,14 +96,14 @@ void AStrikerCharacter::Skill1()
 		return;
 	}
 
-	// [·Î±× 1] Å° ÀÔ·Â È®ÀÎ
+	// [ï¿½Î±ï¿½ 1] Å° ï¿½Ô·ï¿½ È®ï¿½ï¿½
 	if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Yellow, TEXT(">> [Skill1] Input Pressed!"));
 
 	AActor* Target = FindBestAirborneTarget();
 	if (Target)
 	{
-		// 2. ÄðÅ¸ÀÓ Àû¿ë (µ¥ÀÌÅÍ Å×ÀÌºí Á¶È¸)
-		float ActualCooldown = 0.0f; // ±âº»°ª
+		// 2. ï¿½ï¿½Å¸ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ (ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Ìºï¿½ ï¿½ï¿½È¸)
+		float ActualCooldown = 0.0f; // ï¿½âº»ï¿½ï¿½
 		if (SkillDataTable)
 		{
 			static const FString ContextString(TEXT("StrikerSkill1Cooldown"));
@@ -91,17 +114,30 @@ void AStrikerCharacter::Skill1()
 			}
 		}
 
-		// ÄðÅ¸ÀÓ Àû¿ë: ÇöÀç ½Ã°£ + ÄðÅ¸ÀÓ
+		// ï¿½ï¿½Å¸ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½: ï¿½ï¿½ï¿½ï¿½ ï¿½Ã°ï¿½ + ï¿½ï¿½Å¸ï¿½ï¿½
 		Skill1ReadyTime = CurrentTime + ActualCooldown;
 
-		// [·Î±× 2] Å¸°Ù ¹ß°ß ¼º°ø
+		// [ï¿½Î±ï¿½ 2] Å¸ï¿½ï¿½ ï¿½ß°ï¿½ ï¿½ï¿½ï¿½ï¿½
 		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Green, FString::Printf(TEXT(">> [Skill1] Client: Found Target [%s]"), *Target->GetName()));
 		Server_TrySkill1(Target);
 	}
 	else
 	{
-		// [·Î±× 3] Å¸°Ù ¾øÀ½
+		// [ï¿½Î±ï¿½ 3] Å¸ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, TEXT(">> [Skill1] Client: No Airborne Target Found!"));
+	}
+}
+
+void AStrikerCharacter::EndSkill1()
+{
+	// ë‚˜ ìžì‹ ì˜ ì¤‘ë ¥ ë³µêµ¬
+	GetCharacterMovement()->GravityScale = 1.0f;
+	
+	// íƒ€ê²Ÿ í’€ì–´ì£¼ê¸°
+	if (CurrentComboTarget)
+	{
+		ReleaseTarget(CurrentComboTarget);
+		CurrentComboTarget = nullptr;
 	}
 }
 
@@ -118,7 +154,7 @@ AActor* AStrikerCharacter::FindBestAirborneTarget()
 
 	UKismetSystemLibrary::SphereOverlapActors(GetWorld(), MyLoc, 1200.f,
 		ObjectTypes, ACharacter::StaticClass(), { this }, OverlappingActors);
-
+ 
 	AActor* BestTarget = nullptr;
 	float BestDot = -1.0f;
 
@@ -130,7 +166,7 @@ AActor* AStrikerCharacter::FindBestAirborneTarget()
 		bool bIsNormal = Actor->IsA(AEnemyNormal::StaticClass());
 		bool bIsMidBoss = Actor->IsA(AEnemyMidBoss::StaticClass());
 
-		// Àû±º(Normal, MidBoss)¸¸ ´ë»ó
+		// ï¿½ï¿½ï¿½ï¿½(Normal, MidBoss)ï¿½ï¿½ ï¿½ï¿½ï¿½
 		if (!bIsNormal && !bIsMidBoss) continue;
 
 		bool bIsFalling = CharActor->GetCharacterMovement()->IsFalling();
@@ -215,12 +251,20 @@ void AStrikerCharacter::Server_TrySkill1_Implementation(AActor* TargetActor)
 	GetCharacterMovement()->GravityScale = 0.f;
 	GetCharacterMovement()->Velocity = FVector::ZeroVector;
 
-	FTimerHandle Handle;
-	GetWorld()->GetTimerManager().SetTimer(Handle, [this, TargetChar]()
-		{
-			GetCharacterMovement()->GravityScale = 1.0f;
-			ReleaseTarget(TargetChar);
-		}, 1.0f, false);
+	// íƒ€ê²Ÿì„ ë©¤ë²„ ë³€ìˆ˜ì— ì €ìž¥ (ì£½ì„ ë•Œ ë†”ì£¼ê¸° ìœ„í•¨)
+	CurrentComboTarget = TargetChar;
+	
+	// ëžŒë‹¤ í•¨ìˆ˜ë¡œ íƒ€ì´ë¨¸ ëŒë¦¬ë‹ˆê¹Œ OnDeath í•¨ìˆ˜í•œí…Œ íƒ€ì´ë¨¸ ì·¨ì†Œí•˜ë¼ê³  ëª…ë ¹í•  ë°©ë²•ì´ ì—†ìŒ
+	// ê·¸ëž˜ì„œ EndSkill1 í•¨ìˆ˜ë¡œ ë¹¼ì„œ ì£½ì—ˆì„ë•Œ íƒ€ì´ë¨¸ í•¸ë“¤ë¡œ ì·¨ì†Œí•  ìˆ˜ ìžˆê²Œ êµ¬ì¡°ë§Œ ë°”ê¿¨ìŒ
+	GetWorldTimerManager().SetTimer(Skill1TimerHandle, this,
+		&AStrikerCharacter::EndSkill1,1.0f,false);
+	
+	// FTimerHandle Handle;
+	// GetWorld()->GetTimerManager().SetTimer(Handle, [this, TargetChar]()
+	// 	{
+	// 		GetCharacterMovement()->GravityScale = 1.0f;
+	// 		ReleaseTarget(TargetChar);
+	// 	}, 1.0f, false);
 }
 
 void AStrikerCharacter::Multicast_PlaySkill1FX_Implementation(AActor* Target)
@@ -230,11 +274,11 @@ void AStrikerCharacter::Multicast_PlaySkill1FX_Implementation(AActor* Target)
 }
 
 // =============================================================
-// [Á÷¾÷ ´É·Â] Àü¹æ Á÷»ç°¢Çü ¹üÀ§ ¶ç¿ì±â (µ¥ÀÌÅÍ Å×ÀÌºí ÄðÅ¸ÀÓ Àû¿ë)
+// [ï¿½ï¿½ï¿½ï¿½ ï¿½É·ï¿½] ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ç°¢ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ (ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Ìºï¿½ ï¿½ï¿½Å¸ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½)
 // =============================================================
 void AStrikerCharacter::JobAbility()
 {
-	// 1. ÄðÅ¸ÀÓ Ã¼Å©
+	// 1. ï¿½ï¿½Å¸ï¿½ï¿½ Ã¼Å©
 	float CurrentTime = GetWorld()->GetTimeSeconds();
 	if (CurrentTime < JobAbilityCooldownTime)
 	{
@@ -242,8 +286,8 @@ void AStrikerCharacter::JobAbility()
 		return;
 	}
 
-	// 2. ÄðÅ¸ÀÓ °ª °¡Á®¿À±â
-	float ActualCooldown = 5.0f; // ±âº»°ª
+	// 2. ï¿½ï¿½Å¸ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+	float ActualCooldown = 5.0f; // ï¿½âº»ï¿½ï¿½
 	if (SkillDataTable)
 	{
 		static const FString ContextString(TEXT("StrikerJobCooldown"));
@@ -256,7 +300,7 @@ void AStrikerCharacter::JobAbility()
 
 	Server_UseJobAbility();
 
-	// 3. ÄðÅ¸ÀÓ Àû¿ë
+	// 3. ï¿½ï¿½Å¸ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 	JobAbilityCooldownTime = CurrentTime + ActualCooldown;
 }
 
@@ -307,11 +351,11 @@ void AStrikerCharacter::Server_UseJobAbility_Implementation()
 }
 
 // =============================================================
-// [½ºÅ³ 2] °øÁß Âï±â (µ¥ÀÌÅÍ Å×ÀÌºí ÄðÅ¸ÀÓ Àû¿ë)
+// [ï¿½ï¿½Å³ 2] ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ (ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Ìºï¿½ ï¿½ï¿½Å¸ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½)
 // =============================================================
 void AStrikerCharacter::Skill2()
 {
-	// 1. ÄðÅ¸ÀÓ Ã¼Å©
+	// 1. ï¿½ï¿½Å¸ï¿½ï¿½ Ã¼Å©
 	float CurrentTime = GetWorld()->GetTimeSeconds();
 	if (CurrentTime < Skill2ReadyTime)
 	{
@@ -321,7 +365,7 @@ void AStrikerCharacter::Skill2()
 
 	if (GetCharacterMovement()->IsFalling())
 	{
-		// 2. ÄðÅ¸ÀÓ Àû¿ë (½ÇÇà ¼º°ø ½Ã¿¡¸¸)
+		// 2. ï¿½ï¿½Å¸ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ (ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½Ã¿ï¿½ï¿½ï¿½)
 		float ActualCooldown = 0.0f;
 		if (SkillDataTable)
 		{
@@ -332,7 +376,7 @@ void AStrikerCharacter::Skill2()
 				ActualCooldown = Data->Cooldown;
 			}
 		}
-		// ´ÙÀ½ »ç¿ë °¡´É ½Ã°£ = ÇöÀç ½Ã°£ + ÄðÅ¸ÀÓ
+		// ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½Ã°ï¿½ = ï¿½ï¿½ï¿½ï¿½ ï¿½Ã°ï¿½ + ï¿½ï¿½Å¸ï¿½ï¿½
 		Skill2ReadyTime = CurrentTime + ActualCooldown;
 
 		ProcessSkill(TEXT("Skill2"));

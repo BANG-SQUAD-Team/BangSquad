@@ -21,6 +21,10 @@ public:
     UFUNCTION(NetMulticast, Reliable)
     void Multicast_PlayMontage(UAnimMontage* MontageToPlay);
     
+    UFUNCTION(NetMulticast, Reliable) 
+    void Multicast_StopMontage(float BlendOutTime = 0.25f);
+    void Multicast_StopMontage_Implementation(float BlendOutTime);
+    
     virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent,
         class AController* EventInstigator, AActor* DamageCauser) override;
     
