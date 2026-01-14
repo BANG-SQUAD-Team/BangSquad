@@ -377,7 +377,6 @@ void APaladinCharacter::EndJobAbility()
     GetWorldTimerManager().ClearTimer(ShieldActivationTimer);
 
     Server_SetGuard(false);
-    StopAnimMontage();
 }
 
 void APaladinCharacter::Server_SetGuard_Implementation(bool bNewGuarding)
@@ -397,6 +396,8 @@ void APaladinCharacter::Server_SetGuard_Implementation(bool bNewGuarding)
     }
     else
     {
+        Multicast_StopMontage(0.25f);
+        
         // 방패 내렸음 ->  Delay 뒤에 회복 시작
         if (!GetWorldTimerManager().IsTimerActive(ShieldRegenTimer))
         {
@@ -536,5 +537,15 @@ void APaladinCharacter::Multicast_PlayMontage_Implementation(UAnimMontage* Monta
     if (MontageToPlay && !IsLocallyControlled())
     {
        PlayAnimMontage(MontageToPlay);
+    }
+}
+
+void APaladinCharacter::Multicast_StopMontage_Implementation(float BlendOutTime)
+{
+    // 현재 재생 중인 몽타주가 있다면 부드럽게 정지
+    UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+    if (AnimInstance && AnimInstance->GetCurrentActiveMontage())
+    {
+        AnimInstance->Montage_Stop(BlendOutTime);
     }
 }
