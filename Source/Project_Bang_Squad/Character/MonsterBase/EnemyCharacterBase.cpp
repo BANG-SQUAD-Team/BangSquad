@@ -1,233 +1,83 @@
 #include "Project_Bang_Squad/Character/MonsterBase/EnemyCharacterBase.h"
-
-#include "AIController.h"
-#include "Animation/AnimMontage.h"
 #include "GameFramework/CharacterMovementComponent.h"
-#include "Components/CapsuleComponent.h"
-#include "Project_Bang_Squad/Character/Component/HealthComponent.h"
+#include "Animation/AnimMontage.h"
+#include "TimerManager.h"
 
 AEnemyCharacterBase::AEnemyCharacterBase()
 {
-    PrimaryActorTick.bCanEverTick = false;
-    bUseControllerRotationYaw = false;
+	PrimaryActorTick.bCanEverTick = false; // ±âº» OFF
 
-    bReplicates = true;
+	// ¹Ù¶óº¸±â Çã¿ë: AIController°¡ SetFocus·Î È¸ÀüÇÏ´Â ÆĞÅÏÀ» ¾²±â ÁÁ°Ô
+	bUseControllerRotationYaw = false;
 }
 
 void AEnemyCharacterBase::BeginPlay()
 {
-    Super::BeginPlay();
+	Super::BeginPlay();
 
-    if (UCharacterMovementComponent* Move = GetCharacterMovement())
-    {
-       DefaultMaxWalkSpeed = Move->MaxWalkSpeed;
+	if (UCharacterMovementComponent* Move = GetCharacterMovement())
+	{
+		DefaultMaxWalkSpeed = Move->MaxWalkSpeed;
 
-       Move->bUseControllerDesiredRotation = true;
-       Move->RotationRate = FRotator(0.f, 720.f, 0.f);
-    }
-
-    // =========================
-    // HealthComponent ìë™ ë°”ì¸ë”©
-    // =========================
-    if (UHealthComponent* HC = FindComponentByClass<UHealthComponent>())
-    {
-       HC->OnDead.RemoveDynamic(this, &AEnemyCharacterBase::HandleDeadFromHealth);
-       HC->OnDead.AddDynamic(this, &AEnemyCharacterBase::HandleDeadFromHealth);
-
-       HC->OnHealthChanged.RemoveDynamic(this, &AEnemyCharacterBase::HandleHealthChangedFromHealth);
-       HC->OnHealthChanged.AddDynamic(this, &AEnemyCharacterBase::HandleHealthChangedFromHealth);
-    }
+		// AI°¡ ¿øÇÏ´Â ¹æÇâÀ¸·Î È¸Àü(¹Ù¶óº¸±â) °¡´ÉÇÏ°Ô
+		Move->bUseControllerDesiredRotation = true;
+		Move->RotationRate = FRotator(0.f, 720.f, 0.f);
+	}
 }
-
-//  ë°ë¯¸ì§€ë¥¼ ë°›ì•„ì„œ HealthComponentë¡œ ë„˜ê²¨ì£¼ëŠ” í•µì‹¬ í•¨ìˆ˜
-float AEnemyCharacterBase::TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, 
-	class AController* EventInstigator, AActor* DamageCauser)
-{
-    // 1. ë¶€ëª¨ í´ë˜ìŠ¤ì˜ ê¸°ë³¸ ë¡œì§ ì‹¤í–‰
-    float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
-
-    // 2. ì„œë²„ ê¶Œí•œ í™•ì¸ (ë°ë¯¸ì§€ ì²˜ë¦¬ëŠ” ì„œë²„ì—ì„œë§Œ)
-    if (HasAuthority())
-    {
-        // 3. HealthComponentë¥¼ ì°¾ì•„ì„œ ë°ë¯¸ì§€ ì ìš©
-        if (UHealthComponent* HC = FindComponentByClass<UHealthComponent>())
-        {
-            // ì—¬ê¸°ì„œ HealthComponentì˜ ì²´ë ¥ì´ ê¹ì´ê³  -> OnHealthChanged ë¸ë¦¬ê²Œì´íŠ¸ê°€ í˜¸ì¶œë¨
-            HC->ApplyDamage(ActualDamage);
-        }
-    }
-
-    return ActualDamage;
-}
-
-void AEnemyCharacterBase::OnDeathStarted()
-{
-}
-
-void AEnemyCharacterBase::HandleDeadFromHealth()
-{
-    ReceiveDeath();
-}
-
-void AEnemyCharacterBase::HandleHealthChangedFromHealth(float NewHealth, float InMaxHealth)
-{
-    if (!HasAuthority()) return;
-    if (bIsDead) return;
-    if (NewHealth <= 0.f) return;
-
-    // ë°ë¯¸ì§€ë¥¼ ì…ì—ˆìœ¼ë‹ˆ í”¼ê²© ëª¨ì…˜ ì¬ìƒ
-    ReceiveHitReact();
-}
-
-// =========================
-// Hit React
-// =========================
 
 void AEnemyCharacterBase::ReceiveHitReact()
 {
-    if (!HasAuthority()) return;
-    if (bIsDead) return;
+	// ¸ÖÆ¼ ±âÁØ: ¼­¹ö¿¡¼­ ½ÃÀÛÇÏ´Â °Ô Á¤¼®
+	if (!HasAuthority())
+	{
+		return;
+	}
 
-    if (bIsHitReacting && bIgnoreHitReactWhileActive)
-    {
-       return;
-    }
+	if (bIsHitReacting && bIgnoreHitReactWhileActive)
+	{
+		return;
+	}
 
-    float Duration = HitReactMinDuration;
-    if (HitReactMontage)
-    {
-       Duration = FMath::Max(Duration, HitReactMontage->GetPlayLength());
-    }
+	float Duration = HitReactMinDuration;
+	if (HitReactMontage)
+	{
+		Duration = FMath::Max(Duration, HitReactMontage->GetPlayLength());
+	}
 
-    StartHitReact(Duration);
+	StartHitReact(Duration);
 }
 
 void AEnemyCharacterBase::StartHitReact(float Duration)
 {
-    bIsHitReacting = true;
+	bIsHitReacting = true;
 
-    if (UCharacterMovementComponent* Move = GetCharacterMovement())
-    {
-       if (DefaultMaxWalkSpeed <= 0.f)
-       {
-          DefaultMaxWalkSpeed = Move->MaxWalkSpeed;
-       }
+	// ¼Óµµ¸¸ °¨¼Ò
+	if (UCharacterMovementComponent* Move = GetCharacterMovement())
+	{
+		Move->MaxWalkSpeed = DefaultMaxWalkSpeed * HitReactSpeedMultiplier;
+	}
 
-       Move->MaxWalkSpeed = DefaultMaxWalkSpeed * HitReactSpeedMultiplier;
-    }
+	// Àü Å¬¶ó¿¡ ¸ùÅ¸ÁÖ Àç»ı
+	Multicast_PlayHitReactMontage();
 
-    Multicast_PlayHitReactMontage();
-
-    GetWorldTimerManager().ClearTimer(HitReactTimer);
-    GetWorldTimerManager().SetTimer(HitReactTimer, this, &AEnemyCharacterBase::EndHitReact, Duration, false);
+	// Duration ÈÄ º¹±¸
+	GetWorldTimerManager().ClearTimer(HitReactTimer);
+	GetWorldTimerManager().SetTimer(HitReactTimer, this, &AEnemyCharacterBase::EndHitReact, Duration, false);
 }
 
 void AEnemyCharacterBase::EndHitReact()
 {
-    bIsHitReacting = false;
+	bIsHitReacting = false;
 
-    if (UCharacterMovementComponent* Move = GetCharacterMovement())
-    {
-       Move->MaxWalkSpeed = DefaultMaxWalkSpeed;
-    }
+	if (UCharacterMovementComponent* Move = GetCharacterMovement())
+	{
+		Move->MaxWalkSpeed = DefaultMaxWalkSpeed;
+	}
 }
 
 void AEnemyCharacterBase::Multicast_PlayHitReactMontage_Implementation()
 {
-    if (!HitReactMontage) return;
-    if (bIsDead) return;
+	if (!HitReactMontage) return;
 
-    PlayAnimMontage(HitReactMontage);
-}
-
-// =========================
-// Death
-// =========================
-
-void AEnemyCharacterBase::ReceiveDeath()
-{
-    if (!HasAuthority()) return;
-    if (bIsDead) return;
-
-    StartDeath();
-}
-
-void AEnemyCharacterBase::StartDeath()
-{
-    bIsDead = true;
-    bIsHitReacting = false;
-
-    OnDeathStarted();
-
-    if (AAIController* AIC = Cast<AAIController>(GetController()))
-    {
-       AIC->StopMovement();
-       AIC->ClearFocus(EAIFocusPriority::Gameplay);
-    }
-
-    if (UCharacterMovementComponent* Move = GetCharacterMovement())
-    {
-       Move->StopMovementImmediately();
-       Move->DisableMovement();
-    }
-
-    Multicast_PlayDeathMontage();
-
-    GetWorldTimerManager().ClearTimer(DeathToRagdollTimer);
-    if (bEnableRagdollOnDeath)
-    {
-       GetWorldTimerManager().SetTimer(
-          DeathToRagdollTimer,
-          this,
-          &AEnemyCharacterBase::EnterRagdoll,
-          DeathToRagdollDelay,
-          false
-       );
-    }
-
-    if (bDestroyAfterDeath)
-    {
-       SetLifeSpan(DestroyDelay);
-    }
-}
-
-void AEnemyCharacterBase::Multicast_PlayDeathMontage_Implementation()
-{
-    if (!DeathMontage) return;
-
-    PlayAnimMontage(DeathMontage);
-
-    if (bLoopDeathMontage && DeathLoopSectionName != NAME_None)
-    {
-       if (UAnimInstance* AnimInst = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr)
-       {
-          AnimInst->Montage_SetNextSection(DeathLoopSectionName, DeathLoopSectionName, DeathMontage);
-       }
-    }
-}
-
-void AEnemyCharacterBase::EnterRagdoll()
-{
-    if (!HasAuthority()) return;
-    Multicast_EnterRagdoll();
-}
-
-void AEnemyCharacterBase::Multicast_EnterRagdoll_Implementation()
-{
-    if (!GetMesh()) return;
-
-    if (UAnimInstance* AnimInst = GetMesh()->GetAnimInstance())
-    {
-       AnimInst->StopAllMontages(0.1f);
-    }
-
-    if (UCapsuleComponent* Capsule = GetCapsuleComponent())
-    {
-       Capsule->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-    }
-
-    GetMesh()->SetCollisionProfileName(TEXT("Ragdoll"));
-    GetMesh()->SetSimulatePhysics(true);
-    GetMesh()->WakeAllRigidBodies();
-    GetMesh()->bBlendPhysics = true;
+	PlayAnimMontage(HitReactMontage);
 }

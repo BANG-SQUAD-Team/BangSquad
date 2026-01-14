@@ -163,17 +163,11 @@ void UMainMenu::HostServer()
 
 	// 3. 방 이름 가져오기
 	FString ServerName = ServerHostName->GetText().ToString();
+
 	FString HostName = OwnerNameInput->GetText().ToString();
 	if (HostName.IsEmpty()) HostName = TEXT("Unknown Host");
 
-	if (OwningInstance)
-	{
-		if (UBSGameInstance* GI = Cast<UBSGameInstance>(OwningInstance))
-		{
-			GI->UserNickname = HostName;
-		}
-	}
-	
+	// ✨ [핵심] 방제목, 인원수, 닉네임까지 3개를 넘깁니다!
 	OwningInstance->Host(ServerName, MaxPlayers, HostName);
 }
 
@@ -214,14 +208,6 @@ void UMainMenu::JoinServer()
 	if (OwningInstance)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Selected index is %d"), SelectedIndex.GetValue());
-		if (UBSGameInstance* GI = Cast<UBSGameInstance>(OwningInstance))
-		{
-			FString GuestName = GuestNameInput->GetText().ToString();
-			if (GuestName.IsEmpty()) GuestName = TEXT("Guest");
-
-			GI->UserNickname = GuestName;
-		}
-		
 		OwningInstance->Join(SelectedIndex.GetValue());
 	}
 }

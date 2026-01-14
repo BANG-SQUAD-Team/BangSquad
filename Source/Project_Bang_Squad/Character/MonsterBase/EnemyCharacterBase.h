@@ -2,114 +2,59 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
-#include "TimerManager.h" 
-
 #include "EnemyCharacterBase.generated.h"
-
-class UAnimMontage;
-class UHealthComponent;
 
 UCLASS()
 class PROJECT_BANG_SQUAD_API AEnemyCharacterBase : public ACharacter
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
 public:
-    AEnemyCharacterBase();
+	AEnemyCharacterBase();
 
 protected:
-    virtual void BeginPlay() override;
+	virtual void BeginPlay() override;
 
 public:
-    // Îç∞ÎØ∏ÏßÄ Î∞õÎäî Ìï®Ïàò (Override)
-    virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, 
-        class AController* EventInstigator, AActor* DamageCauser) override;
+	/**
+	 * ««∞› ∏Ææ◊º«(∞Ê¡˜) Ω√¿€ ø‰√ª
+	 * - º≠πˆø°º≠ »£√‚«œ¥¬ ∞Õ¿ª ±«¿Â(∏÷∆º ±‚¡ÿ)
+	 * - «ˆ¿Á¥¬ HealthComp æ¯¿Ãµµ ø‹∫Œ(π´±‚/««∞› ∆«¡§)ø°º≠ »£√‚ ∞°¥…«œ∞‘ ø≠æÓµ“
+	 */
+	UFUNCTION(BlueprintCallable, Category = "HitReact")
+	void ReceiveHitReact();
 
-    // ===== Hit React =====
-    UFUNCTION(BlueprintCallable, Category = "HitReact")
-    void ReceiveHitReact();
-
-    UFUNCTION(BlueprintPure, Category = "HitReact")
-    bool IsHitReacting() const { return bIsHitReacting; }
-
-    // ===== Death =====
-    UFUNCTION(BlueprintCallable, Category = "Death")
-    void ReceiveDeath();
-
-    UFUNCTION(BlueprintPure, Category = "Death")
-    bool IsDead() const { return bIsDead; }
+	/** «ˆ¿Á ««∞› ∞Ê¡˜ ¡ﬂ¿Œ¡ˆ */
+	UFUNCTION(BlueprintPure, Category = "HitReact")
+	bool IsHitReacting() const { return bIsHitReacting; }
 
 protected:
-    // ÏÇ¨Îßù ÏãúÏûë Ïãú ÏûêÏãù ÌÅ¥ÎûòÏä§(EnemyNormal)ÏóêÏÑú Î°úÏßÅ Ï≤òÎ¶¨Ïö©
-    virtual void OnDeathStarted();
+	/** ««∞› ∏˘≈∏¡÷ 1∞≥(∏ÛΩ∫≈Õ∏∂¥Ÿ ¥Ÿ∏£∞‘ ºº∆√) */
+	UPROPERTY(EditDefaultsOnly, Category = "HitReact")
+	TObjectPtr<UAnimMontage> HitReactMontage = nullptr;
 
-    // ===== HealthComponent Auto Bind =====
-    UFUNCTION()
-    void HandleDeadFromHealth();
+	/** ««∞› ¡ﬂ ¿Ãµøº”µµ πËºˆ(º”µµ∏∏ ≥∑√ﬂ∞Ì ¡§¡ˆ¥¬ æ» «‘) */
+	UPROPERTY(EditDefaultsOnly, Category = "HitReact", meta = (ClampMin = "0.05", ClampMax = "1.0"))
+	float HitReactSpeedMultiplier = 0.35f;
 
-    UFUNCTION()
-    void HandleHealthChangedFromHealth(float NewHealth, float InMaxHealth);
+	/** ∏˘≈∏¡÷ ±Ê¿Ã∞° 0¿Ã∞≈≥™ ¬™¿ª ∂ß ∫∏«Ë */
+	UPROPERTY(EditDefaultsOnly, Category = "HitReact", meta = (ClampMin = "0.05", ClampMax = "5.0"))
+	float HitReactMinDuration = 0.25f;
 
-    // ===== Hit React Settings =====
-    UPROPERTY(EditDefaultsOnly, Category = "HitReact")
-    TObjectPtr<UAnimMontage> HitReactMontage = nullptr;
-
-    UPROPERTY(EditDefaultsOnly, Category = "HitReact", meta = (ClampMin = "0.05", ClampMax = "1.0"))
-    float HitReactSpeedMultiplier = 0.35f;
-
-    UPROPERTY(EditDefaultsOnly, Category = "HitReact", meta = (ClampMin = "0.05", ClampMax = "5.0"))
-    float HitReactMinDuration = 0.25f;
-
-    UPROPERTY(EditDefaultsOnly, Category = "HitReact")
-    bool bIgnoreHitReactWhileActive = true;
-
-    // ===== Death Settings =====
-    UPROPERTY(EditDefaultsOnly, Category = "Death")
-    TObjectPtr<UAnimMontage> DeathMontage = nullptr;
-
-    UPROPERTY(EditDefaultsOnly, Category = "Death")
-    bool bLoopDeathMontage = false;
-
-    UPROPERTY(EditDefaultsOnly, Category = "Death", meta = (EditCondition = "bLoopDeathMontage"))
-    FName DeathLoopSectionName = TEXT("Loop");
-
-    UPROPERTY(EditDefaultsOnly, Category = "Death")
-    bool bEnableRagdollOnDeath = true;
-
-    UPROPERTY(EditDefaultsOnly, Category = "Death", meta = (ClampMin = "0.0", ClampMax = "10.0", EditCondition = "bEnableRagdollOnDeath"))
-    float DeathToRagdollDelay = 0.25f;
-
-    UPROPERTY(EditDefaultsOnly, Category = "Death")
-    bool bDestroyAfterDeath = true;
-
-    UPROPERTY(EditDefaultsOnly, Category = "Death", meta = (ClampMin = "0.0", ClampMax = "60.0", EditCondition = "bDestroyAfterDeath"))
-    float DestroyDelay = 8.0f;
+	/** ««∞› ¡ﬂ ¿Á««∞› π´Ω√(√ ±‚ æ»¡§ πˆ¿¸) */
+	UPROPERTY(EditDefaultsOnly, Category = "HitReact")
+	bool bIgnoreHitReactWhileActive = true;
 
 protected:
-    void StartHitReact(float Duration);
-    void EndHitReact();
+	void StartHitReact(float Duration);
+	void EndHitReact();
 
-    void StartDeath();
-    void EnterRagdoll();
-
-    UFUNCTION(NetMulticast, Unreliable)
-    void Multicast_PlayHitReactMontage();
-    void Multicast_PlayHitReactMontage_Implementation();
-
-    UFUNCTION(NetMulticast, Reliable)
-    void Multicast_PlayDeathMontage();
-    void Multicast_PlayDeathMontage_Implementation();
-
-    UFUNCTION(NetMulticast, Reliable)
-    void Multicast_EnterRagdoll();
-    void Multicast_EnterRagdoll_Implementation();
+	/** ∏˘≈∏¡÷ ¿Áª˝¿ª ¿¸ ≈¨∂Ûø° ¿¸∆ƒ(∏÷∆º ¥Î∫Ò) */
+	UFUNCTION(NetMulticast, Unreliable)
+	void Multicast_PlayHitReactMontage();
 
 private:
-    bool bIsHitReacting = false;
-    bool bIsDead = false;
-
-    float DefaultMaxWalkSpeed = 0.f;
-
-    FTimerHandle HitReactTimer;
-    FTimerHandle DeathToRagdollTimer;
+	bool bIsHitReacting = false;
+	float DefaultMaxWalkSpeed = 0.f;
+	FTimerHandle HitReactTimer;
 };
