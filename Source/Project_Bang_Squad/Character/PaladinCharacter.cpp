@@ -150,41 +150,63 @@ void APaladinCharacter::ProcessSkill(FName SkillRowName)
     
     if (Data)
     {
-       if (!IsSkillUnlocked(Data->RequiredStage)) return;
+        if (!IsSkillUnlocked(Data->RequiredStage)) return;
        
-       CurrentSkillDamage = Data->Damage;
+        CurrentSkillDamage = Data->Damage;
        
-       if (Data->SkillMontage)
-       {
-          PlayAnimMontage(Data->SkillMontage);
-          Server_PlayMontage(Data->SkillMontage);
-       }
+        // 1. 몽타주 재생 (화면상 즉각적인 반응을 위해)
+        // 클라이언트: 내 화면에서 바로 칼 휘두름 (반응성 UP)
+        // 서버: RPC 받고 들어와서 서버 화면에서 칼 휘두름
+        if (Data->SkillMontage)
+        {
+            PlayAnimMontage(Data->SkillMontage);
+        }
 
-       if (HasAuthority())
-       {
-          GetWorldTimerManager().ClearTimer(AttackHitTimerHandle);
-          GetWorldTimerManager().ClearTimer(HitLoopTimerHandle);
+        // 2. [서버] 실제 판정 로직 및 다른 사람들에게 애니메이션 전파
+        if (HasAuthority())
+        {
+            // A. 다른 클라이언트들에게도 "쟤 칼 휘둘렀어"라고 알려줌 (Multicast)
+            if (Data->SkillMontage)
+            {
+                // 기존에 만드셨던 함수 그대로 사용
+                Server_PlayMontage(Data->SkillMontage); 
+            }
 
-          float HitDelay = Data->ActionDelay; 
+            // B. 공격 판정 타이머 시작 (서버에서만 돌아가야 함)
+            GetWorldTimerManager().ClearTimer(AttackHitTimerHandle);
+            GetWorldTimerManager().ClearTimer(HitLoopTimerHandle);
 
-          if (HitDelay > 0.0f)
-          {
-             GetWorldTimerManager().SetTimer(
-                AttackHitTimerHandle,
-                this,
-                &APaladinCharacter::StartMeleeTrace, 
-                HitDelay,
-                false
-             );
-          }
-          else
-          {
-             StartMeleeTrace();
-          }
-       }
+            float HitDelay = Data->ActionDelay; 
+
+            if (HitDelay > 0.0f)
+            {
+                GetWorldTimerManager().SetTimer(
+                   AttackHitTimerHandle,
+                   this,
+                   &APaladinCharacter::StartMeleeTrace, 
+                   HitDelay,
+                   false
+                );
+            }
+            else
+            {
+                StartMeleeTrace();
+            }
+        }
+        // 3. [클라이언트] 서버에게 "나 공격했으니 판정 로직 돌려줘" 요청
+        else 
+        {
+            Server_ProcessSkill(SkillRowName);
+        }
     }
 }
 
+void APaladinCharacter::Server_ProcessSkill_Implementation(FName SkillRowName)
+{
+    // 서버에서 다시 ProcessSkill을 호출 -> 
+    // 이번엔 HasAuthority()가 True이므로 위쪽 2번(판정 로직)이 실행됨
+    ProcessSkill(SkillRowName);
+}
 
 // =========================================================
 // [1단계] 공격 판정 시작 (궤적 초기화)

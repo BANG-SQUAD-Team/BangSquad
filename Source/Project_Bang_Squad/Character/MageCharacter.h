@@ -31,11 +31,11 @@ public:
     // =========================================================
     // 네트워크 (RPC)
     // =========================================================
-    // 서버: 투사체 생성
+    
     UFUNCTION(Server, Reliable)
-    void Server_SpawnProjectile(UClass* ProjectileClassToSpawn, FVector Location, FRotator Rotation);
-    void Server_SpawnProjectile_Implementation(UClass* ProjectileClassToSpawn, FVector Location, FRotator Rotation);
-
+    void Server_ProcessSkill(FName SkillRowName);
+    void Server_ProcessSkill_Implementation(FName SkillRowName);
+    
     // 서버: 몽타주 재생 알림
     UFUNCTION(Server, Reliable)
     void Server_PlayMontage(UAnimMontage* MontageToPlay);
@@ -50,6 +50,8 @@ public:
     UFUNCTION(Server, Reliable)
     void Server_TriggerPillarFall(APillar* TargetPillar);
     void Server_TriggerPillarFall_Implementation(APillar* TargetPillar);
+    
+
 
 protected:
     virtual void BeginPlay() override;

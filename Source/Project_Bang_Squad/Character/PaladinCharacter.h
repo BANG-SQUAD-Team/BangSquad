@@ -117,6 +117,9 @@ protected:
     UFUNCTION(Server, Reliable)
     void Server_SetGuard(bool bNewGuarding);
     
+    UFUNCTION(Server, Reliable)
+    void Server_ProcessSkill(FName SkillRowName);
+    
     void RegenShield();
     void OnShieldBroken();
     void SetShieldActive(bool bActive);

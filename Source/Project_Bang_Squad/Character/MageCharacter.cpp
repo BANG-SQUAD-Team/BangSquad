@@ -267,40 +267,60 @@ void AMageCharacter::ProcessSkill(FName SkillRowName)
     {
         if (!IsSkillUnlocked(Data->RequiredStage)) return;
 
-        // 1. 몽타주 재생 (내 화면 + 멀티)
+        // 1. [클라이언트] 즉각적인 반응을 위해 내 화면에서 몽타주 재생
         if (Data->SkillMontage) 
         {
             PlayAnimMontage(Data->SkillMontage);
-            Server_PlayMontage(Data->SkillMontage);
         }
 
-        // 2. 투사체 발사 (타이머 적용)
-        if (Data->ProjectileClass)
+        // 2. [서버] 권한이 있으면(서버라면) 직접 로직 수행
+        if (HasAuthority())
         {
-            // 델리게이터로 파라미터(ProjectileClass)를 묶어서 전달
-            FTimerDelegate TimerDel;
-            TimerDel.BindUObject(this, &AMageCharacter::SpawnDelayedProjectile, Data->ProjectileClass.Get());
-            
-            if (Data->ActionDelay > 0.0f)
+            // A. 다른 클라이언트들에게 몽타주 보여주기
+            if (Data->SkillMontage)
             {
-                GetWorldTimerManager().SetTimer(ProjectileTimerHandle, TimerDel, Data->ActionDelay, false);
+                Server_PlayMontage(Data->SkillMontage);
             }
-            else
+
+            // B. 타이머 및 투사체 로직 (서버에서 관리)
+            if (Data->ProjectileClass)
             {
-                // 즉시 발사
-                SpawnDelayedProjectile(Data->ProjectileClass);
+                FTimerDelegate TimerDel;
+                TimerDel.BindUObject(this, &AMageCharacter::SpawnDelayedProjectile, Data->ProjectileClass.Get());
+                
+                if (Data->ActionDelay > 0.0f)
+                {
+                    GetWorldTimerManager().SetTimer(ProjectileTimerHandle, TimerDel, Data->ActionDelay, false);
+                }
+                else
+                {
+                    SpawnDelayedProjectile(Data->ProjectileClass);
+                }
             }
+        }
+        // 3. [클라이언트] 서버에게 "나 스킬 썼어, 처리해줘" 요청
+        else
+        {
+            Server_ProcessSkill(SkillRowName);
         }
     }
 }
 
+// 서버 RPC 구현
+void AMageCharacter::Server_ProcessSkill_Implementation(FName SkillRowName)
+{
+    // 서버에서 다시 ProcessSkill을 호출 -> HasAuthority()가 True이므로 로직(B) 실행됨
+    ProcessSkill(SkillRowName);
+}
+
 void AMageCharacter::SpawnDelayedProjectile(UClass* ProjectileClass)
 {
-    if (!ProjectileClass) return;
+    // 서버가 아니면 실행 금지 (안전장치)
+    if (!HasAuthority() || !ProjectileClass) return;
 
-    // 발사 위치 계산
+    // 1. 서버 기준으로 위치 계산 (보안 강화: 클라이언트가 거짓말 못함)
     FVector SpawnLoc;
-    FRotator SpawnRot = GetControlRotation(); 
+    FRotator SpawnRot = GetControlRotation(); // 서버가 알고 있는 컨트롤러 회전값
     FName SocketName = TEXT("Weapon_Root_R"); 
 
     if (GetMesh() && GetMesh()->DoesSocketExist(SocketName))
@@ -312,24 +332,18 @@ void AMageCharacter::SpawnDelayedProjectile(UClass* ProjectileClass)
         SpawnLoc = GetActorLocation() + (GetActorForwardVector() * 100.f);
     }
 
-    // 서버에 생성 요청
-    Server_SpawnProjectile(ProjectileClass, SpawnLoc, SpawnRot);
+    // 2. 서버에서 바로 생성 (Replicates 옵션이 켜진 액터라면 알아서 클라에도 보임)
+    FActorSpawnParameters SpawnParams;
+    SpawnParams.Owner = this;            
+    SpawnParams.Instigator = GetInstigator(); 
+
+    GetWorld()->SpawnActor<AActor>(ProjectileClass, SpawnLoc, SpawnRot, SpawnParams);
 }
 
 // =========================================================
 // 서버 RPC 구현부
 // =========================================================
 
-void AMageCharacter::Server_SpawnProjectile_Implementation(UClass* ProjectileClassToSpawn, FVector Location, FRotator Rotation)
-{
-    if (!ProjectileClassToSpawn) return;
-
-    FActorSpawnParameters SpawnParams;
-    SpawnParams.Owner = this;            
-    SpawnParams.Instigator = GetInstigator(); 
-
-    GetWorld()->SpawnActor<AActor>(ProjectileClassToSpawn, Location, Rotation, SpawnParams);
-}
 
 void AMageCharacter::Server_PlayMontage_Implementation(UAnimMontage* MontageToPlay)
 {
