@@ -10,6 +10,16 @@
 
 class UMainMenu;
 
+UENUM(BlueprintType)
+enum class EJobType : uint8
+{
+	None,
+	Titan,
+	Striker,
+	Mage,
+	Paladin
+};
+
 USTRUCT()
 struct FServerData
 {
@@ -36,11 +46,10 @@ protected:
 public:
 	void SetMainMenuWidget(UMainMenu* InMainMenu);
 
-
 	UFUNCTION(BlueprintCallable)
 	void LoadMainMenu();
 
-                     #pragma region SessionInterface Codes
+#pragma region SessionInterface Codes
 	virtual void Host(FString ServerName, int32 MaxPlayers, FString HostName) override;
 
 	UFUNCTION(Exec)
@@ -96,4 +105,15 @@ private:
 	// 온라인 세션
 	IOnlineSessionPtr SessionInterface;
 	TSharedPtr<FOnlineSessionSearch> SessionSearch;
+	
+	//최종 선택된 직업
+	UPROPERTY()
+	EJobType MyJob = EJobType::None;
+public:
+	FORCEINLINE EJobType GetMyJob() const { return MyJob; }
+	void SetMyJob(EJobType NewJob) { MyJob = NewJob; }
+
+	//닉네임 저장
+	UPROPERTY()
+	FString UserNickname;
 };
