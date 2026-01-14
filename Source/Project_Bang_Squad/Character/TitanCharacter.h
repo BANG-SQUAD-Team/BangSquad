@@ -19,31 +19,34 @@ protected:
 	virtual void Tick(float DeltaTime) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
+	// ë¶€ëª¨ (BaseCharacter)ì˜ OnDeath ìƒì†
+	virtual void OnDeath()override;
+	
 	// =============================================================
-	// ÀÔ·Â ¹ÙÀÎµù ÇÔ¼ö (Override)
+	// ï¿½Ô·ï¿½ ï¿½ï¿½ï¿½Îµï¿½ ï¿½Ô¼ï¿½ (Override)
 	// =============================================================
-	virtual void JobAbility() override; // Àâ±â/´øÁö±â
-	virtual void Attack() override;     // ÆòÅ¸
-	virtual void Skill1() override;     // ¹Ì±¸Çö (¿¹ºñ)
-	virtual void Skill2() override;     // µ¹Áø (Charge)
+	virtual void JobAbility() override; // ï¿½ï¿½ï¿½/ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+	virtual void Attack() override;     // ï¿½ï¿½Å¸
+	virtual void Skill1() override;     // ï¿½Ì±ï¿½ï¿½ï¿½ (ï¿½ï¿½ï¿½ï¿½)
+	virtual void Skill2() override;     // ï¿½ï¿½ï¿½ï¿½ (Charge)
 
-	// ½ºÅ³ °øÅë Ã³¸® (¸ùÅ¸ÁÖ Àç»ı ¹× ¼½¼Ç Á¡ÇÁ)
+	// ï¿½ï¿½Å³ ï¿½ï¿½ï¿½ï¿½ Ã³ï¿½ï¿½ (ï¿½ï¿½Å¸ï¿½ï¿½ ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½)
 	void ProcessSkill(FName SkillRowName, FName StartSectionName = NAME_None);
 
-	// Àâ±â ´ë»ó ÇÏÀÌ¶óÀÌÆ® °»½Å
+	// ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Ì¶ï¿½ï¿½ï¿½Æ® ï¿½ï¿½ï¿½ï¿½
 	void UpdateHoverHighlight();
 
 private:
 	// =============================================================
-	// [Job Ability] Àâ±â & ´øÁö±â °ü·Ã º¯¼ö
+	// [Job Ability] ï¿½ï¿½ï¿½ & ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 	// =============================================================
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	bool bIsGrabbing = false;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
-	bool bIsCooldown = false; // Àâ±â ÄğÅ¸ÀÓ
+	bool bIsCooldown = false; // ï¿½ï¿½ï¿½ ï¿½ï¿½Å¸ï¿½ï¿½
 
-	UPROPERTY(Replicated) // ¸ÖÆ¼ÇÃ·¹ÀÌ µ¿±âÈ­
+	UPROPERTY(Replicated) // ï¿½ï¿½Æ¼ï¿½Ã·ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½È­
 		AActor* GrabbedActor = nullptr;
 
 	UPROPERTY()
@@ -56,34 +59,34 @@ private:
 	float GrabMaxDuration = 5.0f;
 	float ThrowCooldownTime = 3.0f;
 
-	// Àâ±â ³»ºÎ ·ÎÁ÷
+	// ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 	void TryGrab();
 	void ThrowTarget();
 	void ResetCooldown();
 	void SetHighlight(AActor* Target, bool bEnable);
 
-	// Àâ¾Ò´Ù Ç®·Á³­ Ä³¸¯ÅÍ »óÅÂ º¹±¸
+	// ï¿½ï¿½Ò´ï¿½ Ç®ï¿½ï¿½ï¿½ï¿½ Ä³ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 	UFUNCTION()
 	void RecoverCharacter(ACharacter* Victim);
 
-	// ÀâÇûÀ» ¶§ AI/¹°¸® ²ô±â
+	// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ AI/ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 	void SetHeldState(ACharacter* Target, bool bIsHeld);
 
 public:
-	// ¾Ö´Ï¸ŞÀÌ¼Ç ³ëÆ¼ÆÄÀÌ¿¡¼­ È£ÃâÇÒ ÇÔ¼ö (½ÇÁ¦ ºÎÂø Å¸ÀÌ¹Ö)
+	// ï¿½Ö´Ï¸ï¿½ï¿½Ì¼ï¿½ ï¿½ï¿½Æ¼ï¿½ï¿½ï¿½Ì¿ï¿½ï¿½ï¿½ È£ï¿½ï¿½ï¿½ï¿½ ï¿½Ô¼ï¿½ (ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ Å¸ï¿½Ì¹ï¿½)
 	UFUNCTION(BlueprintCallable)
 	void ExecuteGrab();
 
 protected:
-	// µ¹Áø ½ºÅ³ ¼­¹ö ½ÇÇà ¿äÃ»
+	// ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½Å³ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½Ã»
 	UFUNCTION(Server, Reliable)
 	void Server_Skill2();
 
-	// µ¹Áø Ãæµ¹ °¨Áö (Overlap)
+	// ï¿½ï¿½ï¿½ï¿½ ï¿½æµ¹ ï¿½ï¿½ï¿½ï¿½ (Overlap)
 	UFUNCTION()
 	void OnChargeOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
 
-	// µ¹Áø º® Ãæµ¹ °¨Áö (Hit)
+	// ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½æµ¹ ï¿½ï¿½ï¿½ï¿½ (Hit)
 	UFUNCTION()
 	void OnChargeHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
 
@@ -97,22 +100,22 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	bool bIsSkill2Cooldown = false;
 
-	// µ¹Áø Áß Áßº¹ ÇÇ°İ ¹æÁö¿ë
+	// ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ßºï¿½ ï¿½Ç°ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 	UPROPERTY()
 	TArray<AActor*> HitVictims;
 
 	FTimerHandle Skill2CooldownTimerHandle;
 	FTimerHandle ChargeTimerHandle;
 
-	// ¹ë·±½º µ¥ÀÌÅÍ
-	float Skill2CooldownTime = 5.0f; // ÄğÅ¸ÀÓ
-	float CurrentSkillDamage = 0.0f; // µ¥ÀÌÅÍÅ×ÀÌºí¿¡¼­ °¡Á®¿È
+	// ï¿½ë·±ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+	float Skill2CooldownTime = 5.0f; // ï¿½ï¿½Å¸ï¿½ï¿½
+	float CurrentSkillDamage = 0.0f; // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ìºï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 
-	// ¹°¸® º¹±¸¿ë ¹é¾÷ º¯¼ö
+	// ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 	float DefaultGroundFriction;
 	float DefaultGravityScale;
 
-	/** Å¸ÀÌÅº ½ºÅ³ µ¥ÀÌÅÍ Å×ÀÌºí */
+	/** Å¸ï¿½ï¿½Åº ï¿½ï¿½Å³ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Ìºï¿½ */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Data", meta = (AllowPrivateAccess = "true"))
 	class UDataTable* SkillDataTable;
 };
