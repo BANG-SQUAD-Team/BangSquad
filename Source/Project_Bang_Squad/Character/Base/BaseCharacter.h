@@ -76,16 +76,13 @@ public:
 
 	//  잡혔을 때 상태 설정 함수
 	void SetIsGrabbed(bool bGrabbed);
-	
+
 	//  던져진 상태 확인용 변수
 	bool bWasThrownByTitan = false;
 
 	//  나를 던진 타이탄 (데미지 주체)
 	UPROPERTY()
 	AActor* TitanThrower = nullptr;
-
-	UFUNCTION()
-	bool IsDead() const { return bIsDead; }
 
 protected:
 	virtual void BeginPlay() override;
