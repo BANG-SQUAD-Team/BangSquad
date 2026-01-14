@@ -72,6 +72,28 @@ void AMageCharacter::BeginPlay()
     CameraTimelineComp->SetLooping(false);
 }
 
+void AMageCharacter::OnDeath()
+{
+    // 이미 죽었으면 리턴 (중복 방지)
+    if (bIsDead) return;
+    
+    // 마법사 전용 직업능력 (JobAbility) 강제 종료
+    if (bIsJobAbilityActive)
+    {
+        EndJobAbility();
+    }
+    
+    // 공격 관련 타이머들 싹 다 정지
+    GetWorldTimerManager().ClearTimer(ComboResetTimer);
+    GetWorldTimerManager().ClearTimer(ProjectileTimerHandle);
+    
+    // 시전 중이던 몽타주 정지
+    StopAnimMontage();
+    
+    // 부모 클래스의 사망 로직 실행
+    Super::OnDeath();
+}
+
 void AMageCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
     Super::SetupPlayerInputComponent(PlayerInputComponent);
@@ -171,8 +193,69 @@ void AMageCharacter::ResetCombo()
     CurrentComboIndex = 0;
 }
 
-void AMageCharacter::Skill1() { ProcessSkill(TEXT("Skill1")); }
-void AMageCharacter::Skill2() { ProcessSkill(TEXT("Skill2")); }
+void AMageCharacter::Skill1()
+{
+    if (bIsDead) return;
+    ProcessSkill(TEXT("Skill1"));
+}
+void AMageCharacter::Skill2()
+{
+    if (bIsDead) return;
+    ProcessSkill(TEXT("Skill2"));
+}
+
+void AMageCharacter::JobAbility()
+{
+    if (bIsDead) return;
+    
+    if (FocusedPillar)
+    {
+        CurrentTargetPillar = FocusedPillar;
+        bIsJobAbilityActive = true;
+
+        if (APlayerController* PC = Cast<APlayerController>(GetController()))
+        {
+            PC->SetIgnoreLookInput(true);
+        }
+
+        if (SpringArm) 
+        {
+            SpringArm->bUsePawnControlRotation = true; 
+            SpringArm->bInheritPitch = true; 
+            SpringArm->bInheritYaw = true;
+            SpringArm->bInheritRoll = true;
+        }
+
+        if (CameraTimelineComp)
+        {
+            CameraTimelineComp->Play();
+        }
+    }
+}
+
+void AMageCharacter::EndJobAbility()
+{
+    bIsJobAbilityActive = false;
+    CurrentTargetPillar = nullptr;
+
+    if (APlayerController* PC = Cast<APlayerController>(GetController()))
+    {
+        PC->SetIgnoreLookInput(false);
+    }
+
+    if (SpringArm)
+    {
+        SpringArm->bUsePawnControlRotation = true;
+        SpringArm->bInheritPitch = true; 
+        SpringArm->bInheritYaw = true;
+        SpringArm->bInheritRoll = true;
+    }
+
+    if (CameraTimelineComp) 
+    {
+        CameraTimelineComp->Reverse();
+    }
+}
 
 void AMageCharacter::ProcessSkill(FName SkillRowName)
 {
@@ -194,37 +277,26 @@ void AMageCharacter::ProcessSkill(FName SkillRowName)
         // 2. 투사체 발사 (타이머 적용)
         if (Data->ProjectileClass)
         {
-            // 뭘 쏠지 저장
-            PendingProjectileClass = Data->ProjectileClass;
-
-            // 기존 타이머가 돌고 있다면 초기화 (연타 꼬임 방지)
-            GetWorldTimerManager().ClearTimer(ProjectileTimerHandle);
-
-            // 딜레이 체크
+            // 델리게이터로 파라미터(ProjectileClass)를 묶어서 전달
+            FTimerDelegate TimerDel;
+            TimerDel.BindUObject(this, &AMageCharacter::SpawnDelayedProjectile, Data->ProjectileClass.Get());
+            
             if (Data->ActionDelay > 0.0f)
             {
-                // [지연 발사]
-                GetWorldTimerManager().SetTimer(
-                    ProjectileTimerHandle, 
-                    this, 
-                    &AMageCharacter::SpawnDelayedProjectile, 
-                    Data->ActionDelay, 
-                    false
-                );
+                GetWorldTimerManager().SetTimer(ProjectileTimerHandle, TimerDel, Data->ActionDelay, false);
             }
             else
             {
-                // [즉시 발사]
-                SpawnDelayedProjectile();
+                // 즉시 발사
+                SpawnDelayedProjectile(Data->ProjectileClass);
             }
         }
     }
 }
 
-void AMageCharacter::SpawnDelayedProjectile()
+void AMageCharacter::SpawnDelayedProjectile(UClass* ProjectileClass)
 {
-    // 저장된 투사체가 없으면 취소
-    if (!PendingProjectileClass) return;
+    if (!ProjectileClass) return;
 
     // 발사 위치 계산
     FVector SpawnLoc;
@@ -241,7 +313,7 @@ void AMageCharacter::SpawnDelayedProjectile()
     }
 
     // 서버에 생성 요청
-    Server_SpawnProjectile(PendingProjectileClass, SpawnLoc, SpawnRot);
+    Server_SpawnProjectile(ProjectileClass, SpawnLoc, SpawnRot);
 }
 
 // =========================================================
@@ -296,56 +368,6 @@ void AMageCharacter::CameraTimelineProgress(float Alpha)
     SpringArm->SocketOffset = NewOffset;
 }
 
-void AMageCharacter::JobAbility()
-{
-    if (FocusedPillar)
-    {
-        CurrentTargetPillar = FocusedPillar;
-        bIsJobAbilityActive = true;
-
-        if (APlayerController* PC = Cast<APlayerController>(GetController()))
-        {
-            PC->SetIgnoreLookInput(true);
-        }
-
-        if (SpringArm) 
-        {
-            SpringArm->bUsePawnControlRotation = true; 
-            SpringArm->bInheritPitch = true; 
-            SpringArm->bInheritYaw = true;
-            SpringArm->bInheritRoll = true;
-        }
-
-        if (CameraTimelineComp)
-        {
-            CameraTimelineComp->Play();
-        }
-    }
-}
-
-void AMageCharacter::EndJobAbility()
-{
-    bIsJobAbilityActive = false;
-    CurrentTargetPillar = nullptr;
-
-    if (APlayerController* PC = Cast<APlayerController>(GetController()))
-    {
-        PC->SetIgnoreLookInput(false);
-    }
-
-    if (SpringArm)
-    {
-        SpringArm->bUsePawnControlRotation = true;
-        SpringArm->bInheritPitch = true; 
-        SpringArm->bInheritYaw = true;
-        SpringArm->bInheritRoll = true;
-    }
-
-    if (CameraTimelineComp) 
-    {
-        CameraTimelineComp->Reverse();
-    }
-}
 
 void AMageCharacter::OnCameraTimelineFinished()
 {

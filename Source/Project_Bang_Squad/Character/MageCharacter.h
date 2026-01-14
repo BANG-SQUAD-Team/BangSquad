@@ -54,6 +54,9 @@ public:
 protected:
     virtual void BeginPlay() override;
     
+    // 부모(BaseCharacter)의 OnDeath를 상속받아 마법사 전용 처리 추가
+    virtual void OnDeath() override;
+    
     // 공격 함수들
     virtual void Attack() override;
     virtual void Skill1() override;
@@ -72,13 +75,9 @@ protected:
     // =========================================================
     // 발사 지연 타이머
     FTimerHandle ProjectileTimerHandle;
-    
-    // 타이머 도는 동안 "뭘 쏠지" 저장해두는 변수
-    UPROPERTY()
-    UClass* PendingProjectileClass;
 
     // 타이머 끝나면 실제 발사하는 함수
-    void SpawnDelayedProjectile();
+    void SpawnDelayedProjectile(UClass* ProjectileClass);
 
     // =========================================================
     // 직업 능력 (Job Ability)

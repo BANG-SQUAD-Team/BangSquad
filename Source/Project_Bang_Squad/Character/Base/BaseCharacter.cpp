@@ -99,7 +99,6 @@ void ABaseCharacter::OnDeath()
 		Controller->SetIgnoreMoveInput(true);
 		Controller->SetIgnoreLookInput(true);
 	}
-	
 	// 2. 이동 멈추기 (관성 제거)
 	GetCharacterMovement()->StopMovementImmediately();
 	GetCharacterMovement()->DisableMovement(); // 중력 이동 등 로직 중단
