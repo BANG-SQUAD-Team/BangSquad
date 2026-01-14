@@ -66,6 +66,9 @@ private:
 protected:
 	virtual void SetupInputComponent() override;
 
+	UPROPERTY(EditDefaultsOnly, Category = "BS|Input")
+	class UInputAction* IA_ToggleLobbyMenu;
+
 private:
 	bool bIsMenuVisible = true;
 

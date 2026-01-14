@@ -3,6 +3,7 @@
 
 #include "Project_Bang_Squad/Game/Lobby/LobbyPlayerController.h"
 
+#include "EnhancedInputComponent.h"
 #include "InputTriggers.h"
 #include "LobbyGameMode.h"
 #include "LobbyPlayerState.h"
@@ -132,8 +133,13 @@ void ALobbyPlayerController::SetupInputComponent()
 {
 	Super::SetupInputComponent();
 	
-	InputComponent->BindAction("TabMenu", IE_Pressed, this, &ALobbyPlayerController::ToggleLobbyMenu);
-}
+	if (UEnhancedInputComponent* EIC = Cast<UEnhancedInputComponent>(InputComponent))
+	{
+		if (IA_ToggleLobbyMenu)
+		{
+			EIC->BindAction(IA_ToggleLobbyMenu, ETriggerEvent::Started, this, &ALobbyPlayerController::ToggleLobbyMenu);
+		}
+	}}
 
 void ALobbyPlayerController::ToggleLobbyMenu()
 {
