@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Project_Bang_Squad/Character/MonsterBase/EnemyBaseData.h" 
+#include "Project_Bang_Squad/Projectile/SlashProjectile.h"
 #include "EnemyBossData.generated.h"
 
 /**
@@ -37,6 +38,14 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Anim")
     TObjectPtr<UAnimMontage> DeathMontage;
 
+    // 5. 참격 투사체 클래스 (여기에 BP_SlashProjectile을 넣을 예정)
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Combat")
+    TSubclassOf<ASlashProjectile> SlashProjectileClass;
+
+    // 6. 참격 발사 몽타주 (칼을 휘두르는 애니메이션)
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Anim")
+    TObjectPtr<UAnimMontage> SlashAttackMontage;
+    
     // (추후 확장)
     // 보스 등장 몽타주, 전용 BGM 등은 여기에 추가하면 됩니다.
 };

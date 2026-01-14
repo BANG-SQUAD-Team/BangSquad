@@ -5,9 +5,9 @@
 #include "Net/UnrealNetwork.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/CapsuleComponent.h"
-// [NEW] 필수 헤더
 #include "Components/BoxComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "Project_Bang_Squad/Projectile/SlashProjectile.h"
 
 AEnemyMidBoss::AEnemyMidBoss()
 {
@@ -20,10 +20,14 @@ AEnemyMidBoss::AEnemyMidBoss()
 
 	// 무기 충돌 박스 생성 및 설정
 	WeaponCollisionBox = CreateDefaultSubobject<UBoxComponent>(TEXT("WeaponCollisionBox"));
-	WeaponCollisionBox->SetupAttachment(GetMesh()); // 메시 하위에 붙임
+	// 메시 하위에 붙임 (소켓 이름 지정)
 	if (GetMesh())
 	{
 		WeaponCollisionBox->SetupAttachment(GetMesh(), TEXT("swordSocket"));
+	}
+	else
+	{
+		WeaponCollisionBox->SetupAttachment(RootComponent);
 	}
 
 	// 평소에는 꺼둠
@@ -65,24 +69,26 @@ void AEnemyMidBoss::OnConstruction(const FTransform& Transform)
 void AEnemyMidBoss::BeginPlay()
 {
 	Super::BeginPlay();
-	//서버 권한 및 데이터 에셋 확인
+
+	// 서버 권한 및 데이터 에셋 확인
 	if (HasAuthority() && BossData && HealthComponent)
 	{
 		HealthComponent->SetMaxHealth(BossData->MaxHealth);
 		UE_LOG(LogTemp, Log, TEXT("[MidBoss] Initialized Health: %f"), BossData->MaxHealth);
 	}
-	//사망 이벤트 연결
+
+	// 사망 이벤트 연결
 	if (HealthComponent)
 	{
 		HealthComponent->OnDead.AddDynamic(this, &AEnemyMidBoss::OnDeath);
 	}
-	//데이터 에셋의 AttackRange를 AI에게 전달!
+
+	// 데이터 에셋의 AttackRange를 AI에게 전달!
 	if (GetController())
 	{
 		auto* MyAI = Cast<AMidBossAIController>(GetController());
 		if (MyAI && BossData)
 		{
-			// 데이터 에셋의 값을 컨트롤러에 덮어씌움
 			MyAI->SetAttackRange(BossData->AttackRange);
 			UE_LOG(LogTemp, Warning, TEXT("[MidBoss] Attack Range Updated from DataAsset: %f"), BossData->AttackRange);
 		}
@@ -106,7 +112,14 @@ float AEnemyMidBoss::TakeDamage(float DamageAmount, FDamageEvent const& DamageEv
 		auto* MyAI = Cast<AMidBossAIController>(GetController());
 		if (MyAI)
 		{
-			MyAI->OnDamaged(DamageCauser);
+			// [수정됨] 투사체(DamageCauser)가 사라져도 멍때리지 않게, 공격한 사람(Instigator Pawn)을 찾아서 넘겨줍니다.
+			AActor* RealAttacker = DamageCauser;
+			if (EventInstigator && EventInstigator->GetPawn())
+			{
+				RealAttacker = EventInstigator->GetPawn();
+			}
+
+			MyAI->OnDamaged(RealAttacker);
 		}
 	}
 
@@ -149,41 +162,69 @@ void AEnemyMidBoss::OnWeaponOverlap(UPrimitiveComponent* OverlappedComponent, AA
 	);
 
 	UE_LOG(LogTemp, Log, TEXT("BOSS: Hit Target [%s]! Damage: %f"), *OtherActor->GetName(), AttackDamage);
-
-	// [옵션] 다단히트 방지 (필요 시 주석 해제)
-	// DisableWeaponCollision(); 
 }
 
 // --- [Animation Helpers] ---
 
 float AEnemyMidBoss::PlayAggroAnim()
 {
+	if (!HasAuthority()) return 0.0f;
 	if (BossData && BossData->AggroMontage)
 	{
-		return PlayAnimMontage(BossData->AggroMontage);
+		// [수정] 멀티캐스트로 "모두 재생해!" 방송
+		Multicast_PlayAttackMontage(BossData->AggroMontage);
+
+		// AI에게는 애니메이션 길이 리턴 (타이머용)
+		return BossData->AggroMontage->GetPlayLength();
 	}
 	return 0.0f;
 }
 
+// [수정됨] 서버가 몽타주를 고르고 -> 모두에게 방송 -> 길이를 리턴
 float AEnemyMidBoss::PlayRandomAttack()
 {
+	if (!HasAuthority()) return 0.0f;
+
 	if (BossData && BossData->AttackMontages.Num() > 0)
 	{
 		int32 RandomIndex = FMath::RandRange(0, BossData->AttackMontages.Num() - 1);
 		UAnimMontage* SelectedMontage = BossData->AttackMontages[RandomIndex];
+
 		if (SelectedMontage)
 		{
-			return PlayAnimMontage(SelectedMontage);
+			// 멀티캐스트 호출 (클라이언트들도 재생)
+			Multicast_PlayAttackMontage(SelectedMontage);
+
+			// AI 타이머용 길이 리턴
+			return SelectedMontage->GetPlayLength();
 		}
 	}
 	return 0.0f;
 }
 
+// [NEW] 멀티캐스트 구현부
+void AEnemyMidBoss::Multicast_PlayAttackMontage_Implementation(UAnimMontage* MontageToPlay)
+{
+	if (MontageToPlay)
+	{
+		PlayAnimMontage(MontageToPlay);
+	}
+}
+
+// EnemyMidBoss.cpp
+
 float AEnemyMidBoss::PlayHitReactAnim()
 {
+	// 1. 권한 체크 (서버만 실행)
+	if (!HasAuthority()) return 0.0f;
+
 	if (BossData && BossData->HitReactMontage)
 	{
-		return PlayAnimMontage(BossData->HitReactMontage);
+		// 2. [수정] 멀티캐스트로 "모두 아픈 모션 재생해!" 방송
+		Multicast_PlayAttackMontage(BossData->HitReactMontage);
+
+		// 3. AI에게는 애니메이션 길이 리턴 (스턴 시간 계산용)
+		return BossData->HitReactMontage->GetPlayLength();
 	}
 	return 0.0f;
 }
@@ -242,4 +283,42 @@ void AEnemyMidBoss::OnDeath()
 	}
 
 	UE_LOG(LogTemp, Warning, TEXT("BOSS IS DEAD. Cleanup started."));
+}
+
+// 1. 패턴 시작 (AI가 호출)
+void AEnemyMidBoss::PlaySlashPattern()
+{
+	if (BossData && BossData->SlashAttackMontage)
+	{
+		PlayAnimMontage(BossData->SlashAttackMontage);
+	}
+}
+
+// 2. 발사 트리거 (AnimNotify에서 호출)
+void AEnemyMidBoss::FireSlashProjectile()
+{
+	if (!BossData || !BossData->SlashProjectileClass) return;
+
+	FVector SpawnLoc = GetActorLocation() + GetActorForwardVector() * 100.f;
+	FRotator SpawnRot = GetActorRotation();
+
+	if (GetMesh()->DoesSocketExist(TEXT("swordSocket")))
+	{
+		SpawnLoc = GetMesh()->GetSocketLocation(TEXT("swordSocket"));
+	}
+
+	// 서버에게 요청
+	Server_SpawnSlashProjectile(SpawnLoc, SpawnRot);
+}
+
+// 3. 서버 구현부
+void AEnemyMidBoss::Server_SpawnSlashProjectile_Implementation(FVector SpawnLoc, FRotator SpawnRot)
+{
+	if (!BossData || !BossData->SlashProjectileClass) return;
+
+	FActorSpawnParameters Params;
+	Params.Owner = this;
+	Params.Instigator = this;
+
+	GetWorld()->SpawnActor<AActor>(BossData->SlashProjectileClass, SpawnLoc, SpawnRot, Params);
 }
