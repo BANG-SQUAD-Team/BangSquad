@@ -37,7 +37,7 @@ public:
 	// 사망 시 AI 정지 명령 함수
 	void SetDeadState();
 
-	// 외부에서 공격 사거리를 설정할 수 있게 해주는 함수 데이터에셋가서 수정 하면 반영가능
+	// 외부에서 공격 사거리를 설정할 수 있게 해주는 함수
 	void SetAttackRange(float NewRange) { AttackRange = NewRange; }
 
 protected:
@@ -49,6 +49,9 @@ protected:
 	// 타이머 콜백 함수들
 	void StartChasing(); // 포효/피격 끝난 후 추적 시작
 	void FinishAttack(); // 공격 끝난 후 복귀
+
+	// [NEW] 랜덤 타겟 변경 함수 (일정 시간마다 실행)
+	void UpdateRandomTarget();
 
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AI")
@@ -65,6 +68,12 @@ protected:
 
 	FTimerHandle StateTimerHandle;
 
-	// [NEW] 한 번이라도 포효했는지 체크하는 플래그 (누락되었던 부분)
+	// [NEW] 랜덤 어그로 변경 타이머 핸들 & 주기 변수
+	FTimerHandle AggroTimerHandle;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|Config")
+	float TargetChangeInterval = 5.0f; // 기본값 5초 (에디터 수정 가능)
+
+	// 한 번이라도 포효했는지 체크하는 플래그
 	bool bHasRoared = false;
 };
