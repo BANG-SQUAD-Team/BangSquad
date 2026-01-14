@@ -132,7 +132,6 @@ void ALobbyGameMode::CheckConfirmedJob()
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[GameMode] ✅ 전원 직업 확정 완료! 게임(TestMap)으로 이동합니다. 🚀"));
 
-		//TODO: 나중에 TestMap -> Stage맵 이름으로 변경
-		GetWorld()->ServerTravel("/Game/TeamShare/Asset/Platformer_1/Scenes/Stage1_Demo?listen");
+		GetWorld()->ServerTravel("/Game/TeamShare/Level/Stage1_Demo?listen");
 	}
 }
