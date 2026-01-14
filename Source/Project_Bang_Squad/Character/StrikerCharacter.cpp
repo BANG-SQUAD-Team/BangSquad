@@ -30,10 +30,29 @@ void AStrikerCharacter::Landed(const FHitResult& Hit)
 }
 
 // =============================================================
-// [평타] 겟앰프드 스타일
+// [평타] 겟앰프드 스타일 (데이터 테이블 쿨타임 적용)
 // =============================================================
 void AStrikerCharacter::Attack()
 {
+	// 1. 쿨타임 및 상태 확인
+	if (!CanAttack()) return;
+
+	// 2. 데이터 테이블에서 쿨타임 설정
+	if (SkillDataTable)
+	{
+		static const FString ContextString(TEXT("StrikerAttack"));
+		FSkillData* Row = SkillDataTable->FindRow<FSkillData>(TEXT("Attack"), ContextString);
+		// 데이터 테이블에 값이 있고 0보다 크면 그 값으로 쿨타임 갱신
+		if (Row && Row->Cooldown > 0.0f)
+		{
+			AttackCooldownTime = Row->Cooldown;
+		}
+	}
+
+	// 3. 쿨타임 시작 (BaseCharacter 기능)
+	StartAttackCooldown();
+
+	// 4. 실행
 	ProcessSkill(TEXT("Attack"));
 
 	FVector ForwardDir = GetActorForwardVector();
@@ -41,21 +60,47 @@ void AStrikerCharacter::Attack()
 	LaunchCharacter(LaunchVel, true, false);
 }
 
+// =============================================================
+// [스킬 1] 야스오 궁 (데이터 테이블 쿨타임 적용)
+// =============================================================
 void AStrikerCharacter::Skill1()
 {
+	// 1. 쿨타임 체크 (현재 시간이 준비 시간보다 작으면 쿨타임 중)
+	float CurrentTime = GetWorld()->GetTimeSeconds();
+	if (CurrentTime < Skill1ReadyTime)
+	{
+		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Yellow, TEXT("Skill1 Cooldown!"));
+		return;
+	}
+
 	// [로그 1] 키 입력 확인
 	if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Yellow, TEXT(">> [Skill1] Input Pressed!"));
 
 	AActor* Target = FindBestAirborneTarget();
 	if (Target)
 	{
+		// 2. 쿨타임 적용 (데이터 테이블 조회)
+		float ActualCooldown = 0.0f; // 기본값
+		if (SkillDataTable)
+		{
+			static const FString ContextString(TEXT("StrikerSkill1Cooldown"));
+			FSkillData* Data = SkillDataTable->FindRow<FSkillData>(TEXT("Skill1"), ContextString);
+			if (Data && Data->Cooldown > 0.0f)
+			{
+				ActualCooldown = Data->Cooldown;
+			}
+		}
+
+		// 쿨타임 적용: 현재 시간 + 쿨타임
+		Skill1ReadyTime = CurrentTime + ActualCooldown;
+
 		// [로그 2] 타겟 발견 성공
 		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Green, FString::Printf(TEXT(">> [Skill1] Client: Found Target [%s]"), *Target->GetName()));
 		Server_TrySkill1(Target);
 	}
 	else
 	{
-		// [로그 3] 타겟 없음 -> 여기서 뜨면 FindBestAirborneTarget 로직 문제
+		// [로그 3] 타겟 없음
 		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, TEXT(">> [Skill1] Client: No Airborne Target Found!"));
 	}
 }
@@ -64,7 +109,7 @@ AActor* AStrikerCharacter::FindBestAirborneTarget()
 {
 	FVector MyLoc = GetActorLocation();
 	FVector CamFwd = GetControlRotation().Vector();
-	CamFwd.Z = 0.f; // 수평 시야
+	CamFwd.Z = 0.f;
 	CamFwd.Normalize();
 
 	TArray<AActor*> OverlappingActors;
@@ -82,27 +127,20 @@ AActor* AStrikerCharacter::FindBestAirborneTarget()
 		ACharacter* CharActor = Cast<ACharacter>(Actor);
 		if (!CharActor) continue;
 
-		// 1. 적군 판별 (EnemyNormal 또는 EnemyMidBoss)
 		bool bIsNormal = Actor->IsA(AEnemyNormal::StaticClass());
 		bool bIsMidBoss = Actor->IsA(AEnemyMidBoss::StaticClass());
 
-		// 적이 아니면(팀원이면) 1번 스킬 대상 아님 -> 패스
+		// 적군(Normal, MidBoss)만 대상
 		if (!bIsNormal && !bIsMidBoss) continue;
 
-		// 2. 공중 체크
 		bool bIsFalling = CharActor->GetCharacterMovement()->IsFalling();
-		// (테스트용 강제 true 필요하면 주석 해제)
-		// bIsFalling = true; 
 
 		if (bIsFalling)
 		{
-			// 3. [추가] 높이 체크 (땅에서 얼마나 떴는지)
-			// 적의 발밑 높이 - 내 발밑 높이
 			float HeightDiff = CharActor->GetActorLocation().Z - MyLoc.Z;
 
 			if (HeightDiff < Skill1RequiredHeight)
 			{
-				// 너무 낮게 떠 있으면 안 씀
 				continue;
 			}
 
@@ -125,7 +163,6 @@ AActor* AStrikerCharacter::FindBestAirborneTarget()
 
 void AStrikerCharacter::Server_TrySkill1_Implementation(AActor* TargetActor)
 {
-	// [로그 7] 서버 도착 확인
 	if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Blue, TEXT(">> [Server] Request Received"));
 
 	ACharacter* TargetChar = Cast<ACharacter>(TargetActor);
@@ -134,7 +171,6 @@ void AStrikerCharacter::Server_TrySkill1_Implementation(AActor* TargetActor)
 	float DistSq = FVector::DistSquared(GetActorLocation(), TargetActor->GetActorLocation());
 	if (DistSq > 1500.f * 1500.f)
 	{
-		// [로그 8] 거리 너무 멀음
 		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, TEXT(">> [Server] Target too far!"));
 		return;
 	}
@@ -148,7 +184,6 @@ void AStrikerCharacter::Server_TrySkill1_Implementation(AActor* TargetActor)
 
 		if (Data)
 		{
-			// [로그 9] 데이터 테이블 로드 성공 및 잠금 확인
 			if (!IsSkillUnlocked(Data->RequiredStage))
 			{
 				if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, TEXT(">> [Server] Skill Locked!"));
@@ -159,13 +194,11 @@ void AStrikerCharacter::Server_TrySkill1_Implementation(AActor* TargetActor)
 		}
 		else
 		{
-			// [로그 10] 데이터 테이블 로우 없음
 			if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, TEXT(">> [Server] 'Skill1' Row Not Found in DataTable!"));
 		}
 	}
 	else
 	{
-		// [로그 11] 데이터 테이블 자체가 Null
 		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, TEXT(">> [Server] SkillDataTable is NULL!"));
 	}
 
@@ -197,20 +230,34 @@ void AStrikerCharacter::Multicast_PlaySkill1FX_Implementation(AActor* Target)
 }
 
 // =============================================================
-// [직업 능력] 전방 직사각형 범위 띄우기
+// [직업 능력] 전방 직사각형 범위 띄우기 (데이터 테이블 쿨타임 적용)
 // =============================================================
 void AStrikerCharacter::JobAbility()
 {
+	// 1. 쿨타임 체크
 	float CurrentTime = GetWorld()->GetTimeSeconds();
 	if (CurrentTime < JobAbilityCooldownTime)
 	{
-		// [수정] FColor::Gray -> FColor::Silver
 		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Silver, TEXT("Job Ability Cooldown!"));
 		return;
 	}
 
+	// 2. 쿨타임 값 가져오기
+	float ActualCooldown = 5.0f; // 기본값
+	if (SkillDataTable)
+	{
+		static const FString ContextString(TEXT("StrikerJobCooldown"));
+		FSkillData* Data = SkillDataTable->FindRow<FSkillData>(TEXT("JobAbility"), ContextString);
+		if (Data && Data->Cooldown > 0.0f)
+		{
+			ActualCooldown = Data->Cooldown;
+		}
+	}
+
 	Server_UseJobAbility();
-	JobAbilityCooldownTime = CurrentTime + 5.0f;
+
+	// 3. 쿨타임 적용
+	JobAbilityCooldownTime = CurrentTime + ActualCooldown;
 }
 
 void AStrikerCharacter::Server_UseJobAbility_Implementation()
@@ -218,7 +265,6 @@ void AStrikerCharacter::Server_UseJobAbility_Implementation()
 	float AbilityDamage = 50.f;
 	ProcessSkill(TEXT("JobAbility"));
 
-	// 데이터 테이블 데미지 가져오기
 	if (SkillDataTable)
 	{
 		static const FString ContextString(TEXT("Striker JobAbility Damage"));
@@ -244,34 +290,51 @@ void AStrikerCharacter::Server_UseJobAbility_Implementation()
 
 		bool bIsNormal = Actor->IsA(AEnemyNormal::StaticClass());
 		bool bIsMidBoss = Actor->IsA(AEnemyMidBoss::StaticClass());
-		bool bIsBaseChar = Actor->IsA(ABaseCharacter::StaticClass()); // 팀원 포함
+		bool bIsBaseChar = Actor->IsA(ABaseCharacter::StaticClass());
 
-		// 1. EnemyNormal (쫄몹): 데미지 O, 띄우기 O
 		if (bIsNormal)
 		{
 			UGameplayStatics::ApplyDamage(TargetChar, AbilityDamage, GetController(), this, UDamageType::StaticClass());
-
 			FVector LaunchVel = FVector(0.f, 0.f, 1000.f);
 			TargetChar->LaunchCharacter(LaunchVel, true, true);
 		}
-		// 2. Team (팀원): 데미지 X, 띄우기 O (효과 받음)
 		else if (bIsBaseChar && !bIsNormal && !bIsMidBoss)
 		{
 			FVector LaunchVel = FVector(0.f, 0.f, 1000.f);
 			TargetChar->LaunchCharacter(LaunchVel, true, true);
 		}
-		// 3. Boss (보스): 면역 (아무것도 안 함)
-		// (보스는 무거워서 안 뜬다는 컨셉)
 	}
 }
 
 // =============================================================
-// [스킬 2] 공중 찍기
+// [스킬 2] 공중 찍기 (데이터 테이블 쿨타임 적용)
 // =============================================================
 void AStrikerCharacter::Skill2()
 {
+	// 1. 쿨타임 체크
+	float CurrentTime = GetWorld()->GetTimeSeconds();
+	if (CurrentTime < Skill2ReadyTime)
+	{
+		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Yellow, TEXT("Skill2 Cooldown!"));
+		return;
+	}
+
 	if (GetCharacterMovement()->IsFalling())
 	{
+		// 2. 쿨타임 적용 (실행 성공 시에만)
+		float ActualCooldown = 0.0f;
+		if (SkillDataTable)
+		{
+			static const FString ContextString(TEXT("StrikerSkill2Cooldown"));
+			FSkillData* Data = SkillDataTable->FindRow<FSkillData>(TEXT("Skill2"), ContextString);
+			if (Data && Data->Cooldown > 0.0f)
+			{
+				ActualCooldown = Data->Cooldown;
+			}
+		}
+		// 다음 사용 가능 시간 = 현재 시간 + 쿨타임
+		Skill2ReadyTime = CurrentTime + ActualCooldown;
+
 		ProcessSkill(TEXT("Skill2"));
 		FVector SlamVelocity = FVector(0.f, 0.f, -3000.f);
 		LaunchCharacter(SlamVelocity, true, true);
@@ -312,23 +375,19 @@ void AStrikerCharacter::Server_Skill2Impact_Implementation()
 		bool bIsMidBoss = Actor->IsA(AEnemyMidBoss::StaticClass());
 		bool bIsBaseChar = Actor->IsA(ABaseCharacter::StaticClass());
 
-		// 1. EnemyNormal (쫄몹): 데미지 O + 당겨오기
 		if (bIsNormal)
 		{
 			UGameplayStatics::ApplyDamage(TargetChar, SlamDamage, GetController(), this, UDamageType::StaticClass());
-
 			FVector PullDir = (MyLoc - TargetChar->GetActorLocation()).GetSafeNormal();
 			FVector PullVel = (PullDir * 1500.f) + FVector(0.f, 0.f, 300.f);
 			TargetChar->LaunchCharacter(PullVel, true, true);
 		}
-		// 2. Team (팀원): 데미지 X + 밀쳐내기 (효과 받음)
 		else if (bIsBaseChar && !bIsMidBoss)
 		{
 			FVector PushDir = (TargetChar->GetActorLocation() - MyLoc).GetSafeNormal();
 			FVector PushVel = (PushDir * 800.f) + FVector(0.f, 0.f, 200.f);
 			TargetChar->LaunchCharacter(PushVel, true, true);
 		}
-		// 3. Boss (보스): 면역 (2번 스킬은 쫄몹만)
 	}
 }
 

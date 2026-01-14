@@ -27,9 +27,15 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Data")
 	class UDataTable* SkillDataTable;
 
-	// === [수정] Protected로 이동 (블루프린트 접근 허용을 위해) ===
+	// [수정] 스킬 쿨타임 관리용 변수들 (타임스탬프 방식)
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat")
 	float JobAbilityCooldownTime = 0.f;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat")
+	float Skill1ReadyTime = 0.f;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat")
+	float Skill2ReadyTime = 0.f;
 
 	UPROPERTY(EditAnywhere, Category = "Combat")
 	float AttackForwardForce = 300.f;
@@ -50,7 +56,7 @@ private:
 	UFUNCTION(NetMulticast, Unreliable)
 	void Multicast_PlaySlamFX();
 
-	// === [스킬 1: 야스오 궁 (구 직업능력)] ===
+	// === [스킬 1: 야스오 궁] ===
 	AActor* FindBestAirborneTarget();
 
 	UFUNCTION(Server, Reliable)
