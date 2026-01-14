@@ -9,7 +9,6 @@
 #include "TimerManager.h"
 #include "InputActionValue.h"
 #include "Kismet/GameplayStatics.h" // [필수] 데미지 처리를 위해 필요
-#include "Project_Bang_Squad/Game/Stage/StagePlayerController.h"
 
 ABaseCharacter::ABaseCharacter()
 {
@@ -89,6 +88,7 @@ float ABaseCharacter::TakeDamage(float DamageAmount, struct FDamageEvent const& 
 
 void ABaseCharacter::OnDeath()
 {
+	
 	// 이미 죽었으면 무시
 	if (bIsDead) return;
 	bIsDead = true;
@@ -119,14 +119,6 @@ void ABaseCharacter::OnDeath()
 	
 	GetWorldTimerManager().SetTimer(DeathTimerHandle, this, &ABaseCharacter::FreezeAnimation,
 		FreezeDelay, false);
-
-	// [추가] 컨트롤러에게 관전 시작 요청
-	if (AStagePlayerController* PC = Cast<AStagePlayerController>(GetController()))
-	{
-		// 약간의 딜레이 후 관전 전환 (죽는 모션 감상용)
-		FTimerHandle Handle;
-		GetWorldTimerManager().SetTimer(Handle, PC, &AStagePlayerController::StartSpectating, 2.0f, false);
-	}
 }
 
 void ABaseCharacter::FreezeAnimation()
