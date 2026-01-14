@@ -35,6 +35,66 @@ void ATitanCharacter::Tick(float DeltaTime)
 	if (!bIsGrabbing) { UpdateHoverHighlight(); }
 }
 
+void ATitanCharacter::OnDeath()
+{
+	// 이미 죽었으면 무시
+	if (bIsDead) return;
+	
+	// [잡기 시스템 정리] 죽는 순간 잡고 있던 놈을 놔줘야 함
+	if (bIsGrabbing && GrabbedActor)
+	{
+		// 손에서 떼어내기
+		GrabbedActor->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+		
+		// 잡혀 있던 사람의 물리/AI 상태 복구
+		if (ACharacter* Victim = Cast<ACharacter>(GrabbedActor))
+		{
+			SetHeldState(Victim, false);
+			
+			// 땅으로 떨어지게 무브먼트 모드 변경
+			if (Victim->GetCharacterMovement())
+			{
+				Victim->GetCharacterMovement()->SetMovementMode(MOVE_Falling);
+			}
+		}
+		else if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(GrabbedActor))
+		{
+			// 사물이라면 물리 다시 켜주기
+			RootComp->SetSimulatePhysics(true);
+		}
+		
+		GrabbedActor = nullptr;
+		bIsGrabbing = false;
+		GetWorldTimerManager().ClearTimer(GrabTimerHandle);
+	}
+	
+	// [돌진 시스템 정리] 돌진 중에 죽으면 미끄러짐 방지
+	if (bIsCharging)
+	{
+		// StopCharge를 호출해서 마찰력 중력 콜리전 설정을 원래대로 되돌려놓음
+		StopCharge();
+		GetWorldTimerManager().ClearTimer(ChargeTimerHandle);
+	}
+	
+	// 하이라이트 끄기
+	if (HoveredActor)
+	{
+		SetHighlight(HoveredActor, false);
+		HoveredActor = nullptr;
+	}
+	
+	// 타이머들 정리
+	GetWorldTimerManager().ClearTimer(CooldownTimerHandle);
+	GetWorldTimerManager().ClearTimer(Skill2CooldownTimerHandle);
+	
+	// 몽타주 정지
+	StopAnimMontage();
+	
+	// 부모 클래스 사망 로직
+	Super::OnDeath();
+}
+
+
 void ATitanCharacter::ProcessSkill(FName SkillRowName, FName StartSectionName)
 {
 	if (!SkillDataTable) { return; }
@@ -173,6 +233,8 @@ void ATitanCharacter::ThrowTarget()
 
 void ATitanCharacter::JobAbility()
 {
+	// 죽었으면 불가
+	if (bIsDead) return;
 	if (bIsCooldown)
 	{
 		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Yellow, TEXT("Ability on Cooldown..."));
@@ -185,6 +247,8 @@ void ATitanCharacter::JobAbility()
 
 void ATitanCharacter::Attack()
 {
+	// 죽었으면 불가
+	if (bIsDead) return;
 	// 데이터 테이블에 "NormalAttack" (또는 "Attack") 키로 평타 데이터가 설정되어 있어야 합니다.
 	ProcessSkill(TEXT("Attack"));
 }
@@ -323,9 +387,17 @@ void ATitanCharacter::ResetCooldown()
 	if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Green, TEXT("Job Ability Ready!"));
 }
 
-void ATitanCharacter::Skill1() { ProcessSkill(TEXT("Skill1")); }
+void ATitanCharacter::Skill1()
+{
+	// 죽었으면 불가
+	if (bIsDead) return;
+	ProcessSkill(TEXT("Skill1"));
+}
 void ATitanCharacter::Skill2()
 {
+	// 죽었으면 불가
+	if (bIsDead) return;
+	
 	// 쿨타임이면 실행 안 함
 	if (bIsSkill2Cooldown)
 	{
@@ -460,6 +532,8 @@ void ATitanCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 	// 잡고 있는 대상을 네트워크 동기화 목록에 추가
 	DOREPLIFETIME(ATitanCharacter, GrabbedActor);
 }
+
+
 
 // [벽 충돌] 벽에 박으면 멈춤
 void ATitanCharacter::OnChargeHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
