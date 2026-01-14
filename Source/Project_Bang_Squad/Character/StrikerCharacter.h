@@ -2,6 +2,8 @@
 
 #include "CoreMinimal.h"
 #include "Project_Bang_Squad/Character/Base/BaseCharacter.h"
+#include "Misc/Optional.h"
+#include "Engine/TextureDefines.h"
 #include "StrikerCharacter.generated.h"
 
 UCLASS()
@@ -14,43 +16,45 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
-
-	// [중요] 착지 감지 (찍기 스킬 판정용)
 	virtual void Landed(const FHitResult& Hit) override;
 
-	// 평타
+	// === 스킬 오버라이드 ===
 	virtual void Attack() override;
-
-	// 스킬
 	virtual void Skill1() override;
-	virtual void Skill2() override; // 공중 찍기
-
-	// 직업 능력 (야스오 궁)
+	virtual void Skill2() override;
 	virtual void JobAbility() override;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Data")
 	class UDataTable* SkillDataTable;
 
+	// === [수정] Protected로 이동 (블루프린트 접근 허용을 위해) ===
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat")
+	float JobAbilityCooldownTime = 0.f;
+
+	UPROPERTY(EditAnywhere, Category = "Combat")
+	float AttackForwardForce = 300.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat|Skill1")
+	float Skill1RequiredHeight = 150.0f;
+
 private:
-	// 공통 스킬 처리
+	// 공통 스킬 데이터 처리
 	void ProcessSkill(FName SkillRowName);
 
-	/* === Skill 2 (공중 찍기) 관련 === */
+	// === [스킬 2: 공중 찍기] ===
 	bool bIsSlamming = false;
 
-	// 착지 시 주변 적 처리 (서버)
 	UFUNCTION(Server, Reliable)
 	void Server_Skill2Impact();
 
-	// 착지 이펙트 (멀티캐스트)
 	UFUNCTION(NetMulticast, Unreliable)
 	void Multicast_PlaySlamFX();
 
-	/* === 직업 능력 (야스오 궁) 관련 === */
+	// === [스킬 1: 야스오 궁 (구 직업능력)] ===
 	AActor* FindBestAirborneTarget();
 
 	UFUNCTION(Server, Reliable)
-	void Server_TryJobAbility(AActor* TargetActor);
+	void Server_TrySkill1(AActor* TargetActor);
 
 	void SuspendTarget(ACharacter* Target);
 
@@ -58,5 +62,9 @@ private:
 	void ReleaseTarget(ACharacter* Target);
 
 	UFUNCTION(NetMulticast, Unreliable)
-	void Multicast_PlayJobAbilityFX(AActor* Target);
+	void Multicast_PlaySkill1FX(AActor* Target);
+
+	// === [직업 능력: 전방 띄우기] ===
+	UFUNCTION(Server, Reliable)
+	void Server_UseJobAbility();
 };

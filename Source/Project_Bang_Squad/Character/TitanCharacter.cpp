@@ -16,7 +16,6 @@
 ATitanCharacter::ATitanCharacter()
 {
 	PrimaryActorTick.bCanEverTick = true;
-	GetCharacterMovement()->MaxWalkSpeed = 450.f;
 }
 
 void ATitanCharacter::BeginPlay()
