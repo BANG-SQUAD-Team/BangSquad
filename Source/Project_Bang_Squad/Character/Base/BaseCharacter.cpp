@@ -9,6 +9,7 @@
 #include "TimerManager.h"
 #include "InputActionValue.h"
 #include "Kismet/GameplayStatics.h" // [필수] 데미지 처리를 위해 필요
+#include "Project_Bang_Squad/Game/Stage/StagePlayerController.h"
 
 ABaseCharacter::ABaseCharacter()
 {
@@ -86,39 +87,74 @@ float ABaseCharacter::TakeDamage(float DamageAmount, struct FDamageEvent const& 
 	return ActualDamage;
 }
 
+// BaseCharacter.cpp
+
 void ABaseCharacter::OnDeath()
 {
+    // 이미 죽었으면 무시
+    if (bIsDead) return;
+    bIsDead = true;
+    
+    // 1. 컨트롤러 입력 차단
+    if (Controller)
+    {
+       Controller->SetIgnoreMoveInput(true);
+       Controller->SetIgnoreLookInput(true);
+    }
+
+    // =========================================================
+    // 이동 및 물리 설정 (공중부양 방지)
+    // =========================================================
+    // A. 관성 제거 (미끄러짐 방지)
+    GetCharacterMovement()->StopMovementImmediately();
+    // B. 중력/낙하 상태 강제 적용 (DisableMovement 절대 금지!)
+    GetCharacterMovement()->GravityScale = 1.0f; // 혹시 0으로 바뀐 상태면 복구
+    GetCharacterMovement()->SetMovementMode(MOVE_Falling); // "떨어져라!"
+    // C. 캡슐 충돌 설정: "사람은 통과, 바닥은 충돌"
+    if (GetCapsuleComponent())
+    {
+        // 충돌 자체는 켜둠 (QueryAndPhysics)
+        GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+        
+        // 카메라는 통과 (줌인 방지)
+        GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+        
+        // 다른 캐릭터(Pawn)는 통과 (길막 방지)
+        GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+        
+        // 땅(WorldStatic)은 막음 (바닥에 닿아야 함) -> 기본이 Block이라 굳이 안 써도 되지만 확실하게 명시
+        GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
+    }
+    GetMesh()->SetCollisionProfileName(TEXT("NoCollision"));
+    // =========================================================
+    // 4. 사망 몽타주 재생 및 소멸 예약
+    // =========================================================
+    float MontageDuration = 0.0f;
+    if (DeathMontage)
+    {
+       MontageDuration = PlayAnimMontage(DeathMontage);
+    }
+    else
+    {
+        MontageDuration = 2.0f; // 몽타주 없으면 기본 2초
+    }
+
+    // 5. 애니메이션 굳히기 (Freeze) 
+    // 시체가 마지막 포즈로 딱 멈춰있게 하려면 유지, 아니면 생략 가능
+    float FreezeDelay = (MontageDuration > 0.0f) ? (MontageDuration - 0.1f) : 0.0f;
+    GetWorldTimerManager().SetTimer(DeathTimerHandle, this, &ABaseCharacter::FreezeAnimation, FreezeDelay, false);
+
 	
-	// 이미 죽었으면 무시
-	if (bIsDead) return;
-	bIsDead = true;
 	
-	// 1. 컨트롤러 입력 차단 (이동 불가)
-	if (Controller)
+	// 컨트롤러에게 관전 시작 요청
+	if (AStagePlayerController* PC = Cast<AStagePlayerController>(GetController()))
 	{
-		Controller->SetIgnoreMoveInput(true);
-		Controller->SetIgnoreLookInput(true);
+		// 약간의 딜레이 후 관전 전환
+		FTimerHandle Handle;
+		GetWorldTimerManager().SetTimer(Handle,PC,&AStagePlayerController::StartSpectating, 2.0f, false);
 	}
-	// 2. 이동 멈추기 (관성 제거)
-	GetCharacterMovement()->StopMovementImmediately();
-	GetCharacterMovement()->DisableMovement(); // 중력 이동 등 로직 중단
 	
-	// 3. 캡슐 컴포넌트 충돌 끄기 (다른 사람이 통과할 수 있게)
-	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	
-	GetMesh()->SetCollisionProfileName(TEXT("NoCollision"));
-	// 4. 사망 몽타주 재생
-	float MontageDuration = 0.0f;
-	if (DeathMontage)
-	{
-		MontageDuration = PlayAnimMontage(DeathMontage);
-	}
-	// 5. 몽타주가 끝나는 시점에 몸을 굳히기 (Freeze) 위해 타이머 설정
-	// 몽타주가 없으면 0초 뒤 바로 굳음
-	float FreezeDelay = (MontageDuration > 0.0f) ? (MontageDuration - 0.1f) : 0.0f; // 0.1초 정도 여유를 두고
-	
-	GetWorldTimerManager().SetTimer(DeathTimerHandle, this, &ABaseCharacter::FreezeAnimation,
-		FreezeDelay, false);
 }
 
 void ABaseCharacter::FreezeAnimation()
