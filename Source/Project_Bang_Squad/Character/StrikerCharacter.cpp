@@ -55,13 +55,27 @@ void AStrikerCharacter::OnDeath()
 	Super::OnDeath();
 }
 
-// =============================================================
-// [��Ÿ] �پ����� ��Ÿ��
-// =============================================================
 void AStrikerCharacter::Attack()
 {
-	if (bIsDead) return;
-	
+	// 1. ��Ÿ�� �� ���� Ȯ��
+	if (!CanAttack()) return;
+
+	// 2. ������ ���̺����� ��Ÿ�� ����
+	if (SkillDataTable)
+	{
+		static const FString ContextString(TEXT("StrikerAttack"));
+		FSkillData* Row = SkillDataTable->FindRow<FSkillData>(TEXT("Attack"), ContextString);
+		// ������ ���̺��� ���� �ְ� 0���� ũ�� �� ������ ��Ÿ�� ����
+		if (Row && Row->Cooldown > 0.0f)
+		{
+			AttackCooldownTime = Row->Cooldown;
+		}
+	}
+
+	// 3. ��Ÿ�� ���� (BaseCharacter ���)
+	StartAttackCooldown();
+
+	// 4. ����
 	ProcessSkill(TEXT("Attack"));
 
 	FVector ForwardDir = GetActorForwardVector();
@@ -69,23 +83,47 @@ void AStrikerCharacter::Attack()
 	LaunchCharacter(LaunchVel, true, false);
 }
 
+// =============================================================
+// [��ų 1] �߽��� �� (������ ���̺� ��Ÿ�� ����)
+// =============================================================
 void AStrikerCharacter::Skill1()
 {
-	if (bIsDead) return;
-	
+	// 1. ��Ÿ�� üũ (���� �ð��� �غ� �ð����� ������ ��Ÿ�� ��)
+	float CurrentTime = GetWorld()->GetTimeSeconds();
+	if (CurrentTime < Skill1ReadyTime)
+	{
+		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Yellow, TEXT("Skill1 Cooldown!"));
+		return;
+	}
+
 	// [�α� 1] Ű �Է� Ȯ��
 	if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Yellow, TEXT(">> [Skill1] Input Pressed!"));
 
 	AActor* Target = FindBestAirborneTarget();
 	if (Target)
 	{
+		// 2. ��Ÿ�� ���� (������ ���̺� ��ȸ)
+		float ActualCooldown = 0.0f; // �⺻��
+		if (SkillDataTable)
+		{
+			static const FString ContextString(TEXT("StrikerSkill1Cooldown"));
+			FSkillData* Data = SkillDataTable->FindRow<FSkillData>(TEXT("Skill1"), ContextString);
+			if (Data && Data->Cooldown > 0.0f)
+			{
+				ActualCooldown = Data->Cooldown;
+			}
+		}
+
+		// ��Ÿ�� ����: ���� �ð� + ��Ÿ��
+		Skill1ReadyTime = CurrentTime + ActualCooldown;
+
 		// [�α� 2] Ÿ�� �߰� ����
 		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Green, FString::Printf(TEXT(">> [Skill1] Client: Found Target [%s]"), *Target->GetName()));
 		Server_TrySkill1(Target);
 	}
 	else
 	{
-		// [�α� 3] Ÿ�� ���� -> ���⼭ �߸� FindBestAirborneTarget ���� ����
+		// [�α� 3] Ÿ�� ����
 		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, TEXT(">> [Skill1] Client: No Airborne Target Found!"));
 	}
 }
@@ -107,7 +145,7 @@ AActor* AStrikerCharacter::FindBestAirborneTarget()
 {
 	FVector MyLoc = GetActorLocation();
 	FVector CamFwd = GetControlRotation().Vector();
-	CamFwd.Z = 0.f; // ���� �þ�
+	CamFwd.Z = 0.f;
 	CamFwd.Normalize();
 
 	TArray<AActor*> OverlappingActors;
@@ -125,27 +163,20 @@ AActor* AStrikerCharacter::FindBestAirborneTarget()
 		ACharacter* CharActor = Cast<ACharacter>(Actor);
 		if (!CharActor) continue;
 
-		// 1. ���� �Ǻ� (EnemyNormal �Ǵ� EnemyMidBoss)
 		bool bIsNormal = Actor->IsA(AEnemyNormal::StaticClass());
 		bool bIsMidBoss = Actor->IsA(AEnemyMidBoss::StaticClass());
 
-		// ���� �ƴϸ�(�����̸�) 1�� ��ų ��� �ƴ� -> �н�
+		// ����(Normal, MidBoss)�� ���
 		if (!bIsNormal && !bIsMidBoss) continue;
 
-		// 2. ���� üũ
 		bool bIsFalling = CharActor->GetCharacterMovement()->IsFalling();
-		// (�׽�Ʈ�� ���� true �ʿ��ϸ� �ּ� ����)
-		// bIsFalling = true; 
 
 		if (bIsFalling)
 		{
-			// 3. [�߰�] ���� üũ (������ �󸶳� ������)
-			// ���� �߹� ���� - �� �߹� ����
 			float HeightDiff = CharActor->GetActorLocation().Z - MyLoc.Z;
 
 			if (HeightDiff < Skill1RequiredHeight)
 			{
-				// �ʹ� ���� �� ������ �� ��
 				continue;
 			}
 
@@ -168,7 +199,6 @@ AActor* AStrikerCharacter::FindBestAirborneTarget()
 
 void AStrikerCharacter::Server_TrySkill1_Implementation(AActor* TargetActor)
 {
-	// [�α� 7] ���� ���� Ȯ��
 	if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Blue, TEXT(">> [Server] Request Received"));
 
 	ACharacter* TargetChar = Cast<ACharacter>(TargetActor);
@@ -177,7 +207,6 @@ void AStrikerCharacter::Server_TrySkill1_Implementation(AActor* TargetActor)
 	float DistSq = FVector::DistSquared(GetActorLocation(), TargetActor->GetActorLocation());
 	if (DistSq > 1500.f * 1500.f)
 	{
-		// [�α� 8] �Ÿ� �ʹ� ����
 		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, TEXT(">> [Server] Target too far!"));
 		return;
 	}
@@ -191,7 +220,6 @@ void AStrikerCharacter::Server_TrySkill1_Implementation(AActor* TargetActor)
 
 		if (Data)
 		{
-			// [�α� 9] ������ ���̺� �ε� ���� �� ��� Ȯ��
 			if (!IsSkillUnlocked(Data->RequiredStage))
 			{
 				if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, TEXT(">> [Server] Skill Locked!"));
@@ -202,13 +230,11 @@ void AStrikerCharacter::Server_TrySkill1_Implementation(AActor* TargetActor)
 		}
 		else
 		{
-			// [�α� 10] ������ ���̺� �ο� ����
 			if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, TEXT(">> [Server] 'Skill1' Row Not Found in DataTable!"));
 		}
 	}
 	else
 	{
-		// [�α� 11] ������ ���̺� ��ü�� Null
 		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, TEXT(">> [Server] SkillDataTable is NULL!"));
 	}
 
@@ -248,21 +274,34 @@ void AStrikerCharacter::Multicast_PlaySkill1FX_Implementation(AActor* Target)
 }
 
 // =============================================================
-// [���� �ɷ�] ���� ���簢�� ���� ����
+// [���� �ɷ�] ���� ���簢�� ���� ���� (������ ���̺� ��Ÿ�� ����)
 // =============================================================
 void AStrikerCharacter::JobAbility()
 {
-	if (bIsDead) return;
+	// 1. ��Ÿ�� üũ
 	float CurrentTime = GetWorld()->GetTimeSeconds();
 	if (CurrentTime < JobAbilityCooldownTime)
 	{
-		// [����] FColor::Gray -> FColor::Silver
 		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Silver, TEXT("Job Ability Cooldown!"));
 		return;
 	}
 
+	// 2. ��Ÿ�� �� ��������
+	float ActualCooldown = 5.0f; // �⺻��
+	if (SkillDataTable)
+	{
+		static const FString ContextString(TEXT("StrikerJobCooldown"));
+		FSkillData* Data = SkillDataTable->FindRow<FSkillData>(TEXT("JobAbility"), ContextString);
+		if (Data && Data->Cooldown > 0.0f)
+		{
+			ActualCooldown = Data->Cooldown;
+		}
+	}
+
 	Server_UseJobAbility();
-	JobAbilityCooldownTime = CurrentTime + 5.0f;
+
+	// 3. ��Ÿ�� ����
+	JobAbilityCooldownTime = CurrentTime + ActualCooldown;
 }
 
 void AStrikerCharacter::Server_UseJobAbility_Implementation()
@@ -270,7 +309,6 @@ void AStrikerCharacter::Server_UseJobAbility_Implementation()
 	float AbilityDamage = 50.f;
 	ProcessSkill(TEXT("JobAbility"));
 
-	// ������ ���̺� ������ ��������
 	if (SkillDataTable)
 	{
 		static const FString ContextString(TEXT("Striker JobAbility Damage"));
@@ -296,36 +334,51 @@ void AStrikerCharacter::Server_UseJobAbility_Implementation()
 
 		bool bIsNormal = Actor->IsA(AEnemyNormal::StaticClass());
 		bool bIsMidBoss = Actor->IsA(AEnemyMidBoss::StaticClass());
-		bool bIsBaseChar = Actor->IsA(ABaseCharacter::StaticClass()); // ���� ����
+		bool bIsBaseChar = Actor->IsA(ABaseCharacter::StaticClass());
 
-		// 1. EnemyNormal (�̸�): ������ O, ���� O
 		if (bIsNormal)
 		{
 			UGameplayStatics::ApplyDamage(TargetChar, AbilityDamage, GetController(), this, UDamageType::StaticClass());
-
 			FVector LaunchVel = FVector(0.f, 0.f, 1000.f);
 			TargetChar->LaunchCharacter(LaunchVel, true, true);
 		}
-		// 2. Team (����): ������ X, ���� O (ȿ�� ����)
 		else if (bIsBaseChar && !bIsNormal && !bIsMidBoss)
 		{
 			FVector LaunchVel = FVector(0.f, 0.f, 1000.f);
 			TargetChar->LaunchCharacter(LaunchVel, true, true);
 		}
-		// 3. Boss (����): �鿪 (�ƹ��͵� �� ��)
-		// (������ ���ſ��� �� ��ٴ� ����)
 	}
 }
 
 // =============================================================
-// [��ų 2] ���� ���
+// [��ų 2] ���� ��� (������ ���̺� ��Ÿ�� ����)
 // =============================================================
 void AStrikerCharacter::Skill2()
 {
-	if (bIsDead) return; 
-	
+	// 1. ��Ÿ�� üũ
+	float CurrentTime = GetWorld()->GetTimeSeconds();
+	if (CurrentTime < Skill2ReadyTime)
+	{
+		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Yellow, TEXT("Skill2 Cooldown!"));
+		return;
+	}
+
 	if (GetCharacterMovement()->IsFalling())
 	{
+		// 2. ��Ÿ�� ���� (���� ���� �ÿ���)
+		float ActualCooldown = 0.0f;
+		if (SkillDataTable)
+		{
+			static const FString ContextString(TEXT("StrikerSkill2Cooldown"));
+			FSkillData* Data = SkillDataTable->FindRow<FSkillData>(TEXT("Skill2"), ContextString);
+			if (Data && Data->Cooldown > 0.0f)
+			{
+				ActualCooldown = Data->Cooldown;
+			}
+		}
+		// ���� ��� ���� �ð� = ���� �ð� + ��Ÿ��
+		Skill2ReadyTime = CurrentTime + ActualCooldown;
+
 		ProcessSkill(TEXT("Skill2"));
 		FVector SlamVelocity = FVector(0.f, 0.f, -3000.f);
 		LaunchCharacter(SlamVelocity, true, true);
@@ -366,23 +419,19 @@ void AStrikerCharacter::Server_Skill2Impact_Implementation()
 		bool bIsMidBoss = Actor->IsA(AEnemyMidBoss::StaticClass());
 		bool bIsBaseChar = Actor->IsA(ABaseCharacter::StaticClass());
 
-		// 1. EnemyNormal (�̸�): ������ O + ��ܿ���
 		if (bIsNormal)
 		{
 			UGameplayStatics::ApplyDamage(TargetChar, SlamDamage, GetController(), this, UDamageType::StaticClass());
-
 			FVector PullDir = (MyLoc - TargetChar->GetActorLocation()).GetSafeNormal();
 			FVector PullVel = (PullDir * 1500.f) + FVector(0.f, 0.f, 300.f);
 			TargetChar->LaunchCharacter(PullVel, true, true);
 		}
-		// 2. Team (����): ������ X + ���ĳ��� (ȿ�� ����)
 		else if (bIsBaseChar && !bIsMidBoss)
 		{
 			FVector PushDir = (TargetChar->GetActorLocation() - MyLoc).GetSafeNormal();
 			FVector PushVel = (PushDir * 800.f) + FVector(0.f, 0.f, 200.f);
 			TargetChar->LaunchCharacter(PushVel, true, true);
 		}
-		// 3. Boss (����): �鿪 (2�� ��ų�� �̸���)
 	}
 }
 

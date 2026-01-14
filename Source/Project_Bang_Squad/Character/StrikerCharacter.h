@@ -28,9 +28,15 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Data")
 	class UDataTable* SkillDataTable;
 
-	// === [����] Protected�� �̵� (�������Ʈ ���� ����� ����) ===
+	// [����] ��ų ��Ÿ�� ������ ������ (Ÿ�ӽ����� ���)
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat")
 	float JobAbilityCooldownTime = 0.f;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat")
+	float Skill1ReadyTime = 0.f;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat")
+	float Skill2ReadyTime = 0.f;
 
 	UPROPERTY(EditAnywhere, Category = "Combat")
 	float AttackForwardForce = 300.f;
@@ -51,7 +57,7 @@ private:
 	UFUNCTION(NetMulticast, Unreliable)
 	void Multicast_PlaySlamFX();
 
-	// === [��ų 1: �߽��� �� (�� �����ɷ�)] ===
+	// === [��ų 1: �߽��� ��] ===
 	AActor* FindBestAirborneTarget();
 
 	UFUNCTION(Server, Reliable)

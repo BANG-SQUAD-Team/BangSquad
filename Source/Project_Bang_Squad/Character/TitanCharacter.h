@@ -19,35 +19,34 @@ protected:
 	virtual void Tick(float DeltaTime) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
-	// 부모 (BaseCharacter)의 OnDeath 상속
-	virtual void OnDeath()override;
-	
-	// =============================================================
-	// �Է� ���ε� �Լ� (Override)
-	// =============================================================
-	virtual void JobAbility() override; // ���/������
-	virtual void Attack() override;     // ��Ÿ
-	virtual void Skill1() override;     // �̱��� (����)
-	virtual void Skill2() override;     // ���� (Charge)
+	virtual void OnDeath() override;
 
-	// ��ų ���� ó�� (��Ÿ�� ��� �� ���� ����)
+	// =============================================================
+	// 입력 바인딩 함수 (Override)
+	// =============================================================
+	virtual void JobAbility() override; // 잡기/던지기
+	virtual void Attack() override;     // 평타
+	virtual void Skill1() override;     // 내려찍기 (지진)
+	virtual void Skill2() override;     // 돌진 (Charge)
+
+	// 스킬 몽타주 재생 처리
 	void ProcessSkill(FName SkillRowName, FName StartSectionName = NAME_None);
 
-	// ��� ��� ���̶���Ʈ ����
+	// 마우스 오버 하이라이트
 	void UpdateHoverHighlight();
 
 private:
 	// =============================================================
-	// [Job Ability] ��� & ������ ���� ����
+	// [Job Ability] 잡기 & 던지기
 	// =============================================================
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	bool bIsGrabbing = false;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
-	bool bIsCooldown = false; // ��� ��Ÿ��
+	bool bIsCooldown = false; // 직업 스킬 쿨타임 체크용
 
-	UPROPERTY(Replicated) // ��Ƽ�÷��� ����ȭ
-		AActor* GrabbedActor = nullptr;
+	UPROPERTY(Replicated)
+	AActor* GrabbedActor = nullptr;
 
 	UPROPERTY()
 	AActor* HoveredActor = nullptr;
@@ -59,63 +58,64 @@ private:
 	float GrabMaxDuration = 5.0f;
 	float ThrowCooldownTime = 3.0f;
 
-	// ��� ���� ����
 	void TryGrab();
 	void ThrowTarget();
 	void ResetCooldown();
 	void SetHighlight(AActor* Target, bool bEnable);
 
-	// ��Ҵ� Ǯ���� ĳ���� ���� ����
 	UFUNCTION()
 	void RecoverCharacter(ACharacter* Victim);
 
-	// ������ �� AI/���� ����
 	void SetHeldState(ACharacter* Target, bool bIsHeld);
 
 public:
-	// �ִϸ��̼� ��Ƽ���̿��� ȣ���� �Լ� (���� ���� Ÿ�̹�)
+	// 애니메이션 노티파이에서 호출될 함수
 	UFUNCTION(BlueprintCallable)
 	void ExecuteGrab();
 
 protected:
-	// ���� ��ų ���� ���� ��û
+	// [Skill 2] 돌진
 	UFUNCTION(Server, Reliable)
 	void Server_Skill2();
 
-	// ���� �浹 ���� (Overlap)
 	UFUNCTION()
 	void OnChargeOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
 
-	// ���� �� �浹 ���� (Hit)
 	UFUNCTION()
 	void OnChargeHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
 
 	void StopCharge();
 	void ResetSkill2Cooldown();
 
+	// [Skill 1] 지진 (이 부분이 없어서 에러가 났던 것임)
+	void ResetSkill1Cooldown();
+
 private:
+	// 돌진 관련
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	bool bIsCharging = false;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	bool bIsSkill2Cooldown = false;
 
-	// ���� �� �ߺ� �ǰ� ������
+	// [Skill 1] 쿨타임 관련 (이 변수들이 없어서 에러가 났던 것임)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
+	bool bIsSkill1Cooldown = false;
+
 	UPROPERTY()
 	TArray<AActor*> HitVictims;
 
 	FTimerHandle Skill2CooldownTimerHandle;
 	FTimerHandle ChargeTimerHandle;
+	FTimerHandle Skill1CooldownTimerHandle; // 타이머 핸들
 
-	// �뷱�� ������
-	float Skill2CooldownTime = 5.0f; // ��Ÿ��
-	float CurrentSkillDamage = 0.0f; // ���������̺��� ������
+	float Skill2CooldownTime = 5.0f;
+	float Skill1CooldownTime = 3.0f; // 기본 쿨타임
 
-	// ���� ������ ��� ����
+	float CurrentSkillDamage = 0.0f;
 	float DefaultGroundFriction;
 	float DefaultGravityScale;
 
-	/** Ÿ��ź ��ų ������ ���̺� */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Data", meta = (AllowPrivateAccess = "true"))
 	class UDataTable* SkillDataTable;
 };
