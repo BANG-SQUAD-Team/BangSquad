@@ -229,6 +229,24 @@ float AEnemyMidBoss::PlayHitReactAnim()
 	return 0.0f;
 }
 
+float AEnemyMidBoss::PlaySlashAttack()
+{
+	// 1. 서버 권한 체크
+	if (!HasAuthority()) return 0.0f;
+
+	// 2. 데이터 에셋에 몽타주가 있는지 확인
+	// (참고: BossData 구조체에 SlashAttackMontage 변수가 있어야 합니다!)
+	if (BossData && BossData->SlashAttackMontage)
+	{
+		// 3. 멀티캐스트로 재생 (서버+클라 모두 재생)
+		Multicast_PlayAttackMontage(BossData->SlashAttackMontage);
+
+		// 4. 애니메이션 길이 리턴 (AI 타이머용)
+		return BossData->SlashAttackMontage->GetPlayLength();
+	}
+
+	return 0.0f;
+}
 // --- [Phase Control] ---
 
 void AEnemyMidBoss::SetPhase(EMidBossPhase NewPhase)

@@ -55,6 +55,7 @@ public:
 	float PlayAggroAnim();
 	float PlayRandomAttack();
 	float PlayHitReactAnim();
+	float PlaySlashAttack();
 
 	// [NEW] AnimNotify에서 호출할 발사 함수
 	UFUNCTION(BlueprintCallable, Category = "Combat")
@@ -62,6 +63,7 @@ public:
 
 	// [NEW] AI가 호출할 패턴 시작 함수
 	void PlaySlashPattern();
+
 
 protected:
 	virtual void BeginPlay() override;

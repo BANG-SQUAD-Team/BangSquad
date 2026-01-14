@@ -53,6 +53,9 @@ protected:
 	// [NEW] 랜덤 타겟 변경 함수 (일정 시간마다 실행)
 	void UpdateRandomTarget();
 
+	// [NEW] 타겟이 죽었는지(시체인지) 확인하는 함수
+	bool IsTargetDead(AActor* Actor);
+
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AI")
 	TObjectPtr<UAISenseConfig_Sight> SightConfig;
@@ -73,6 +76,12 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|Config")
 	float TargetChangeInterval = 5.0f; // 기본값 5초 (에디터 수정 가능)
+
+	// [NEW] 검기 스킬 설정
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|Combat")
+	float SlashSkillCooldown = 8.0f; // 8초마다 사용 가능
+
+	float LastSlashTime = -100.0f; // 초기엔 바로 쏠 수 있게 설정
 
 	// 한 번이라도 포효했는지 체크하는 플래그
 	bool bHasRoared = false;
