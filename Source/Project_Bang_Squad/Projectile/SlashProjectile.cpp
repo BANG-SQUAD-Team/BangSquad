@@ -21,7 +21,7 @@ ASlashProjectile::ASlashProjectile()
 	BoxComp->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	BoxComp->SetCollisionResponseToAllChannels(ECR_Ignore);
 	BoxComp->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);       // 캐릭터만 감지
-	BoxComp->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);  // 벽은 감지
+	BoxComp->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Overlap);  // 벽은 감지
 
 	RootComponent = BoxComp;
 
