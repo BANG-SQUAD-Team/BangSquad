@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "Project_Bang_Squad/Game/Lobby/LobbyGameMode.h"
@@ -91,7 +91,7 @@ void ALobbyGameMode::CheckAllReady()
 	//이동
 
 	//TODO: 4명으로 바꿔야함
-	if (bAllReady && GS->PlayerArray.Num() == 2)
+	if (bAllReady && GS->PlayerArray.Num() == 4)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[GameMode] ✅ 4인 전원 준비 완료! 직업 선택 페이즈로 전환합니다."));
 		GS->SetLobbyPhase(ELobbyPhase::SelectJob);
