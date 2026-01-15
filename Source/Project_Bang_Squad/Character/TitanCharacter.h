@@ -2,9 +2,9 @@
 
 #include "CoreMinimal.h"
 #include "Project_Bang_Squad/Character/Base/BaseCharacter.h"
-#include "Project_Bang_Squad/Character/Player/Titan/TitanRock.h"
 #include "TitanCharacter.generated.h"
 
+class ATitanRock;
 class AAIController;
 
 UCLASS()
@@ -16,32 +16,96 @@ public:
 	ATitanCharacter();
 
 protected:
+	// =================================================================
+	// [생명주기 및 오버라이드]
+	// =================================================================
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaTime) override;
+	virtual void OnDeath() override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
-	virtual void OnDeath() override;
+	// =================================================================
+	// [입력 핸들러] (클라이언트에서 최초 호출)
+	// =================================================================
+	virtual void Attack() override;      // 평타
+	virtual void JobAbility() override;  // 잡기/던지기
+	virtual void Skill1() override;      // 바위 던지기
+	virtual void Skill2() override;      // 돌진
 
-	virtual void JobAbility() override; 
-	virtual void Attack() override;    
-	virtual void Skill1() override;     
-	virtual void Skill2() override;    
+public:
+	// 몽타주 노티파이 등에서 호출될 수 있는 잡기 시도 함수
+	UFUNCTION(BlueprintCallable)
+	void ExecuteGrab();
 
+protected:
+	// =================================================================
+	// [네트워크: 평타 (Attack)]
+	// =================================================================
+	UFUNCTION(Server, Reliable)
+	void Server_Attack(FName SkillName);
+
+	UFUNCTION(NetMulticast, Unreliable)
+	void Multicast_Attack(FName SkillName);
+
+	// =================================================================
+	// [네트워크: 직업 스킬 (JobAbility - Grab/Throw)]
+	// =================================================================
+	UFUNCTION(Server, Reliable)
+	void Server_TryGrab(AActor* TargetToGrab); // 잡기 요청
+
+	UFUNCTION(Server, Reliable)
+	void Server_ThrowTarget(); // 던지기 요청
+
+	UFUNCTION()
+	void OnRep_GrabbedActor(); // 잡힌 상태 동기화 (핵심)
+
+	// =================================================================
+	// [네트워크: 스킬 1 (Rock Throw)]
+	// =================================================================
+	UFUNCTION(Server, Reliable)
+	void Server_Skill1();
+
+	void ThrowRock(); // 타이머에 의해 서버에서 호출됨
+
+	// =================================================================
+	// [네트워크: 스킬 2 (Charge)]
+	// =================================================================
+	UFUNCTION(Server, Reliable)
+	void Server_Skill2();
+
+	UFUNCTION()
+	void OnChargeOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+
+	UFUNCTION()
+	void OnChargeHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
+
+	// =================================================================
+	// [헬퍼 함수 및 변수]
+	// =================================================================
 	void ProcessSkill(FName SkillRowName, FName StartSectionName = NAME_None);
-
 	void UpdateHoverHighlight();
+	void SetHighlight(AActor* Target, bool bEnable);
+	void SetHeldState(ACharacter* Target, bool bIsHeld);
+
+	UFUNCTION()
+	void RecoverCharacter(ACharacter* Victim);
+
+	void StopCharge();
+	void ResetCooldown();
+	void ResetSkill1Cooldown();
+	void ResetSkill2Cooldown();
 
 private:
+	// 공격 관련
 	bool bIsNextAttackA = true;
+	float AttackCooldownTime = 0.f;
+
+	// 잡기 관련
+	UPROPERTY(ReplicatedUsing = OnRep_GrabbedActor) // 변수 변경 시 OnRep 자동 호출
+		AActor* GrabbedActor = nullptr;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	bool bIsGrabbing = false;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
-	bool bIsCooldown = false; 
-
-	UPROPERTY(Replicated)
-	AActor* GrabbedActor = nullptr;
 
 	UPROPERTY()
 	AActor* HoveredActor = nullptr;
@@ -53,79 +117,34 @@ private:
 	float GrabMaxDuration = 5.0f;
 	float ThrowCooldownTime = 3.0f;
 
-	void TryGrab();
-	void ThrowTarget();
-	void ResetCooldown();
-	void SetHighlight(AActor* Target, bool bEnable);
-
-	UFUNCTION()
-	void RecoverCharacter(ACharacter* Victim);
-
-	void SetHeldState(ACharacter* Target, bool bIsHeld);
-
-public:
-	UFUNCTION(BlueprintCallable)
-	void ExecuteGrab();
-
-protected:
-	UFUNCTION(Server, Reliable)
-	void Server_Skill1();
-
-	void ThrowRock();
-
-private:
-	// [추가] 생성할 바위 클래스 (블루프린트에서 설정)
+	// 스킬 1 (바위) 관련
 	UPROPERTY(EditDefaultsOnly, Category = "Skill|Rock")
 	TSubclassOf<ATitanRock> RockClass;
 
-	// [추가] 현재 들고 있는 바위
 	UPROPERTY()
 	ATitanRock* HeldRock = nullptr;
 
-	// [추가] 바위 던지는 힘
 	UPROPERTY(EditDefaultsOnly, Category = "Skill|Rock")
 	float RockThrowForce = 2500.0f;
 
-	// 던지는 타이밍 조절용 타이머
 	FTimerHandle RockThrowTimerHandle;
-
-protected:
-	UFUNCTION(Server, Reliable)
-	void Server_Skill2();
-
-	UFUNCTION()
-	void OnChargeOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
-
-	UFUNCTION()
-	void OnChargeHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
-
-	void StopCharge();
-	void ResetSkill2Cooldown();
-
-	// [Skill 1] 지진 (이 부분이 없어서 에러가 났던 것임)
-	void ResetSkill1Cooldown();
-
-private:
-	// 돌진 관련
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
-	bool bIsCharging = false;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
-	bool bIsSkill2Cooldown = false;
-
-	// [Skill 1] 쿨타임 관련 (이 변수들이 없어서 에러가 났던 것임)
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
+	FTimerHandle Skill1CooldownTimerHandle;
+	float Skill1CooldownTime = 3.0f;
 	bool bIsSkill1Cooldown = false;
+
+	// 스킬 2 (돌진) 관련
+	FTimerHandle Skill2CooldownTimerHandle;
+	FTimerHandle ChargeTimerHandle;
+	float Skill2CooldownTime = 5.0f;
+	bool bIsSkill2Cooldown = false;
+	bool bIsCharging = false;
 
 	UPROPERTY()
 	TArray<AActor*> HitVictims;
 
-	FTimerHandle Skill2CooldownTimerHandle;
-	FTimerHandle ChargeTimerHandle;
-	FTimerHandle Skill1CooldownTimerHandle; // 타이머 핸들
-
-	float Skill2CooldownTime = 5.0f;
-	float Skill1CooldownTime = 3.0f; // 기본 쿨타임
+	// 공통
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
+	bool bIsCooldown = false; 
 
 	float CurrentSkillDamage = 0.0f;
 	float DefaultGroundFriction;
