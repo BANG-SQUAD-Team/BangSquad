@@ -46,6 +46,7 @@ protected:
     
     FTimerHandle AttackHitTimerHandle;
     FTimerHandle HitLoopTimerHandle;
+    FTimerHandle ShieldBrokenTimerHandle;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
     float HitDuration = 0.25f; 
@@ -63,10 +64,8 @@ protected:
     int32 CurrentComboIndex = 0;
     FTimerHandle ComboResetTimer;
     void ResetCombo();
-    
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Data")
     UDataTable* SkillDataTable;
-    
     void ProcessSkill(FName SkillRowName);
     
     // =============================================================
@@ -74,6 +73,9 @@ protected:
     // =============================================================
     virtual void JobAbility() override;
     void EndJobAbility();
+    // 쿨타임 끝나면 방패를 풀피로 복구하는 함수
+    void RestoreShieldAfterCooldown();
+    
     
     // =============================================================
     // [방패 시스템]

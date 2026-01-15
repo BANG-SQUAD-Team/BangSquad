@@ -33,6 +33,7 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void Tick(float DeltaTime) override;
 	virtual void OnDeathStarted() override;
 	// ===== Chase =====
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AI|Chase")
@@ -66,6 +67,9 @@ protected:
 	
 
 private:
+	UPROPERTY()
+	TSet<AActor*> HitVictims;
+	
 	TWeakObjectPtr<APawn> TargetPawn;
 	FTimerHandle RepathTimer;
 
