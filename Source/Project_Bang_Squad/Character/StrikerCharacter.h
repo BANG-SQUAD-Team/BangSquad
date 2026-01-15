@@ -19,7 +19,6 @@ protected:
 	virtual void Landed(const FHitResult& Hit) override;
 	virtual void OnDeath() override;
 
-	// === ��ų �������̵� ===
 	virtual void Attack() override;
 	virtual void Skill1() override;
 	virtual void Skill2() override;
@@ -28,7 +27,6 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Data")
 	class UDataTable* SkillDataTable;
 
-	// [����] ��ų ��Ÿ�� ������ ������ (Ÿ�ӽ����� ���)
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat")
 	float JobAbilityCooldownTime = 0.f;
 
@@ -45,10 +43,10 @@ protected:
 	float Skill1RequiredHeight = 150.0f;
 
 private:
-	// ���� ��ų ������ ó��
+	bool bIsNextAttackA = true;
+
 	void ProcessSkill(FName SkillRowName);
 
-	// === [��ų 2: ���� ���] ===
 	bool bIsSlamming = false;
 
 	UFUNCTION(Server, Reliable)
@@ -57,7 +55,6 @@ private:
 	UFUNCTION(NetMulticast, Unreliable)
 	void Multicast_PlaySlamFX();
 
-	// === [��ų 1: �߽��� ��] ===
 	AActor* FindBestAirborneTarget();
 
 	UFUNCTION(Server, Reliable)

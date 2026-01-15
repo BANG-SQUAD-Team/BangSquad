@@ -57,35 +57,38 @@ void AStrikerCharacter::OnDeath()
 
 void AStrikerCharacter::Attack()
 {
-	// 1. ��Ÿ�� �� ���� Ȯ��
+	// 1. 공격 가능 여부 확인
 	if (!CanAttack()) return;
 
-	// 2. ������ ���̺����� ��Ÿ�� ����
+	// [수정] A/B 공격 분기 처리
+	FName SkillRowName = bIsNextAttackA ? TEXT("Attack_A") : TEXT("Attack_B");
+
+	// 2. 데이터 테이블에서 쿨타임 가져오기
 	if (SkillDataTable)
 	{
 		static const FString ContextString(TEXT("StrikerAttack"));
-		FSkillData* Row = SkillDataTable->FindRow<FSkillData>(TEXT("Attack"), ContextString);
-		// ������ ���̺��� ���� �ְ� 0���� ũ�� �� ������ ��Ÿ�� ����
+		// 동적으로 결정된 SkillRowName으로 데이터 조회
+		FSkillData* Row = SkillDataTable->FindRow<FSkillData>(SkillRowName, ContextString);
+
 		if (Row && Row->Cooldown > 0.0f)
 		{
 			AttackCooldownTime = Row->Cooldown;
 		}
 	}
 
-	// 3. ��Ÿ�� ���� (BaseCharacter ���)
+	// 3. 쿨타임 적용 (BaseCharacter 로직)
 	StartAttackCooldown();
 
-	// 4. ����
-	ProcessSkill(TEXT("Attack"));
+	// 4. 실행 (결정된 스킬 이름으로)
+	ProcessSkill(SkillRowName);
 
 	FVector ForwardDir = GetActorForwardVector();
 	FVector LaunchVel = ForwardDir * AttackForwardForce;
 	LaunchCharacter(LaunchVel, true, false);
+
+	bIsNextAttackA = !bIsNextAttackA;
 }
 
-// =============================================================
-// [��ų 1] �߽��� �� (������ ���̺� ��Ÿ�� ����)
-// =============================================================
 void AStrikerCharacter::Skill1()
 {
 	// 1. ��Ÿ�� üũ (���� �ð��� �غ� �ð����� ������ ��Ÿ�� ��)
