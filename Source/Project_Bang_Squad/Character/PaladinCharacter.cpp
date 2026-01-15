@@ -70,6 +70,7 @@ void APaladinCharacter::BeginPlay()
         bIsShieldBroken = false;
     }
     
+    // 내 몸이랑 방패랑 부딪히지 않게 하기
     if (GetCapsuleComponent() && ShieldMeshComp)
     {
         GetCapsuleComponent()->IgnoreComponentWhenMoving(ShieldMeshComp, true);
@@ -87,6 +88,9 @@ void APaladinCharacter::BeginPlay()
             break; 
         }
     }
+    
+    // 시작하자마자 강제로 방패 끄기 로직 실행 (콜리전 죽여놓고 시작)
+    SetShieldActive(false);
 }
 
 void APaladinCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)

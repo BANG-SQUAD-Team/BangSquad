@@ -94,6 +94,8 @@ protected:
 	// 중복 사망 방지용 플래그
 	bool bIsDead = false;
 	
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_Death();
 	
 	// 죽을 때 재생할 몽타주 (에디터에서 지정)
 	UPROPERTY(EditDefaultsOnly, Category = "Combat")
