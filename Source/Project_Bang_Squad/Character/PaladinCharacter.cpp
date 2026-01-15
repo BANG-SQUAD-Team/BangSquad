@@ -497,14 +497,11 @@ float APaladinCharacter::TakeDamage(float DamageAmount, FDamageEvent const& Dama
     // 1. 서버 권한 확인 & 방어 상태 확인 & 방패가 깨지지 않았는지 확인
     if (HasAuthority() && bIsGuarding && !bIsShieldBroken && DamageCauser)
     {
-        // 2. [핵심 로직] 몬스터의 월드 위치를 '내 기준 로컬 좌표'로 변환
-        // 예) 내 위치가 (0,0,0)일 때, 내 앞 1m는 (100, 0, 0), 내 뒤 1m는 (-100, 0, 0)이 됨
+        // 2.  몬스터의 월드 위치를 '내 기준 로컬 좌표'로 변환
         FVector LocalEnemyLoc = GetActorTransform().InverseTransformPosition(DamageCauser->GetActorLocation());
-
-        // 3. X값이 -50.0f보다 크면 "내 등 뒤는 아니다"라고 판단 (방어 성공)
-        // -50.0f : 내 배꼽(중심)에서 뒤로 50cm까지는 봐줌 (어깨선 뒤쪽 허용)
-        // 이 로직은 방패가 옆으로 아무리 길어도, 측면에서 끝부분을 때려도 X값은 양수거나 -50보다 크므로 다 막힘.
-        if (LocalEnemyLoc.X > -50.0f)
+        
+        
+        if (LocalEnemyLoc.X > 100.0f)
         {
             // A. 플레이어 본체 데미지 무효화
             ActualDamage = 0.0f; 
@@ -612,10 +609,16 @@ void APaladinCharacter::Multicast_PlayMontage_Implementation(UAnimMontage* Monta
 
 void APaladinCharacter::Multicast_StopMontage_Implementation(float BlendOutTime)
 {
+    if (IsDead()) return;
+    
     // 현재 재생 중인 몽타주가 있다면 부드럽게 정지
     UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
     if (AnimInstance && AnimInstance->GetCurrentActiveMontage())
     {
+        if (AnimInstance->GetCurrentActiveMontage() == DeathMontage)
+        {
+            return;
+        }
         AnimInstance->Montage_Stop(BlendOutTime);
     }
 }

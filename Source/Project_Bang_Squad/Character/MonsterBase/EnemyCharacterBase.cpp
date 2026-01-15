@@ -39,27 +39,61 @@ void AEnemyCharacterBase::BeginPlay()
     }
 }
 
-//  데미지를 받아서 HealthComponent로 넘겨주는 핵심 함수
-float AEnemyCharacterBase::TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, 
-	class AController* EventInstigator, AActor* DamageCauser)
+float AEnemyCharacterBase::TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent,
+    class AController* EventInstigator, AActor* DamageCauser)
 {
-    // 1. 부모 클래스의 기본 로직 실행
+    // 1. 서버 권한 확인 (데미지 처리는 서버에서만)
+    if (!HasAuthority()) return 0.0f;
+
+    // ==============================================================
+    // [팀킬 방지 로직 추가]
+    // 공격자(Instigator의 Pawn 혹은 DamageCauser의 Owner)를 찾습니다.
+    // ==============================================================
+    AActor* Attacker = DamageCauser;
+
+    // Instigator(가해자의 컨트롤러)가 있다면 Pawn을 가져옵니다. (가장 정확함)
+    if (EventInstigator && EventInstigator->GetPawn())
+    {
+        Attacker = EventInstigator->GetPawn();
+    }
+    // 투사체인 경우, 투사체의 주인을 가져옵니다.
+    else if (DamageCauser && DamageCauser->GetOwner())
+    {
+        Attacker = DamageCauser->GetOwner();
+    }
+
+    // 공격자가 존재할 때 팀킬 여부 확인
+    if (Attacker)
+    {
+        // 1. 자기 자신이 낸 데미지 무시 (예: 내 칼에 내가 맞음 방지)
+        if (Attacker == this) return 0.0f;
+
+        // 2. 같은 몬스터 팀인지 확인
+        // AEnemyCharacterBase를 상속받은 객체(=몬스터)라면 데미지 0 처리
+        if (Attacker->IsA(AEnemyCharacterBase::StaticClass()))
+        {
+            // (디버깅용 로그 - 필요시 주석 해제)
+            // UE_LOG(LogTemp, Warning, TEXT("Friendly Fire Blocked! Attacker: %s -> Victim: %s"), *Attacker->GetName(), *GetName());
+            return 0.0f;
+        }
+    }
+    // ==============================================================
+
+    // 2. 부모 클래스의 기본 로직 실행 (Super 호출)
     float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
 
-    // 2. 서버 권한 확인 (데미지 처리는 서버에서만)
-    if (HasAuthority())
+    // 3. HealthComponent를 찾아서 데미지 적용
+    if (UHealthComponent* HC = FindComponentByClass<UHealthComponent>())
     {
-        // 3. HealthComponent를 찾아서 데미지 적용
-        if (UHealthComponent* HC = FindComponentByClass<UHealthComponent>())
-        {
-            // 여기서 HealthComponent의 체력이 깎이고 -> OnHealthChanged 델리게이트가 호출됨
-            HC->ApplyDamage(ActualDamage);
-        }
+        // 이미 죽었으면 무시
+        if (HC->IsDead()) return 0.0f;
+
+        // 여기서 HealthComponent의 체력이 깎이고 -> OnHealthChanged 델리게이트가 호출됨
+        HC->ApplyDamage(ActualDamage);
     }
 
     return ActualDamage;
 }
-
 void AEnemyCharacterBase::OnDeathStarted()
 {
 }
