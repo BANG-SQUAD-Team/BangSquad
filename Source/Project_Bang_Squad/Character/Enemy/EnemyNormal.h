@@ -11,17 +11,16 @@ USTRUCT(BlueprintType)
 struct FEnemyAttackData
 {
 	GENERATED_BODY()
-	
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	TObjectPtr<UAnimMontage> Montage = nullptr;
-	
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ToolTip="공격 시작 후 판정이 켜질 때까지의 시간 (선딜)"))
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (ToolTip = "공격 시작 후 판정이 켜질 때까지의 시간 (선딜)"))
 	float HitDelay = 0.3f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ToolTip="판정이 켜져 있는 시간 (지속 시간)"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (ToolTip = "판정이 켜져 있는 시간 (지속 시간)"))
 	float HitDuration = 0.4f;
 };
-
 
 UCLASS()
 class PROJECT_BANG_SQUAD_API AEnemyNormal : public AEnemyCharacterBase
@@ -31,10 +30,13 @@ class PROJECT_BANG_SQUAD_API AEnemyNormal : public AEnemyCharacterBase
 public:
 	AEnemyNormal();
 
+	// [추가] Tick 함수 오버라이드 (디버그 박스 그리기용)
+	virtual void Tick(float DeltaTime) override;
+
 protected:
 	virtual void BeginPlay() override;
-	virtual void Tick(float DeltaTime) override;
 	virtual void OnDeathStarted() override;
+
 	// ===== Chase =====
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AI|Chase")
 	float AcceptanceRadius = 80.f;
@@ -52,24 +54,20 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AI|Attack")
 	float AttackCooldown = 1.2f;
 
-	// "������" ��ü�� ��� �� �´� ������ �ٽ�. �ݵ�� �߰�.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AI|Attack")
 	float AttackDamage = 10.f;
 
-	// [변경] 기존 단순 배열 대신, 구조체 배열로 관리 (각 공격마다 타이밍 조절 가능)
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AI|Attack")
 	TArray<FEnemyAttackData> AttackConfigs;
-	
+
 	// 무기 충돌 박스
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat")
 	UBoxComponent* WeaponCollisionBox;
 
-	
+	// [추가] 가장 가까운 살아있는 플레이어를 찾는 함수 선언
+	APawn* FindNearestLivingPlayer();
 
 private:
-	UPROPERTY()
-	TSet<AActor*> HitVictims;
-	
 	TWeakObjectPtr<APawn> TargetPawn;
 	FTimerHandle RepathTimer;
 
@@ -80,8 +78,9 @@ private:
 	FTimerHandle CollisionEnableTimer;
 	FTimerHandle CollisionDisableTimer;
 
-	// �� ���� ����(��Ÿ�� 1ȸ)���� ������ 1���� ���� ���
-	bool bDamageAppliedThisAttack = false;
+	// [추가] 중복 피격 방지를 위한 배열
+	UPROPERTY()
+	TArray<AActor*> HitVictims;
 
 	void AcquireTarget();
 	void StartChase(APawn* NewTarget);
@@ -90,24 +89,21 @@ private:
 
 	bool IsInAttackRange() const;
 
-	// �������� ���� ���� (��Ƽ ����)
 	UFUNCTION(Server, Reliable)
 	void Server_TryAttack();
 	void Server_TryAttack_Implementation();
 
-	// ��� Ŭ�󿡼� "���õ� �ε���" ��Ÿ�� ���
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_PlayAttackMontage(int32 MontageIndex);
 	void Multicast_PlayAttackMontage_Implementation(int32 MontageIndex);
 
 	void EndAttack();
 
-
 	void EnableWeaponCollision();
 	void DisableWeaponCollision();
-	
+
 	UFUNCTION()
-	void OnWeaponOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, 
-						 UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, 
-						 bool bFromSweep, const FHitResult& SweepResult);
+	void OnWeaponOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
+		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
+		bool bFromSweep, const FHitResult& SweepResult);
 };
