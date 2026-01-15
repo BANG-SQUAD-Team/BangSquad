@@ -82,11 +82,19 @@ void AStrikerCharacter::Attack()
 	// 4. 실행 (결정된 스킬 이름으로)
 	ProcessSkill(SkillRowName);
 
-	FVector ForwardDir = GetActorForwardVector();
-	FVector LaunchVel = ForwardDir * AttackForwardForce;
-	LaunchCharacter(LaunchVel, true, false);
-
 	bIsNextAttackA = !bIsNextAttackA;
+}
+
+
+void AStrikerCharacter::ApplyAttackForwardForce()
+{
+	FVector ForwardDir = GetActorForwardVector();
+
+	// 공격 방향으로 힘 가하기
+	FVector LaunchVel = ForwardDir * AttackForwardForce;
+
+	// Z축(위쪽) 힘은 0으로 하거나 필요하면 추가 (현재는 false로 되어있어 무시됨)
+	LaunchCharacter(LaunchVel, true, false);
 }
 
 void AStrikerCharacter::Skill1()
