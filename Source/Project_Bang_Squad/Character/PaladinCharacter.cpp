@@ -464,6 +464,8 @@ void APaladinCharacter::SetShieldActive(bool bActive)
         // 아군(PlayerUnit)은 통과 / 적군(EnemyUnit)은 차단
         ShieldMeshComp->SetCollisionResponseToChannel(ECC_GameTraceChannel1, ECR_Ignore); 
         ShieldMeshComp->SetCollisionResponseToChannel(ECC_GameTraceChannel2, ECR_Block);
+        // 몬스터가 쏘는 LineTrace(Visibility)를 막으려면 Block이어야 함
+        ShieldMeshComp->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
     }
     else
     {

@@ -7,6 +7,7 @@
 #include "Components/CapsuleComponent.h"
 #include "Components/BoxComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "Project_Bang_Squad/Character/Base/BaseCharacter.h"
 #include "Project_Bang_Squad/Projectile/SlashProjectile.h"
 
 AEnemyMidBoss::AEnemyMidBoss()
@@ -15,12 +16,12 @@ AEnemyMidBoss::AEnemyMidBoss()
 	CurrentPhase = EMidBossPhase::Normal;
 	bReplicates = true;
 
-	// Çï½º ÄÄÆ÷³ÍÆ®
+	// ï¿½ï½º ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ®
 	HealthComponent = CreateDefaultSubobject<UHealthComponent>(TEXT("HealthComponent"));
 
-	// ¹«±â Ãæµ¹ ¹Ú½º »ý¼º ¹× ¼³Á¤
+	// ï¿½ï¿½ï¿½ï¿½ ï¿½æµ¹ ï¿½Ú½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 	WeaponCollisionBox = CreateDefaultSubobject<UBoxComponent>(TEXT("WeaponCollisionBox"));
-	// ¸Þ½Ã ÇÏÀ§¿¡ ºÙÀÓ (¼ÒÄÏ ÀÌ¸§ ÁöÁ¤)
+	// ï¿½Þ½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ (ï¿½ï¿½ï¿½ï¿½ ï¿½Ì¸ï¿½ ï¿½ï¿½ï¿½ï¿½)
 	if (GetMesh())
 	{
 		WeaponCollisionBox->SetupAttachment(GetMesh(), TEXT("swordSocket"));
@@ -30,12 +31,13 @@ AEnemyMidBoss::AEnemyMidBoss()
 		WeaponCollisionBox->SetupAttachment(RootComponent);
 	}
 
-	// Æò¼Ò¿¡´Â ²¨µÒ
+	// ï¿½ï¿½Ò¿ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 	WeaponCollisionBox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	WeaponCollisionBox->SetCollisionObjectType(ECC_WorldDynamic);
 	WeaponCollisionBox->SetCollisionResponseToAllChannels(ECR_Ignore);
-	WeaponCollisionBox->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap); // ÇÃ·¹ÀÌ¾î¸¸ °¨Áö
+	WeaponCollisionBox->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap); // ï¿½Ã·ï¿½ï¿½Ì¾î¸¸ ï¿½ï¿½ï¿½ï¿½
 
+	WeaponCollisionBox->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Overlap);
 	WeaponCollisionBox->OnComponentBeginOverlap.AddDynamic(this, &AEnemyMidBoss::OnWeaponOverlap);
 }
 
@@ -70,20 +72,20 @@ void AEnemyMidBoss::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// ¼­¹ö ±ÇÇÑ ¹× µ¥ÀÌÅÍ ¿¡¼Â È®ÀÎ
+	// ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ È®ï¿½ï¿½
 	if (HasAuthority() && BossData && HealthComponent)
 	{
 		HealthComponent->SetMaxHealth(BossData->MaxHealth);
 		UE_LOG(LogTemp, Log, TEXT("[MidBoss] Initialized Health: %f"), BossData->MaxHealth);
 	}
 
-	// »ç¸Á ÀÌº¥Æ® ¿¬°á
+	// ï¿½ï¿½ï¿½ ï¿½Ìºï¿½Æ® ï¿½ï¿½ï¿½ï¿½
 	if (HealthComponent)
 	{
 		HealthComponent->OnDead.AddDynamic(this, &AEnemyMidBoss::OnDeath);
 	}
 
-	// µ¥ÀÌÅÍ ¿¡¼ÂÀÇ AttackRange¸¦ AI¿¡°Ô Àü´Þ!
+	// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ AttackRangeï¿½ï¿½ AIï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½!
 	if (GetController())
 	{
 		auto* MyAI = Cast<AMidBossAIController>(GetController());
@@ -112,7 +114,7 @@ float AEnemyMidBoss::TakeDamage(float DamageAmount, FDamageEvent const& DamageEv
 		auto* MyAI = Cast<AMidBossAIController>(GetController());
 		if (MyAI)
 		{
-			// [¼öÁ¤µÊ] Åõ»çÃ¼(DamageCauser)°¡ »ç¶óÁ®µµ ¸Û¶§¸®Áö ¾Ê°Ô, °ø°ÝÇÑ »ç¶÷(Instigator Pawn)À» Ã£¾Æ¼­ ³Ñ°ÜÁÝ´Ï´Ù.
+			// [ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½] ï¿½ï¿½ï¿½ï¿½Ã¼(DamageCauser)ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Û¶ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Ê°ï¿½, ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½(Instigator Pawn)ï¿½ï¿½ Ã£ï¿½Æ¼ï¿½ ï¿½Ñ°ï¿½ï¿½Ý´Ï´ï¿½.
 			AActor* RealAttacker = DamageCauser;
 			if (EventInstigator && EventInstigator->GetPawn())
 			{
@@ -144,24 +146,75 @@ void AEnemyMidBoss::DisableWeaponCollision()
 	}
 }
 
+
 void AEnemyMidBoss::OnWeaponOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
-	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
-	bool bFromSweep, const FHitResult& SweepResult)
+    UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
+    bool bFromSweep, const FHitResult& SweepResult)
 {
-	if (!HasAuthority()) return;
+    if (!HasAuthority()) return;
+    if (OtherActor == nullptr || OtherActor == this || OtherActor == GetOwner()) return;
 
-	if (OtherActor == nullptr || OtherActor == this || OtherActor == GetOwner()) return;
+    if (OtherActor->IsA(ABaseCharacter::StaticClass()))
+    {
+        // 1. [ìµœì í™”] ì¹¼ì´ ì§ì ‘ ë°©íŒ¨ ì»´í¬ë„ŒíŠ¸ë¥¼ ë•Œë ¸ë‹¤ë©´?
+        // LineTraceê³  ë­ê³  í•„ìš” ì—†ìŒ. ë°”ë¡œ ë°ë¯¸ì§€ ì¤˜ì„œ ë°©íŒ¨ ê¹Žê²Œ í•¨.
+        if (OtherComp && OtherComp->GetName().Contains(TEXT("Shield")))
+        {
+             UGameplayStatics::ApplyDamage(OtherActor, AttackDamage, GetController(), this, UDamageType::StaticClass());
+             // UE_LOG(LogTemp, Warning, TEXT("BOSS: Direct Shield Hit!"));
+             return; 
+        }
 
-	// µ¥¹ÌÁö Àû¿ë
-	UGameplayStatics::ApplyDamage(
-		OtherActor,
-		AttackDamage,
-		GetController(),
-		this,
-		UDamageType::StaticClass()
-	);
+        // 2. ëª¸í†µì„ ë•Œë ¸ì„ ë•Œ -> ë ˆì´ì € ê²€ì‚¬
+        FHitResult HitResult;
+        FCollisionQueryParams Params;
+        Params.AddIgnoredActor(this);
 
-	UE_LOG(LogTemp, Log, TEXT("BOSS: Hit Target [%s]! Damage: %f"), *OtherActor->GetName(), AttackDamage);
+        FVector Start = GetActorLocation(); 
+        FVector End = OtherActor->GetActorLocation(); // ê³¨ë°˜(Root) ìœ„ì¹˜
+
+        // [ë””ë²„ê·¸] ë ˆì´ì €ê°€ ì–´ë””ë¡œ ë‚˜ê°€ëŠ”ì§€ ëˆˆìœ¼ë¡œ í™•ì¸! (ë¹¨ê°„ì„ )
+        DrawDebugLine(GetWorld(), Start, End, FColor::Red, false, 1.0f, 0, 2.0f);
+
+        bool bHit = GetWorld()->LineTraceSingleByChannel(
+            HitResult,
+            Start,
+            End,
+            ECC_Visibility,
+            Params
+        );
+
+        if (bHit)
+        {
+            // ë°©íŒ¨ ê°ì§€
+            if (HitResult.GetComponent() && HitResult.GetComponent()->GetName().Contains(TEXT("Shield")))
+            {
+                AActor* ShieldOwner = HitResult.GetActor();
+
+                // [í•µì‹¬] "ë°©íŒ¨ ì£¼ì¸ì´ ì§€ê¸ˆ ë§žì€ ë†ˆì¸ê°€?"
+                if (ShieldOwner == OtherActor || ShieldOwner->GetOwner() == OtherActor)
+                {
+                    // PASS! (íŒ”ë¼ë”˜ ë³¸ì¸ì´ ë§‰ìŒ -> ë°ë¯¸ì§€ ì¤˜ì„œ ë°©íŒ¨ ê¹Žì•„ì•¼ í•¨)
+                    // ì—¬ê¸°ì— ì•„ë¬´ê²ƒë„ ì•ˆ ì“°ê³  í†µê³¼ì‹œí‚¤ë©´ ë¨
+                    // UE_LOG(LogTemp, Log, TEXT("BOSS: Shield Owner Hit -> Apply Damage to Shield"));
+                }
+                else
+                {
+                    // BLOCKED! (ë’¤ì— ìžˆëŠ” ì¹œêµ¬ ë³´í˜¸ -> ë°ë¯¸ì§€ ë¬´ì‹œ)
+                    return; 
+                }
+            }
+        }
+        
+        // 3. ë°ë¯¸ì§€ ì ìš© (ë°©íŒ¨ ì£¼ì¸ì´ë©´ ì—¬ê¸°ì„œ ë°ë¯¸ì§€ê°€ ë“¤ì–´ê°€ì„œ Paladin::TakeDamageê°€ í˜¸ì¶œë¨)
+        UGameplayStatics::ApplyDamage(
+           OtherActor,
+           AttackDamage,
+           GetController(),
+           this,
+           UDamageType::StaticClass()
+        );
+    }
 }
 
 // --- [Animation Helpers] ---
@@ -171,16 +224,16 @@ float AEnemyMidBoss::PlayAggroAnim()
 	if (!HasAuthority()) return 0.0f;
 	if (BossData && BossData->AggroMontage)
 	{
-		// [¼öÁ¤] ¸ÖÆ¼Ä³½ºÆ®·Î "¸ðµÎ Àç»ýÇØ!" ¹æ¼Û
+		// [ï¿½ï¿½ï¿½ï¿½] ï¿½ï¿½Æ¼Ä³ï¿½ï¿½Æ®ï¿½ï¿½ "ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½!" ï¿½ï¿½ï¿½
 		Multicast_PlayAttackMontage(BossData->AggroMontage);
 
-		// AI¿¡°Ô´Â ¾Ö´Ï¸ÞÀÌ¼Ç ±æÀÌ ¸®ÅÏ (Å¸ÀÌ¸Ó¿ë)
+		// AIï¿½ï¿½ï¿½Ô´ï¿½ ï¿½Ö´Ï¸ï¿½ï¿½Ì¼ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ (Å¸ï¿½Ì¸Ó¿ï¿½)
 		return BossData->AggroMontage->GetPlayLength();
 	}
 	return 0.0f;
 }
 
-// [¼öÁ¤µÊ] ¼­¹ö°¡ ¸ùÅ¸ÁÖ¸¦ °í¸£°í -> ¸ðµÎ¿¡°Ô ¹æ¼Û -> ±æÀÌ¸¦ ¸®ÅÏ
+// [ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½] ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½Å¸ï¿½Ö¸ï¿½ ï¿½ï¿½ï¿½ï¿½ -> ï¿½ï¿½Î¿ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ -> ï¿½ï¿½ï¿½Ì¸ï¿½ ï¿½ï¿½ï¿½ï¿½
 float AEnemyMidBoss::PlayRandomAttack()
 {
 	if (!HasAuthority()) return 0.0f;
@@ -192,17 +245,17 @@ float AEnemyMidBoss::PlayRandomAttack()
 
 		if (SelectedMontage)
 		{
-			// ¸ÖÆ¼Ä³½ºÆ® È£Ãâ (Å¬¶óÀÌ¾ðÆ®µéµµ Àç»ý)
+			// ï¿½ï¿½Æ¼Ä³ï¿½ï¿½Æ® È£ï¿½ï¿½ (Å¬ï¿½ï¿½ï¿½Ì¾ï¿½Æ®ï¿½éµµ ï¿½ï¿½ï¿½)
 			Multicast_PlayAttackMontage(SelectedMontage);
 
-			// AI Å¸ÀÌ¸Ó¿ë ±æÀÌ ¸®ÅÏ
+			// AI Å¸ï¿½Ì¸Ó¿ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 			return SelectedMontage->GetPlayLength();
 		}
 	}
 	return 0.0f;
 }
 
-// [NEW] ¸ÖÆ¼Ä³½ºÆ® ±¸ÇöºÎ
+// [NEW] ï¿½ï¿½Æ¼Ä³ï¿½ï¿½Æ® ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 void AEnemyMidBoss::Multicast_PlayAttackMontage_Implementation(UAnimMontage* MontageToPlay)
 {
 	if (MontageToPlay)
@@ -215,15 +268,15 @@ void AEnemyMidBoss::Multicast_PlayAttackMontage_Implementation(UAnimMontage* Mon
 
 float AEnemyMidBoss::PlayHitReactAnim()
 {
-	// 1. ±ÇÇÑ Ã¼Å© (¼­¹ö¸¸ ½ÇÇà)
+	// 1. ï¿½ï¿½ï¿½ï¿½ Ã¼Å© (ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½)
 	if (!HasAuthority()) return 0.0f;
 
 	if (BossData && BossData->HitReactMontage)
 	{
-		// 2. [¼öÁ¤] ¸ÖÆ¼Ä³½ºÆ®·Î "¸ðµÎ ¾ÆÇÂ ¸ð¼Ç Àç»ýÇØ!" ¹æ¼Û
+		// 2. [ï¿½ï¿½ï¿½ï¿½] ï¿½ï¿½Æ¼Ä³ï¿½ï¿½Æ®ï¿½ï¿½ "ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½!" ï¿½ï¿½ï¿½
 		Multicast_PlayAttackMontage(BossData->HitReactMontage);
 
-		// 3. AI¿¡°Ô´Â ¾Ö´Ï¸ÞÀÌ¼Ç ±æÀÌ ¸®ÅÏ (½ºÅÏ ½Ã°£ °è»ê¿ë)
+		// 3. AIï¿½ï¿½ï¿½Ô´ï¿½ ï¿½Ö´Ï¸ï¿½ï¿½Ì¼ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ (ï¿½ï¿½ï¿½ï¿½ ï¿½Ã°ï¿½ ï¿½ï¿½ï¿½ï¿½)
 		return BossData->HitReactMontage->GetPlayLength();
 	}
 	return 0.0f;
@@ -231,17 +284,17 @@ float AEnemyMidBoss::PlayHitReactAnim()
 
 float AEnemyMidBoss::PlaySlashAttack()
 {
-	// 1. ¼­¹ö ±ÇÇÑ Ã¼Å©
+	// 1. ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ Ã¼Å©
 	if (!HasAuthority()) return 0.0f;
 
-	// 2. µ¥ÀÌÅÍ ¿¡¼Â¿¡ ¸ùÅ¸ÁÖ°¡ ÀÖ´ÂÁö È®ÀÎ
-	// (Âü°í: BossData ±¸Á¶Ã¼¿¡ SlashAttackMontage º¯¼ö°¡ ÀÖ¾î¾ß ÇÕ´Ï´Ù!)
+	// 2. ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Â¿ï¿½ ï¿½ï¿½Å¸ï¿½Ö°ï¿½ ï¿½Ö´ï¿½ï¿½ï¿½ È®ï¿½ï¿½
+	// (ï¿½ï¿½ï¿½ï¿½: BossData ï¿½ï¿½ï¿½ï¿½Ã¼ï¿½ï¿½ SlashAttackMontage ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Ö¾ï¿½ï¿½ ï¿½Õ´Ï´ï¿½!)
 	if (BossData && BossData->SlashAttackMontage)
 	{
-		// 3. ¸ÖÆ¼Ä³½ºÆ®·Î Àç»ý (¼­¹ö+Å¬¶ó ¸ðµÎ Àç»ý)
+		// 3. ï¿½ï¿½Æ¼Ä³ï¿½ï¿½Æ®ï¿½ï¿½ ï¿½ï¿½ï¿½ (ï¿½ï¿½ï¿½ï¿½+Å¬ï¿½ï¿½ ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½)
 		Multicast_PlayAttackMontage(BossData->SlashAttackMontage);
 
-		// 4. ¾Ö´Ï¸ÞÀÌ¼Ç ±æÀÌ ¸®ÅÏ (AI Å¸ÀÌ¸Ó¿ë)
+		// 4. ï¿½Ö´Ï¸ï¿½ï¿½Ì¼ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ (AI Å¸ï¿½Ì¸Ó¿ï¿½)
 		return BossData->SlashAttackMontage->GetPlayLength();
 	}
 
@@ -268,15 +321,15 @@ void AEnemyMidBoss::OnRep_CurrentPhase()
 		UE_LOG(LogTemp, Warning, TEXT("[MidBoss] Phase GIMMICK Start! (FX)"));
 		break;
 	case EMidBossPhase::Dead:
-		// »ç¸Á ¾Ö´Ï¸ÞÀÌ¼Ç
+		// ï¿½ï¿½ï¿½ ï¿½Ö´Ï¸ï¿½ï¿½Ì¼ï¿½
 		if (BossData && BossData->DeathMontage)
 		{
 			PlayAnimMontage(BossData->DeathMontage);
 		}
 
-		// Ãæµ¹ ÇØÁ¦
+		// ï¿½æµ¹ ï¿½ï¿½ï¿½ï¿½
 		GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-		// ¹«±â ÆÇÁ¤µµ È®½ÇÈ÷ ²ô±â
+		// ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ È®ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 		DisableWeaponCollision();
 		break;
 	}
@@ -303,7 +356,7 @@ void AEnemyMidBoss::OnDeath()
 	UE_LOG(LogTemp, Warning, TEXT("BOSS IS DEAD. Cleanup started."));
 }
 
-// 1. ÆÐÅÏ ½ÃÀÛ (AI°¡ È£Ãâ)
+// 1. ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ (AIï¿½ï¿½ È£ï¿½ï¿½)
 void AEnemyMidBoss::PlaySlashPattern()
 {
 	if (BossData && BossData->SlashAttackMontage)
@@ -312,7 +365,7 @@ void AEnemyMidBoss::PlaySlashPattern()
 	}
 }
 
-// 2. ¹ß»ç Æ®¸®°Å (AnimNotify¿¡¼­ È£Ãâ)
+// 2. ï¿½ß»ï¿½ Æ®ï¿½ï¿½ï¿½ï¿½ (AnimNotifyï¿½ï¿½ï¿½ï¿½ È£ï¿½ï¿½)
 void AEnemyMidBoss::FireSlashProjectile()
 {
 	if (!BossData || !BossData->SlashProjectileClass) return;
@@ -325,11 +378,11 @@ void AEnemyMidBoss::FireSlashProjectile()
 		SpawnLoc = GetMesh()->GetSocketLocation(TEXT("swordSocket"));
 	}
 
-	// ¼­¹ö¿¡°Ô ¿äÃ»
+	// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½Ã»
 	Server_SpawnSlashProjectile(SpawnLoc, SpawnRot);
 }
 
-// 3. ¼­¹ö ±¸ÇöºÎ
+// 3. ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 void AEnemyMidBoss::Server_SpawnSlashProjectile_Implementation(FVector SpawnLoc, FRotator SpawnRot)
 {
 	if (!BossData || !BossData->SlashProjectileClass) return;
