@@ -11,6 +11,8 @@
 #include "BrainComponent.h"
 #include "Net/UnrealNetwork.h"
 #include "Project_Bang_Squad/Character/Enemy/EnemyNormal.h"
+#include "Project_Bang_Squad/Character/Player/Titan/TitanRock.h"
+
 
 ATitanCharacter::ATitanCharacter()
 {
@@ -372,26 +374,107 @@ void ATitanCharacter::Skill1()
 {
 	if (bIsDead) return;
 
+	// 쿨타임 체크
 	if (bIsSkill1Cooldown)
 	{
-		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Yellow, TEXT("Skill1 is on Cooldown."));
+		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Yellow, TEXT("Skill1 (Rock Throw) Cooldown!"));
 		return;
 	}
 
-	if (SkillDataTable)
+	// 서버로 요청
+	Server_Skill1();
+}
+
+// [Skill 1: 서버 구현] 바위 생성 및 들어올리기
+void ATitanCharacter::Server_Skill1_Implementation()
+{
+	if (!SkillDataTable) return;
+
+	// 1. 데이터 테이블 조회
+	static const FString ContextString(TEXT("TitanSkill1"));
+	FSkillData* Row = SkillDataTable->FindRow<FSkillData>(TEXT("Skill1"), ContextString);
+
+	if (Row)
 	{
-		static const FString ContextString(TEXT("TitanSkill1"));
-		FSkillData* Row = SkillDataTable->FindRow<FSkillData>(TEXT("Skill1"), ContextString);
-		if (Row && Row->Cooldown > 0.0f)
+		if (!IsSkillUnlocked(Row->RequiredStage)) return;
+
+		CurrentSkillDamage = Row->Damage;
+		if (Row->Cooldown > 0.0f) Skill1CooldownTime = Row->Cooldown;
+
+		// 2. 몽타주 재생 (바닥 집는 모션)
+		if (Row->SkillMontage)
 		{
-			Skill1CooldownTime = Row->Cooldown;
+			PlayAnimMontage(Row->SkillMontage);
 		}
 	}
 
-	ProcessSkill(TEXT("Skill1"));
+	// 3. 바위 소환 (손 소켓에 붙여서 생성)
+	if (RockClass)
+	{
+		FVector SocketLoc = GetMesh()->GetSocketLocation(TEXT("Hand_R_Socket"));
+		FRotator SocketRot = GetMesh()->GetSocketRotation(TEXT("Hand_R_Socket"));
 
+		FActorSpawnParameters SpawnParams;
+		SpawnParams.Owner = this;
+		SpawnParams.Instigator = this;
+
+		// 바위 생성
+		HeldRock = GetWorld()->SpawnActor<ATitanRock>(RockClass, SocketLoc, SocketRot, SpawnParams);
+
+		if (HeldRock)
+		{
+			// 손에 부착
+			HeldRock->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, TEXT("Hand_R_Socket"));
+
+			// 아직 던지기 전이므로 물리 끄기
+			if (HeldRock->GetRootComponent())
+			{
+				UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(HeldRock->GetRootComponent());
+				if (RootComp) RootComp->SetSimulatePhysics(false);
+			}
+
+			// 데미지 정보 전달
+			HeldRock->InitializeRock(CurrentSkillDamage, this);
+		}
+	}
+
+	// 4. 던지기 타이머 설정 
+	// (애니메이션이 바위를 들어올려서 던지는 시점까지 대기. 예: 0.8초 뒤)
+	// *더 정확하게 하려면 몽타주에 AnimNotify를 박아서 호출해야 합니다. 일단은 타이머로 처리.*
+	GetWorldTimerManager().SetTimer(RockThrowTimerHandle, this, &ATitanCharacter::ThrowRock, 0.8f, false);
+
+	// 5. 쿨타임 시작
 	bIsSkill1Cooldown = true;
 	GetWorldTimerManager().SetTimer(Skill1CooldownTimerHandle, this, &ATitanCharacter::ResetSkill1Cooldown, Skill1CooldownTime, false);
+}
+
+// [Skill 1: 투척] 바위를 손에서 떼고 날리기
+void ATitanCharacter::ThrowRock()
+{
+	if (!HeldRock) return;
+
+	// 1. 손에서 분리
+	HeldRock->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+
+	// 2. 물리 활성화
+	UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(HeldRock->GetRootComponent());
+	if (RootComp)
+	{
+		RootComp->SetSimulatePhysics(true);
+		RootComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+
+		// 3. 던질 방향 계산 (카메라가 보는 방향)
+		FVector ThrowDir = GetControlRotation().Vector();
+		ThrowDir = (ThrowDir + FVector(0, 0, 0.2f)).GetSafeNormal(); // 약간 위로 던지게 보정
+
+		// 4. 힘 가하기 (Impulse)
+		RootComp->AddImpulse(ThrowDir * RockThrowForce * RootComp->GetMass());
+	}
+
+	// 참조 해제
+	HeldRock = nullptr;
+
+	if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Cyan, TEXT("Rock Thrown!"));
 }
 
 void ATitanCharacter::ResetSkill1Cooldown()

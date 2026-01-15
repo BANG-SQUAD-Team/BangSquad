@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Project_Bang_Squad/Character/Base/BaseCharacter.h"
+#include "Project_Bang_Squad/Character/Player/Titan/TitanRock.h"
 #include "TitanCharacter.generated.h"
 
 class AAIController;
@@ -65,6 +66,28 @@ private:
 public:
 	UFUNCTION(BlueprintCallable)
 	void ExecuteGrab();
+
+protected:
+	UFUNCTION(Server, Reliable)
+	void Server_Skill1();
+
+	void ThrowRock();
+
+private:
+	// [추가] 생성할 바위 클래스 (블루프린트에서 설정)
+	UPROPERTY(EditDefaultsOnly, Category = "Skill|Rock")
+	TSubclassOf<ATitanRock> RockClass;
+
+	// [추가] 현재 들고 있는 바위
+	UPROPERTY()
+	ATitanRock* HeldRock = nullptr;
+
+	// [추가] 바위 던지는 힘
+	UPROPERTY(EditDefaultsOnly, Category = "Skill|Rock")
+	float RockThrowForce = 2500.0f;
+
+	// 던지는 타이밍 조절용 타이머
+	FTimerHandle RockThrowTimerHandle;
 
 protected:
 	UFUNCTION(Server, Reliable)
