@@ -42,6 +42,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat|Skill1")
 	float Skill1RequiredHeight = 150.0f;
 
+public:
+	UFUNCTION(BlueprintCallable, Category = "Combat")
+	void ApplyAttackForwardForce();
+
 private:
 	bool bIsNextAttackA = true;
 
