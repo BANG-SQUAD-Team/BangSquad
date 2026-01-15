@@ -27,7 +27,7 @@ AEnemyNormal::AEnemyNormal()
 	WeaponCollisionBox->SetCollisionObjectType(ECC_WorldDynamic);
 	WeaponCollisionBox->SetCollisionResponseToAllChannels(ECR_Ignore);
 	WeaponCollisionBox->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap); // 캐릭터랑만 충돌 체크
-
+	WeaponCollisionBox->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Overlap);
 	// 3. 충돌 이벤트 연결
 	WeaponCollisionBox->OnComponentBeginOverlap.AddDynamic(this, &AEnemyNormal::OnWeaponOverlap);
 }
@@ -309,31 +309,67 @@ void AEnemyNormal::DisableWeaponCollision()
 	}
 }
 
-void AEnemyNormal::OnWeaponOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
-	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
-	bool bFromSweep, const FHitResult& SweepResult)
+void AEnemyNormal::OnWeaponOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, 
+                                   UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, 
+                                   bool bFromSweep, const FHitResult& SweepResult)
 {
-	if (!HasAuthority()) return;
+    if (!HasAuthority()) return;
+    if (OtherActor == nullptr || OtherActor == this || OtherActor == GetOwner()) return;
+    if (HitVictims.Contains(OtherActor)) return;
+    
+    if (OtherActor->IsA(ABaseCharacter::StaticClass()))
+    {
+        // 1. 칼이 직접 방패를 때림
+        if (OtherComp && OtherComp->GetName().Contains(TEXT("Shield")))
+        {
+             UGameplayStatics::ApplyDamage(OtherActor, AttackDamage, GetController(), this, UDamageType::StaticClass());
+             HitVictims.Add(OtherActor);
+             return;
+        }
 
-	if (OtherActor == nullptr || OtherActor == this || OtherActor == GetOwner()) return;
+        // 2. 레이저 검사
+        FHitResult HitResult;
+        FCollisionQueryParams Params;
+        Params.AddIgnoredActor(this); 
 
-	// 1. 이미 때린 대상이면 무시 (중복 피격 방지)
-	if (HitVictims.Contains(OtherActor)) return;
+        FVector Start = GetActorLocation();
+        FVector End = OtherActor->GetActorLocation();
 
-	// 2. 플레이어(BaseCharacter)일 때만 공격 (팀킬 방지)
-	if (OtherActor->IsA(ABaseCharacter::StaticClass()))
-	{
-		UGameplayStatics::ApplyDamage(
-			OtherActor,
-			AttackDamage,
-			GetController(),
-			this,
-			UDamageType::StaticClass()
-		);
+        // [디버그] 빨간 선 그리기
+        DrawDebugLine(GetWorld(), Start, End, FColor::Red, false, 1.0f, 0, 2.0f);
 
-		// 때린 놈 목록에 추가
-		HitVictims.Add(OtherActor);
-	}
+        bool bHit = GetWorld()->LineTraceSingleByChannel(HitResult, Start, End, ECC_Visibility, Params);
+
+        if (bHit)
+        {
+            if (HitResult.GetComponent() && HitResult.GetComponent()->GetName().Contains(TEXT("Shield")))
+            {
+                AActor* ShieldOwner = HitResult.GetActor();
+
+                // 주인 확인
+                if (ShieldOwner == OtherActor || ShieldOwner->GetOwner() == OtherActor)
+                {
+                    // PASS -> 데미지 적용 (방패 깎임)
+                }
+                else
+                {
+                    // BLOCKED -> 리턴 (친구 보호)
+                    return; 
+                }
+            }
+        }
+
+        // 데미지 적용
+        UGameplayStatics::ApplyDamage(
+            OtherActor,
+            AttackDamage,
+            GetController(),
+            this,
+            UDamageType::StaticClass()
+        );
+
+        HitVictims.Add(OtherActor);
+    }
 }
 
 void AEnemyNormal::EndAttack()
