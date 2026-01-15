@@ -5,7 +5,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Project_Bang_Squad/Character/PaladinCharacter.h"
 #include "Project_Bang_Squad/Character/Base/BaseCharacter.h" 
-
+#include "Project_Bang_Squad/Character/MonsterBase/EnemyCharacterBase.h"
 ASlashProjectile::ASlashProjectile()
 {
 	PrimaryActorTick.bCanEverTick = false;
@@ -58,6 +58,11 @@ void ASlashProjectile::OnOverlap(UPrimitiveComponent* OverlappedComp, AActor* Ot
 	if (!HasAuthority()) return;
 	if (!OtherActor || OtherActor == this || OtherActor == GetOwner()) return;
 
+	// [추가] 같은 몬스터 팀이면 충돌 처리 자체를 안 하고 리턴 (성능 절약)
+	if (OtherActor->IsA(AEnemyCharacterBase::StaticClass()))
+	{
+		return;
+	}
 	if (OtherActor->IsA(ABaseCharacter::StaticClass()))
 	{
 		// 1. 방패에 맞았는지 확인 (팔라딘이 아니면 당연히 false 뜰 테니 안전함)
