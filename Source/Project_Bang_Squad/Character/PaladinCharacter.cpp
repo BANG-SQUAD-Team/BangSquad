@@ -364,6 +364,17 @@ void APaladinCharacter::JobAbility()
     }
 }
 
+void APaladinCharacter::RestoreShieldAfterCooldown()
+{
+    // 타이머 정리
+    GetWorldTimerManager().ClearTimer(ShieldActivationTimer);
+    // 즉시 풀피 & 수리 완료
+    CurrentShieldHP = MaxShieldHP;
+    bIsShieldBroken = false;
+    if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Blue,
+        TEXT("Shield Fully Restored!"));
+}
+
 // 타이머가 호출하는 실제 방패 켜기 함수
 void APaladinCharacter::ActivateGuard()
 {
@@ -398,11 +409,15 @@ void APaladinCharacter::Server_SetGuard_Implementation(bool bNewGuarding)
     {
         Multicast_StopMontage(0.25f);
         
-        // 방패 내렸음 ->  Delay 뒤에 회복 시작
-        if (!GetWorldTimerManager().IsTimerActive(ShieldRegenTimer))
+        // 방패 내렸을 때 회복 로직
+        // 1. 방패가 깨져서 쿨타임 대기중인가?
+        bool bIsWaitingForRepair = GetWorldTimerManager().IsTimerActive(ShieldRegenTimer);
+        // 2. 쿨타임 중이 아닐 때만 도트 힐 시작 
+        if (!bIsWaitingForRepair && !GetWorldTimerManager().IsTimerActive(ShieldRegenTimer))
         {
-            GetWorldTimerManager().SetTimer(ShieldRegenTimer, this , &APaladinCharacter::RegenShield,
-                0.1f, true, ShieldRegenDelay);
+            // 깨진게 아니라면, 내렸을 때 서서히 회복
+            GetWorldTimerManager().SetTimer(ShieldRegenTimer, this, 
+                &APaladinCharacter::RegenShield, 0.1f, true, ShieldRegenDelay);
         }
     }
     OnRep_IsGuarding();
@@ -460,7 +475,7 @@ float APaladinCharacter::TakeDamage(float DamageAmount, FDamageEvent const& Dama
         FVector MyForward = GetActorForwardVector();
         FVector ToAttacker = (DamageCauser->GetActorLocation() - GetActorLocation()).GetSafeNormal();
 
-        if (FVector::DotProduct(MyForward, ToAttacker) > 0.0f)
+        if (FVector::DotProduct(MyForward, ToAttacker) > -0.5f)
         {
             // 플레이어 데미지 무효화
             ActualDamage = 0.0f; 
@@ -490,6 +505,28 @@ void APaladinCharacter::OnShieldBroken()
     
     // (옵션) 파괴 사운드는 여기서 Multicast RPC로 뿌리면 됨
     UE_LOG(LogTemp, Warning, TEXT("Shield Broken!!"));
+    
+    // 돌아가던 도트 힐(회복) 타이머가 있다면 끔
+    GetWorldTimerManager().ClearTimer(ShieldRegenTimer);
+    
+    // 데이터 테이블에서 쿨타임 가져오기
+    float BrokenCooldown = 5.0f; // 팔라딘 직업능력 쿨타임 기본값
+    
+    if (SkillDataTable)
+    {
+        static const FString ContextString(TEXT("PaladinShieldBreak"));
+        FSkillData* Data = SkillDataTable->FindRow<FSkillData>(FName("JobAbility"), ContextString);
+        if (Data && Data->Cooldown > 0.0f)
+        {
+            BrokenCooldown = Data->Cooldown;
+        }
+    }
+    
+    // 5초 뒤에 RestoreShieldAfterCooldown 함수 실행하라고 예약
+    GetWorldTimerManager().SetTimer(ShieldBrokenTimerHandle, this,
+        &APaladinCharacter::RestoreShieldAfterCooldown, BrokenCooldown, false);
+    if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red,
+        TEXT("Shield is Broken! Waiting for cooldown..."));
 }
 
 // 7. 방패 회복 (서버 전용)

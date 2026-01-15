@@ -41,6 +41,16 @@ void AEnemyNormal::BeginPlay()
     }
 }
 
+void AEnemyNormal::Tick(float DeltaTime)
+{
+    Super::Tick(DeltaTime);
+    // 박스 켜져 있을 때만 그리기
+    if (WeaponCollisionBox && WeaponCollisionBox->GetCollisionEnabled() == ECollisionEnabled::QueryOnly)
+    {
+        DrawDebugBox(GetWorld(), WeaponCollisionBox->GetComponentLocation(), WeaponCollisionBox->GetScaledBoxExtent(), WeaponCollisionBox->GetComponentQuat(), FColor::Green, false, -1.0f, 0, 2.0f);
+    }
+}
+
 void AEnemyNormal::AcquireTarget()
 {
     APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(this, 0);
@@ -205,9 +215,11 @@ void AEnemyNormal::Multicast_PlayAttackMontage_Implementation(int32 MontageIndex
     PlayAnimMontage(MontageToPlay);
 }
 
-// [추가] 콜리전 켜기
 void AEnemyNormal::EnableWeaponCollision()
 {
+    //  새 공격 시작이니까 기억 소거
+    HitVictims.Empty();
+
     if (WeaponCollisionBox)
     {
         WeaponCollisionBox->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
@@ -232,6 +244,8 @@ void AEnemyNormal::OnWeaponOverlap(UPrimitiveComponent* OverlappedComponent, AAc
 
     if (OtherActor == nullptr || OtherActor == this || OtherActor == GetOwner()) return;
 
+    if (HitVictims.Contains(OtherActor)) return;
+    
     if (OtherActor->IsA(ABaseCharacter::StaticClass()))
     {
         UGameplayStatics::ApplyDamage(
@@ -242,8 +256,7 @@ void AEnemyNormal::OnWeaponOverlap(UPrimitiveComponent* OverlappedComponent, AAc
             UDamageType::StaticClass()
         );
 
-        // 한 번 때렸으면 즉시 판정 꺼서 다단히트 방지
-        DisableWeaponCollision();
+        HitVictims.Add(OtherActor);
     }
 }
 
