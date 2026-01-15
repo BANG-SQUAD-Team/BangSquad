@@ -13,6 +13,10 @@ AStrikerCharacter::AStrikerCharacter()
 	bIsSlamming = false;
 }
 
+// =================================================================
+// [생명주기 및 오버라이드]
+// =================================================================
+
 void AStrikerCharacter::BeginPlay()
 {
 	Super::BeginPlay();
@@ -22,6 +26,7 @@ void AStrikerCharacter::Landed(const FHitResult& Hit)
 {
 	Super::Landed(Hit);
 
+	// 스킬2(찍기) 사용 중 착지하면 충격파 발생
 	if (bIsSlamming)
 	{
 		bIsSlamming = false;
@@ -31,120 +36,161 @@ void AStrikerCharacter::Landed(const FHitResult& Hit)
 
 void AStrikerCharacter::OnDeath()
 {
-	// 이미 죽었으면 무시
 	if (bIsDead) return;
-	
-	// 1. Skill 1 정리 공중에 띄워둔 적이 있다면 해방시켜줌
-	// 이걸 안하면 스트라이커가 죽었을때 적이 영원히 하늘에 떠있어서 추가
+
+	// Skill 1 정리: 공중에 띄워둔 적 해방
 	if (CurrentComboTarget)
 	{
-		ReleaseTarget(CurrentComboTarget); // 잡은 놈 중력 복구와 Movement 복구
+		ReleaseTarget(CurrentComboTarget);
 		CurrentComboTarget = nullptr;
 	}
-	
+
 	GetWorldTimerManager().ClearTimer(Skill1TimerHandle);
-	
-	// 2. Skill2 정리 내려찍기 상태 해제
-	// 이걸 안하면 시체가 바닥에 닿을 때 Server_Skill2Impact가 발동 됨
+
+	// Skill 2 정리
 	bIsSlamming = false;
-	
-	// 3. 몽타주 정지
+
 	StopAnimMontage();
-	
-	// 4. 부모 클래스(BaseCharacter) 사망 로직
 	Super::OnDeath();
 }
 
+// =================================================================
+// [입력 핸들러 및 평타]
+// =================================================================
+
 void AStrikerCharacter::Attack()
 {
-	// 1. 공격 가능 여부 확인
 	if (!CanAttack()) return;
 
-	// [수정] A/B 공격 분기 처리
 	FName SkillRowName = bIsNextAttackA ? TEXT("Attack_A") : TEXT("Attack_B");
 
-	// 2. 데이터 테이블에서 쿨타임 가져오기
+	// 서버에 공격 요청 (동기화)
+	Server_Attack(SkillRowName);
+
+	bIsNextAttackA = !bIsNextAttackA;
+}
+
+void AStrikerCharacter::Server_Attack_Implementation(FName SkillName)
+{
+	// 쿨타임 데이터 적용 (서버)
 	if (SkillDataTable)
 	{
 		static const FString ContextString(TEXT("StrikerAttack"));
-		// 동적으로 결정된 SkillRowName으로 데이터 조회
-		FSkillData* Row = SkillDataTable->FindRow<FSkillData>(SkillRowName, ContextString);
-
+		FSkillData* Row = SkillDataTable->FindRow<FSkillData>(SkillName, ContextString);
 		if (Row && Row->Cooldown > 0.0f)
 		{
 			AttackCooldownTime = Row->Cooldown;
 		}
 	}
-
-	// 3. 쿨타임 적용 (BaseCharacter 로직)
 	StartAttackCooldown();
 
-	// 4. 실행 (결정된 스킬 이름으로)
-	ProcessSkill(SkillRowName);
-
-	bIsNextAttackA = !bIsNextAttackA;
+	// 모든 클라이언트에게 모션 재생 명령
+	Multicast_Attack(SkillName);
 }
 
+void AStrikerCharacter::Multicast_Attack_Implementation(FName SkillName)
+{
+	// 실제 모션 재생
+	ProcessSkill(SkillName);
+}
 
 void AStrikerCharacter::ApplyAttackForwardForce()
 {
+	// 클라이언트에서 호출 시 서버로 중계
+	if (HasAuthority())
+	{
+		Server_ApplyAttackForwardForce_Implementation();
+	}
+	else
+	{
+		Server_ApplyAttackForwardForce();
+	}
+}
+
+void AStrikerCharacter::Server_ApplyAttackForwardForce_Implementation()
+{
+	// 이동(Launch)은 서버에서 수행해야 위치 동기화됨
 	FVector ForwardDir = GetActorForwardVector();
-
-	// 공격 방향으로 힘 가하기
 	FVector LaunchVel = ForwardDir * AttackForwardForce;
-
-	// Z축(위쪽) 힘은 0으로 하거나 필요하면 추가 (현재는 false로 되어있어 무시됨)
 	LaunchCharacter(LaunchVel, true, false);
 }
 
+// =================================================================
+// [스킬 1 (공중 콤보) 구현]
+// =================================================================
+
 void AStrikerCharacter::Skill1()
 {
-	// 1. ��Ÿ�� üũ (���� �ð��� �غ� �ð����� ������ ��Ÿ�� ��)
 	float CurrentTime = GetWorld()->GetTimeSeconds();
-	if (CurrentTime < Skill1ReadyTime)
-	{
-		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Yellow, TEXT("Skill1 Cooldown!"));
-		return;
-	}
+	if (CurrentTime < Skill1ReadyTime) return;
 
-	// [�α� 1] Ű �Է� Ȯ��
-	if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Yellow, TEXT(">> [Skill1] Input Pressed!"));
-
+	// 클라이언트에서 가장 적절한 공중 타겟 찾기
 	AActor* Target = FindBestAirborneTarget();
 	if (Target)
 	{
-		// 2. ��Ÿ�� ���� (������ ���̺� ��ȸ)
-		float ActualCooldown = 0.0f; // �⺻��
+		// 쿨타임 계산
+		float ActualCooldown = 0.0f;
 		if (SkillDataTable)
 		{
 			static const FString ContextString(TEXT("StrikerSkill1Cooldown"));
 			FSkillData* Data = SkillDataTable->FindRow<FSkillData>(TEXT("Skill1"), ContextString);
-			if (Data && Data->Cooldown > 0.0f)
-			{
-				ActualCooldown = Data->Cooldown;
-			}
+			if (Data && Data->Cooldown > 0.0f) ActualCooldown = Data->Cooldown;
 		}
-
-		// ��Ÿ�� ����: ���� �ð� + ��Ÿ��
 		Skill1ReadyTime = CurrentTime + ActualCooldown;
 
-		// [�α� 2] Ÿ�� �߰� ����
-		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Green, FString::Printf(TEXT(">> [Skill1] Client: Found Target [%s]"), *Target->GetName()));
+		// 서버에 스킬 시전 요청
 		Server_TrySkill1(Target);
 	}
-	else
+}
+
+void AStrikerCharacter::Server_TrySkill1_Implementation(AActor* TargetActor)
+{
+	ACharacter* TargetChar = Cast<ACharacter>(TargetActor);
+	if (!TargetChar) return;
+
+	// 거리 체크
+	float DistSq = FVector::DistSquared(GetActorLocation(), TargetActor->GetActorLocation());
+	if (DistSq > 1500.f * 1500.f) return;
+
+	float SkillDamage = 0.f;
+	if (SkillDataTable)
 	{
-		// [�α� 3] Ÿ�� ����
-		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, TEXT(">> [Skill1] Client: No Airborne Target Found!"));
+		static const FString ContextString(TEXT("Striker Skill1 Context"));
+		FSkillData* Data = SkillDataTable->FindRow<FSkillData>(TEXT("Skill1"), ContextString);
+		if (Data)
+		{
+			if (!IsSkillUnlocked(Data->RequiredStage)) return;
+			SkillDamage = Data->Damage;
+			if (Data->SkillMontage) Multicast_PlaySkill1FX(TargetChar);
+		}
 	}
+
+	// 1. 순간이동 (서버 권한)
+	FVector TeleportLoc = TargetChar->GetActorLocation() - (TargetChar->GetActorForwardVector() * 100.f) + FVector(0, 0, 50.f);
+	SetActorLocation(TeleportLoc);
+
+	// 2. 회전 보정
+	FVector LookDir = TargetChar->GetActorLocation() - TeleportLoc;
+	LookDir.Z = 0.f;
+	SetActorRotation(LookDir.Rotation());
+
+	// 3. 타겟 상태 정지 및 데미지
+	SuspendTarget(TargetChar);
+	UGameplayStatics::ApplyDamage(TargetChar, SkillDamage, GetController(), this, UDamageType::StaticClass());
+
+	// 4. 내 상태 정지 (중력 무시)
+	GetCharacterMovement()->GravityScale = 0.f;
+	GetCharacterMovement()->Velocity = FVector::ZeroVector;
+
+	CurrentComboTarget = TargetChar;
+
+	// 종료 타이머
+	GetWorldTimerManager().SetTimer(Skill1TimerHandle, this, &AStrikerCharacter::EndSkill1, 1.0f, false);
 }
 
 void AStrikerCharacter::EndSkill1()
 {
-	// 나 자신의 중력 복구
 	GetCharacterMovement()->GravityScale = 1.0f;
-	
-	// 타겟 풀어주기
 	if (CurrentComboTarget)
 	{
 		ReleaseTarget(CurrentComboTarget);
@@ -152,253 +198,48 @@ void AStrikerCharacter::EndSkill1()
 	}
 }
 
-AActor* AStrikerCharacter::FindBestAirborneTarget()
-{
-	FVector MyLoc = GetActorLocation();
-	FVector CamFwd = GetControlRotation().Vector();
-	CamFwd.Z = 0.f;
-	CamFwd.Normalize();
-
-	TArray<AActor*> OverlappingActors;
-	TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;
-	ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_Pawn));
-
-	UKismetSystemLibrary::SphereOverlapActors(GetWorld(), MyLoc, 1200.f,
-		ObjectTypes, ACharacter::StaticClass(), { this }, OverlappingActors);
- 
-	AActor* BestTarget = nullptr;
-	float BestDot = -1.0f;
-
-	for (AActor* Actor : OverlappingActors)
-	{
-		ACharacter* CharActor = Cast<ACharacter>(Actor);
-		if (!CharActor) continue;
-
-		bool bIsNormal = Actor->IsA(AEnemyNormal::StaticClass());
-		bool bIsMidBoss = Actor->IsA(AEnemyMidBoss::StaticClass());
-
-		// ����(Normal, MidBoss)�� ���
-		if (!bIsNormal && !bIsMidBoss) continue;
-
-		bool bIsFalling = CharActor->GetCharacterMovement()->IsFalling();
-
-		if (bIsFalling)
-		{
-			float HeightDiff = CharActor->GetActorLocation().Z - MyLoc.Z;
-
-			if (HeightDiff < Skill1RequiredHeight)
-			{
-				continue;
-			}
-
-			FVector DirToEnemy = (CharActor->GetActorLocation() - MyLoc);
-			DirToEnemy.Z = 0.f;
-			DirToEnemy.Normalize();
-
-			float DotResult = FVector::DotProduct(CamFwd, DirToEnemy);
-
-			if (DotResult > 0.5f && DotResult > BestDot)
-			{
-				BestDot = DotResult;
-				BestTarget = CharActor;
-			}
-		}
-	}
-
-	return BestTarget;
-}
-
-void AStrikerCharacter::Server_TrySkill1_Implementation(AActor* TargetActor)
-{
-	if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Blue, TEXT(">> [Server] Request Received"));
-
-	ACharacter* TargetChar = Cast<ACharacter>(TargetActor);
-	if (!TargetChar) return;
-
-	float DistSq = FVector::DistSquared(GetActorLocation(), TargetActor->GetActorLocation());
-	if (DistSq > 1500.f * 1500.f)
-	{
-		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, TEXT(">> [Server] Target too far!"));
-		return;
-	}
-
-	float SkillDamage = 0.f;
-
-	if (SkillDataTable)
-	{
-		static const FString ContextString(TEXT("Striker Skill1 Context"));
-		FSkillData* Data = SkillDataTable->FindRow<FSkillData>(TEXT("Skill1"), ContextString);
-
-		if (Data)
-		{
-			if (!IsSkillUnlocked(Data->RequiredStage))
-			{
-				if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, TEXT(">> [Server] Skill Locked!"));
-				return;
-			}
-			SkillDamage = Data->Damage;
-			if (Data->SkillMontage) Multicast_PlaySkill1FX(TargetChar);
-		}
-		else
-		{
-			if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, TEXT(">> [Server] 'Skill1' Row Not Found in DataTable!"));
-		}
-	}
-	else
-	{
-		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, TEXT(">> [Server] SkillDataTable is NULL!"));
-	}
-
-	FVector TeleportLoc = TargetChar->GetActorLocation() - (TargetChar->GetActorForwardVector() * 100.f) + FVector(0, 0, 50.f);
-	SetActorLocation(TeleportLoc);
-
-	FVector LookDir = TargetChar->GetActorLocation() - TeleportLoc;
-	LookDir.Z = 0.f;
-	SetActorRotation(LookDir.Rotation());
-
-	SuspendTarget(TargetChar);
-	UGameplayStatics::ApplyDamage(TargetChar, SkillDamage, GetController(), this, UDamageType::StaticClass());
-
-	GetCharacterMovement()->GravityScale = 0.f;
-	GetCharacterMovement()->Velocity = FVector::ZeroVector;
-
-	// 타겟을 멤버 변수에 저장 (죽을 때 놔주기 위함)
-	CurrentComboTarget = TargetChar;
-	
-	// 람다 함수로 타이머 돌리니까 OnDeath 함수한테 타이머 취소하라고 명령할 방법이 없음
-	// 그래서 EndSkill1 함수로 빼서 죽었을때 타이머 핸들로 취소할 수 있게 구조만 바꿨음
-	GetWorldTimerManager().SetTimer(Skill1TimerHandle, this,
-		&AStrikerCharacter::EndSkill1,1.0f,false);
-	
-	// FTimerHandle Handle;
-	// GetWorld()->GetTimerManager().SetTimer(Handle, [this, TargetChar]()
-	// 	{
-	// 		GetCharacterMovement()->GravityScale = 1.0f;
-	// 		ReleaseTarget(TargetChar);
-	// 	}, 1.0f, false);
-}
-
 void AStrikerCharacter::Multicast_PlaySkill1FX_Implementation(AActor* Target)
 {
 	ProcessSkill(TEXT("Skill1"));
-	if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Cyan, TEXT("Skill1: Sorye Ge Ton!!"));
 }
 
-// =============================================================
-// [���� �ɷ�] ���� ���簢�� ���� ���� (������ ���̺� ��Ÿ�� ����)
-// =============================================================
-void AStrikerCharacter::JobAbility()
-{
-	// 1. ��Ÿ�� üũ
-	float CurrentTime = GetWorld()->GetTimeSeconds();
-	if (CurrentTime < JobAbilityCooldownTime)
-	{
-		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Silver, TEXT("Job Ability Cooldown!"));
-		return;
-	}
+// =================================================================
+// [스킬 2 (내려찍기) 구현]
+// =================================================================
 
-	// 2. ��Ÿ�� �� ��������
-	float ActualCooldown = 5.0f; // �⺻��
-	if (SkillDataTable)
-	{
-		static const FString ContextString(TEXT("StrikerJobCooldown"));
-		FSkillData* Data = SkillDataTable->FindRow<FSkillData>(TEXT("JobAbility"), ContextString);
-		if (Data && Data->Cooldown > 0.0f)
-		{
-			ActualCooldown = Data->Cooldown;
-		}
-	}
-
-	Server_UseJobAbility();
-
-	// 3. ��Ÿ�� ����
-	JobAbilityCooldownTime = CurrentTime + ActualCooldown;
-}
-
-void AStrikerCharacter::Server_UseJobAbility_Implementation()
-{
-	float AbilityDamage = 50.f;
-	ProcessSkill(TEXT("JobAbility"));
-
-	if (SkillDataTable)
-	{
-		static const FString ContextString(TEXT("Striker JobAbility Damage"));
-		FSkillData* Data = SkillDataTable->FindRow<FSkillData>(TEXT("JobAbility"), ContextString);
-		if (Data) AbilityDamage = Data->Damage;
-	}
-
-	FVector MyLoc = GetActorLocation();
-	FVector MyFwd = GetActorForwardVector();
-	FVector BoxCenter = MyLoc + (MyFwd * 150.f);
-	FVector BoxExtent = FVector(150.f, 100.f, 100.f);
-
-	TArray<AActor*> OverlappingActors;
-	TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;
-	ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_Pawn));
-
-	UKismetSystemLibrary::BoxOverlapActors(GetWorld(), BoxCenter, BoxExtent, ObjectTypes, ACharacter::StaticClass(), { this }, OverlappingActors);
-
-	for (AActor* Actor : OverlappingActors)
-	{
-		ACharacter* TargetChar = Cast<ACharacter>(Actor);
-		if (!TargetChar) continue;
-
-		bool bIsNormal = Actor->IsA(AEnemyNormal::StaticClass());
-		bool bIsMidBoss = Actor->IsA(AEnemyMidBoss::StaticClass());
-		bool bIsBaseChar = Actor->IsA(ABaseCharacter::StaticClass());
-
-		if (bIsNormal)
-		{
-			UGameplayStatics::ApplyDamage(TargetChar, AbilityDamage, GetController(), this, UDamageType::StaticClass());
-			FVector LaunchVel = FVector(0.f, 0.f, 1000.f);
-			TargetChar->LaunchCharacter(LaunchVel, true, true);
-		}
-		else if (bIsBaseChar && !bIsNormal && !bIsMidBoss)
-		{
-			FVector LaunchVel = FVector(0.f, 0.f, 1000.f);
-			TargetChar->LaunchCharacter(LaunchVel, true, true);
-		}
-	}
-}
-
-// =============================================================
-// [��ų 2] ���� ��� (������ ���̺� ��Ÿ�� ����)
-// =============================================================
 void AStrikerCharacter::Skill2()
 {
-	// 1. ��Ÿ�� üũ
 	float CurrentTime = GetWorld()->GetTimeSeconds();
-	if (CurrentTime < Skill2ReadyTime)
-	{
-		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Yellow, TEXT("Skill2 Cooldown!"));
-		return;
-	}
+	if (CurrentTime < Skill2ReadyTime) return;
 
+	// 공중에서만 사용 가능
 	if (GetCharacterMovement()->IsFalling())
 	{
-		// 2. ��Ÿ�� ���� (���� ���� �ÿ���)
-		float ActualCooldown = 0.0f;
-		if (SkillDataTable)
-		{
-			static const FString ContextString(TEXT("StrikerSkill2Cooldown"));
-			FSkillData* Data = SkillDataTable->FindRow<FSkillData>(TEXT("Skill2"), ContextString);
-			if (Data && Data->Cooldown > 0.0f)
-			{
-				ActualCooldown = Data->Cooldown;
-			}
-		}
-		// ���� ��� ���� �ð� = ���� �ð� + ��Ÿ��
-		Skill2ReadyTime = CurrentTime + ActualCooldown;
+		Server_StartSkill2();
+	}
+}
 
-		ProcessSkill(TEXT("Skill2"));
-		FVector SlamVelocity = FVector(0.f, 0.f, -3000.f);
-		LaunchCharacter(SlamVelocity, true, true);
-		bIsSlamming = true;
-	}
-	else
+void AStrikerCharacter::Server_StartSkill2_Implementation()
+{
+	float CurrentTime = GetWorld()->GetTimeSeconds();
+	float ActualCooldown = 0.0f;
+
+	if (SkillDataTable)
 	{
-		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Red, TEXT("Only usable in Air!"));
+		static const FString ContextString(TEXT("StrikerSkill2Cooldown"));
+		FSkillData* Data = SkillDataTable->FindRow<FSkillData>(TEXT("Skill2"), ContextString);
+		if (Data && Data->Cooldown > 0.0f) ActualCooldown = Data->Cooldown;
 	}
+	Skill2ReadyTime = CurrentTime + ActualCooldown;
+
+	// 1. 애니메이션 동기화
+	ProcessSkill(TEXT("Skill2")); // Multicast or Replicated Montage 필요
+
+	// 2. 물리적 하강 (서버)
+	FVector SlamVelocity = FVector(0.f, 0.f, -3000.f);
+	LaunchCharacter(SlamVelocity, true, true);
+
+	bIsSlamming = true;
 }
 
 void AStrikerCharacter::Server_Skill2Impact_Implementation()
@@ -406,6 +247,7 @@ void AStrikerCharacter::Server_Skill2Impact_Implementation()
 	FVector MyLoc = GetActorLocation();
 	Multicast_PlaySlamFX();
 
+	// 범위 데미지 및 물리력
 	TArray<AActor*> OverlappingActors;
 	TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;
 	ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_Pawn));
@@ -426,10 +268,11 @@ void AStrikerCharacter::Server_Skill2Impact_Implementation()
 		ACharacter* TargetChar = Cast<ACharacter>(Actor);
 		if (!TargetChar || TargetChar == this) continue;
 
+		// 적군 판별
 		bool bIsNormal = Actor->IsA(AEnemyNormal::StaticClass());
-		bool bIsMidBoss = Actor->IsA(AEnemyMidBoss::StaticClass());
 		bool bIsBaseChar = Actor->IsA(ABaseCharacter::StaticClass());
 
+		// 데미지 및 끌어오기/밀쳐내기 효과
 		if (bIsNormal)
 		{
 			UGameplayStatics::ApplyDamage(TargetChar, SlamDamage, GetController(), this, UDamageType::StaticClass());
@@ -437,7 +280,7 @@ void AStrikerCharacter::Server_Skill2Impact_Implementation()
 			FVector PullVel = (PullDir * 1500.f) + FVector(0.f, 0.f, 300.f);
 			TargetChar->LaunchCharacter(PullVel, true, true);
 		}
-		else if (bIsBaseChar && !bIsMidBoss)
+		else if (bIsBaseChar)
 		{
 			FVector PushDir = (TargetChar->GetActorLocation() - MyLoc).GetSafeNormal();
 			FVector PushVel = (PushDir * 800.f) + FVector(0.f, 0.f, 200.f);
@@ -449,6 +292,140 @@ void AStrikerCharacter::Server_Skill2Impact_Implementation()
 void AStrikerCharacter::Multicast_PlaySlamFX_Implementation()
 {
 	if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Purple, TEXT("SLAM IMPACT!!"));
+}
+
+// =================================================================
+// [직업 스킬 (JobAbility) 구현]
+// =================================================================
+
+void AStrikerCharacter::JobAbility()
+{
+	float CurrentTime = GetWorld()->GetTimeSeconds();
+	if (CurrentTime < JobAbilityCooldownTime) return;
+
+	float ActualCooldown = 5.0f;
+	if (SkillDataTable)
+	{
+		static const FString ContextString(TEXT("StrikerJobCooldown"));
+		FSkillData* Data = SkillDataTable->FindRow<FSkillData>(TEXT("JobAbility"), ContextString);
+		if (Data && Data->Cooldown > 0.0f) ActualCooldown = Data->Cooldown;
+	}
+
+	Server_UseJobAbility();
+	JobAbilityCooldownTime = CurrentTime + ActualCooldown;
+}
+
+void AStrikerCharacter::Server_UseJobAbility_Implementation()
+{
+	float AbilityDamage = 50.f;
+	ProcessSkill(TEXT("JobAbility")); // 몽타주 재생
+
+	if (SkillDataTable)
+	{
+		static const FString ContextString(TEXT("Striker JobAbility Damage"));
+		FSkillData* Data = SkillDataTable->FindRow<FSkillData>(TEXT("JobAbility"), ContextString);
+		if (Data) AbilityDamage = Data->Damage;
+	}
+
+	// 박스 범위 내 적 타격
+	FVector MyLoc = GetActorLocation();
+	FVector MyFwd = GetActorForwardVector();
+	FVector BoxCenter = MyLoc + (MyFwd * 150.f);
+	FVector BoxExtent = FVector(150.f, 100.f, 100.f);
+
+	TArray<AActor*> OverlappingActors;
+	TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;
+	ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_Pawn));
+
+	UKismetSystemLibrary::BoxOverlapActors(GetWorld(), BoxCenter, BoxExtent, ObjectTypes, ACharacter::StaticClass(), { this }, OverlappingActors);
+
+	for (AActor* Actor : OverlappingActors)
+	{
+		ACharacter* TargetChar = Cast<ACharacter>(Actor);
+		if (!TargetChar) continue;
+
+		bool bIsNormal = Actor->IsA(AEnemyNormal::StaticClass());
+		bool bIsBaseChar = Actor->IsA(ABaseCharacter::StaticClass());
+
+		if (bIsNormal)
+		{
+			UGameplayStatics::ApplyDamage(TargetChar, AbilityDamage, GetController(), this, UDamageType::StaticClass());
+			FVector LaunchVel = FVector(0.f, 0.f, 1000.f);
+			TargetChar->LaunchCharacter(LaunchVel, true, true);
+		}
+		else if (bIsBaseChar)
+		{
+			FVector LaunchVel = FVector(0.f, 0.f, 1000.f);
+			TargetChar->LaunchCharacter(LaunchVel, true, true);
+		}
+	}
+}
+
+// =================================================================
+// [헬퍼 함수]
+// =================================================================
+
+void AStrikerCharacter::ProcessSkill(FName SkillRowName)
+{
+	if (!SkillDataTable) return;
+
+	static const FString ContextString(TEXT("StrikerSkillContext"));
+	FSkillData* Data = SkillDataTable->FindRow<FSkillData>(SkillRowName, ContextString);
+
+	if (Data && Data->SkillMontage)
+	{
+		if (!IsSkillUnlocked(Data->RequiredStage)) return;
+		PlayAnimMontage(Data->SkillMontage);
+	}
+}
+
+AActor* AStrikerCharacter::FindBestAirborneTarget()
+{
+	FVector MyLoc = GetActorLocation();
+	FVector CamFwd = GetControlRotation().Vector();
+	CamFwd.Z = 0.f;
+	CamFwd.Normalize();
+
+	TArray<AActor*> OverlappingActors;
+	TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;
+	ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_Pawn));
+
+	UKismetSystemLibrary::SphereOverlapActors(GetWorld(), MyLoc, 1200.f,
+		ObjectTypes, ACharacter::StaticClass(), { this }, OverlappingActors);
+
+	AActor* BestTarget = nullptr;
+	float BestDot = -1.0f;
+
+	for (AActor* Actor : OverlappingActors)
+	{
+		ACharacter* CharActor = Cast<ACharacter>(Actor);
+		if (!CharActor) continue;
+
+		bool bIsNormal = Actor->IsA(AEnemyNormal::StaticClass());
+		bool bIsMidBoss = Actor->IsA(AEnemyMidBoss::StaticClass());
+
+		if (!bIsNormal && !bIsMidBoss) continue;
+
+		if (CharActor->GetCharacterMovement()->IsFalling())
+		{
+			float HeightDiff = CharActor->GetActorLocation().Z - MyLoc.Z;
+			if (HeightDiff < Skill1RequiredHeight) continue;
+
+			FVector DirToEnemy = (CharActor->GetActorLocation() - MyLoc);
+			DirToEnemy.Z = 0.f;
+			DirToEnemy.Normalize();
+
+			float DotResult = FVector::DotProduct(CamFwd, DirToEnemy);
+
+			if (DotResult > 0.5f && DotResult > BestDot)
+			{
+				BestDot = DotResult;
+				BestTarget = CharActor;
+			}
+		}
+	}
+
+	return BestTarget;
 }
 
 void AStrikerCharacter::SuspendTarget(ACharacter* Target)
@@ -472,27 +449,6 @@ void AStrikerCharacter::ReleaseTarget(ACharacter* Target)
 		{
 			EMC->GravityScale = 1.0f;
 			EMC->SetMovementMode(MOVE_Walking);
-		}
-	}
-}
-
-void AStrikerCharacter::ProcessSkill(FName SkillRowName)
-{
-	if (!SkillDataTable) return;
-
-	static const FString ContextString(TEXT("StrikerSkillContext"));
-	FSkillData* Data = SkillDataTable->FindRow<FSkillData>(SkillRowName, ContextString);
-
-	if (Data)
-	{
-		if (!IsSkillUnlocked(Data->RequiredStage))
-		{
-			if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Orange, TEXT("Skill is locked."));
-			return;
-		}
-		if (Data->SkillMontage)
-		{
-			PlayAnimMontage(Data->SkillMontage);
 		}
 	}
 }
