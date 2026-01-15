@@ -428,62 +428,88 @@ void APaladinCharacter::OnRep_IsGuarding()
     SetShieldActive(bIsGuarding);
 }
 
-// 기본 충돌 로직
+// PaladinCharacter.cpp
+
 void APaladinCharacter::SetShieldActive(bool bActive)
 {
-    if (ShieldMeshComp)
+    if (!ShieldMeshComp) return;
+
+    ShieldMeshComp->SetVisibility(bActive);
+
+    // UI 처리 (기존 코드 유지)
+    if (ShieldBarWidgetComp) 
     {
-        ShieldMeshComp->SetVisibility(bActive);
+        ShieldBarWidgetComp->SetVisibility(bActive && IsLocallyControlled());
+    }
+
+    if (bActive)
+    {
+        // ====================================================
+        // [ON] 방패 켜기
+        // ====================================================
         
-        // 체력바 UI는 오직 나에게 (팔라딘 유저에게만) 보이게 함
-        if (ShieldBarWidgetComp)
-        {
-            if (bActive && IsLocallyControlled())
-            {
-                ShieldBarWidgetComp->SetVisibility(true);
-            }
-            else
-            {
-                // 방패를 껐거나 남이 보는 내 캐릭터라면 UI 숨김
-                ShieldBarWidgetComp->SetVisibility(false);
-            }
-        }
-        if (bActive)
-        {
-            ShieldMeshComp->SetCollisionProfileName(TEXT("BlockAllDynamic"));
-            
-         
-            // 카메라는 무시
-            ShieldMeshComp->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
-        }
-        else
-        {
-            ShieldMeshComp->SetCollisionProfileName(TEXT("NoCollision"));
-        }
+        // 1. 먼저 활성화 (QueryAndPhysics)
+        ShieldMeshComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+        ShieldMeshComp->SetCollisionObjectType(ECC_WorldDynamic);
+        ShieldMeshComp->SetCollisionProfileName(TEXT("Custom")); // 커스텀 모드 진입
+
+        // 2. 채널 설정 (순서 중요)
+        ShieldMeshComp->SetCollisionResponseToAllChannels(ECR_Block); // 기본: 다 막음
+
+        // 3. 예외 처리
+        ShieldMeshComp->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore); // 카메라 무시
+        ShieldMeshComp->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);   // 일단 모든 캐릭터 무시 (기본)
+
+        // 4. [정석] 채널 분리 (프로젝트 세팅에서 설정한 이름대로)
+        // 아군(PlayerUnit)은 통과 / 적군(EnemyUnit)은 차단
+        ShieldMeshComp->SetCollisionResponseToChannel(ECC_GameTraceChannel1, ECR_Ignore); 
+        ShieldMeshComp->SetCollisionResponseToChannel(ECC_GameTraceChannel2, ECR_Block);
+    }
+    else
+    {
+        // ====================================================
+        // [OFF] 방패 끄기 (확실하게 죽이기)
+        // ====================================================
+        
+        // 1. 프로필을 먼저 NoCollision으로 변경 (프리셋 불러오기)
+        ShieldMeshComp->SetCollisionProfileName(TEXT("NoCollision"));
+        
+        // 2. 반응 채널 전부 무시로 강제 설정
+        ShieldMeshComp->SetCollisionResponseToAllChannels(ECR_Ignore);
+        
+        // 3. [핵심] 물리 연산 자체를 꺼버림 (이게 없으면 잔상처럼 남을 수 있음)
+        ShieldMeshComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     }
 }
 
 // 5. 데미지 로직 (서버 권한)
 float APaladinCharacter::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
+    // 기본적으로 플레이어에게 들어갈 데미지
     float ActualDamage = DamageAmount;
 
-    // 서버이고, 방어 중이고, 방패가 멀쩡하고, 때린 놈이 있을 때
+    // 1. 서버 권한 확인 & 방어 상태 확인 & 방패가 깨지지 않았는지 확인
     if (HasAuthority() && bIsGuarding && !bIsShieldBroken && DamageCauser)
     {
-        // 전방(내적 > 0) 체크
-        FVector MyForward = GetActorForwardVector();
-        FVector ToAttacker = (DamageCauser->GetActorLocation() - GetActorLocation()).GetSafeNormal();
+        // 2. [핵심 로직] 몬스터의 월드 위치를 '내 기준 로컬 좌표'로 변환
+        // 예) 내 위치가 (0,0,0)일 때, 내 앞 1m는 (100, 0, 0), 내 뒤 1m는 (-100, 0, 0)이 됨
+        FVector LocalEnemyLoc = GetActorTransform().InverseTransformPosition(DamageCauser->GetActorLocation());
 
-        if (FVector::DotProduct(MyForward, ToAttacker) > -0.5f)
+        // 3. X값이 -50.0f보다 크면 "내 등 뒤는 아니다"라고 판단 (방어 성공)
+        // -50.0f : 내 배꼽(중심)에서 뒤로 50cm까지는 봐줌 (어깨선 뒤쪽 허용)
+        // 이 로직은 방패가 옆으로 아무리 길어도, 측면에서 끝부분을 때려도 X값은 양수거나 -50보다 크므로 다 막힘.
+        if (LocalEnemyLoc.X > -50.0f)
         {
-            // 플레이어 데미지 무효화
+            // A. 플레이어 본체 데미지 무효화
             ActualDamage = 0.0f; 
 
-            // 방패 HP 감소
+            // B. 방패 체력 감소
             CurrentShieldHP -= DamageAmount;
             
-            // 파괴 체크
+            // (디버깅용 로그) 막았을 때만 출력
+            // UE_LOG(LogTemp, Warning, TEXT("Shield Block Success! Enemy Local X: %f"), LocalEnemyLoc.X);
+
+            // C. 방패 파괴 체크
             if (CurrentShieldHP <= 0.0f)
             {
                 OnShieldBroken();
@@ -491,6 +517,7 @@ float APaladinCharacter::TakeDamage(float DamageAmount, FDamageEvent const& Dama
         }
     }
 
+    // 4. 최종 데미지 적용 (방어 성공 시 ActualDamage는 0이 됨)
     return Super::TakeDamage(ActualDamage, DamageEvent, EventInstigator, DamageCauser);
 }
 

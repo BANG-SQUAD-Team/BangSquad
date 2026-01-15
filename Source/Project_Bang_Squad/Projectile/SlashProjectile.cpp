@@ -3,7 +3,8 @@
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "Particles/ParticleSystemComponent.h"
 #include "Kismet/GameplayStatics.h"
-#include "Project_Bang_Squad/Character/Base/BaseCharacter.h" // ÇÃ·¹ÀÌ¾î Çì´õ È®ÀÎ
+#include "Project_Bang_Squad/Character/PaladinCharacter.h"
+#include "Project_Bang_Squad/Character/Base/BaseCharacter.h" 
 
 ASlashProjectile::ASlashProjectile()
 {
@@ -11,33 +12,34 @@ ASlashProjectile::ASlashProjectile()
 	bReplicates = true;
 	SetReplicateMovement(true);
 
-	// 1. ¹Ú½º ÄÄÆ÷³ÍÆ® (°¡·Î·Î ³Ð°í ³³ÀÛÇÏ°Ô)
+	// 1. ï¿½Ú½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ® (ï¿½ï¿½ï¿½Î·ï¿½ ï¿½Ð°ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ï°ï¿½)
 	BoxComp = CreateDefaultSubobject<UBoxComponent>(TEXT("BoxComp"));
-	// ¿¹: X(ÁøÇà¹æÇâ)=50, Y(ÁÂ¿ìÆø)=150, Z(»óÇÏµÎ²²)=10 -> 3mÂ¥¸® Âü°Ý
+	// ï¿½ï¿½: X(ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½)=50, Y(ï¿½Â¿ï¿½ï¿½ï¿½)=150, Z(ï¿½ï¿½ï¿½ÏµÎ²ï¿½)=10 -> 3mÂ¥ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 	BoxComp->SetBoxExtent(FVector(50.f, 150.f, 10.f));
 
-	// Ãæµ¹ ¼³Á¤ (°ãÄ§ Çã¿ë)
+	// ï¿½æµ¹ ï¿½ï¿½ï¿½ï¿½ (ï¿½ï¿½Ä§ ï¿½ï¿½ï¿½)
 	BoxComp->SetCollisionProfileName(TEXT("OverlapAllDynamic"));
 	BoxComp->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	BoxComp->SetCollisionResponseToAllChannels(ECR_Ignore);
-	BoxComp->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);       // Ä³¸¯ÅÍ¸¸ °¨Áö
-	BoxComp->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Overlap);  // º®Àº °¨Áö
+	BoxComp->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);       // Ä³ï¿½ï¿½ï¿½Í¸ï¿½ ï¿½ï¿½ï¿½ï¿½
+	BoxComp->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Overlap);
+	BoxComp->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Overlap);
 
 	RootComponent = BoxComp;
 
-	// 2. ÆÄÆ¼Å¬ (ºñÁÖ¾ó)
+	// 2. ï¿½ï¿½Æ¼Å¬ (ï¿½ï¿½ï¿½Ö¾ï¿½)
 	ParticleComp = CreateDefaultSubobject<UParticleSystemComponent>(TEXT("ParticleComp"));
 	ParticleComp->SetupAttachment(RootComponent);
 
-	// 3. ¹«ºê¸ÕÆ® (Á÷¼± ÀÌµ¿, Áß·Â ¾øÀ½)
+	// 3. ï¿½ï¿½ï¿½ï¿½ï¿½Æ® (ï¿½ï¿½ï¿½ï¿½ ï¿½Ìµï¿½, ï¿½ß·ï¿½ ï¿½ï¿½ï¿½ï¿½)
 	ProjectileMovement = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("ProjectileMovement"));
 	ProjectileMovement->UpdatedComponent = BoxComp;
-	ProjectileMovement->InitialSpeed = 1500.f;  // ¼Óµµ
+	ProjectileMovement->InitialSpeed = 1500.f;  // ï¿½Óµï¿½
 	ProjectileMovement->MaxSpeed = 1500.f;
 	ProjectileMovement->bRotationFollowsVelocity = true;
-	ProjectileMovement->ProjectileGravityScale = 0.f; // Áß·Â 0 (ÀÏÁ÷¼±)
+	ProjectileMovement->ProjectileGravityScale = 0.f; // ï¿½ß·ï¿½ 0 (ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½)
 
-	InitialLifeSpan = 3.0f; // 3ÃÊ µÚ ÀÚµ¿ »èÁ¦
+	InitialLifeSpan = 3.0f; // 3ï¿½ï¿½ ï¿½ï¿½ ï¿½Úµï¿½ ï¿½ï¿½ï¿½ï¿½
 }
 
 void ASlashProjectile::BeginPlay()
@@ -53,27 +55,36 @@ void ASlashProjectile::BeginPlay()
 void ASlashProjectile::OnOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
 	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-	if (!HasAuthority()) return; // ¼­¹ö¸¸ Ã³¸®
+	if (!HasAuthority()) return;
 	if (!OtherActor || OtherActor == this || OtherActor == GetOwner()) return;
 
-	// ÇÃ·¹ÀÌ¾î¸¸ Å¸°Ý
 	if (OtherActor->IsA(ABaseCharacter::StaticClass()))
 	{
-		// 1. µ¥¹ÌÁö Àû¿ë
+		// 1. ë°©íŒ¨ì— ë§žì•˜ëŠ”ì§€ í™•ì¸ (íŒ”ë¼ë”˜ì´ ì•„ë‹ˆë©´ ë‹¹ì—°ížˆ false ëœ° í…Œë‹ˆ ì•ˆì „í•¨)
+		bool bHitShield = OtherComp->GetName().Contains(TEXT("Shield"));
+
+		// 2. ë°ë¯¸ì§€ ì „ë‹¬
+		// íŒ”ë¼ë”˜ì´ë©´ -> ì•„ê¹Œ ë§Œë“  TakeDamageê°€ ëŒë©´ì„œ ë°©íŒ¨ í”¼ ê¹ŽìŒ
+		// ì¼ë°˜ìºë©´ -> ê·¸ëƒ¥ ë³¸ì²´ í”¼ ê¹ŽìŒ
 		UGameplayStatics::ApplyDamage(
 			OtherActor,
 			Damage,
-			GetInstigatorController(), // º¸½ºÀÇ ÄÁÆ®·Ñ·¯
-			this, // µ¥¹ÌÁö °¡ÇØÀÚ´Â 'Åõ»çÃ¼' (ÀÌ°É·Î ¾Æ±î AI ¹®Á¦¸¦ ¼öÁ¤Çß¾úÁÒ?)
+			GetInstigatorController(),
+			this,
 			UDamageType::StaticClass()
 		);
 
-		// 2. [¼±ÅÃ] °üÅë ¿©ºÎ
-		// Âü°ÝÀº º¸Åë ¶Õ°í Áö³ª°¡´Â °Ô ¸ÚÀÖÀ¸¹Ç·Î Destroy()¸¦ ¾È ¾¹´Ï´Ù.
-		// ´ë½Å ´Ù´ÜÈ÷Æ®°¡ °ÆÁ¤µÈ´Ù¸é Destroy()¸¦ ³ÖÀ¸¼¼¿ä.
-		// Destroy(); 
+		// 3. íˆ¬ì‚¬ì²´ ì‚­ì œ
+		// ë°©íŒ¨ì— ë§žì•˜ë“ (bHitShield), ëª¸ì— ë§žì•˜ë“  íˆ¬ì‚¬ì²´ëŠ” ì‚¬ë¼ì ¸ì•¼ í•¨
+		Destroy();
+        
+		// ë§Œì•½ "ë°©íŒ¨ì— ë§žì•˜ì„ ë•Œë§Œ" íŒ…ê²¨ë‚˜ê°€ëŠ” ì†Œë¦¬/ì´íŽ™íŠ¸ë¥¼ ì£¼ê³  ì‹¶ë‹¤
+		if (bHitShield)
+		{
+			// ë°©íŒ¨ íƒ€ê²© ì´íŽ™íŠ¸ ìž¬ìƒ (Multicast RPC í˜¸ì¶œ ë“±)
+		}
 	}
-	// º®¿¡ ´êÀ¸¸é »èÁ¦
+	// ë²½ì— ë§žì•˜ì„ ë•Œ
 	else if (OtherComp && OtherComp->GetCollisionObjectType() == ECC_WorldStatic)
 	{
 		Destroy();
