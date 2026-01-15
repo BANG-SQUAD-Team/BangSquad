@@ -22,4 +22,13 @@ public:
 	
 	//실제 소환
 	void SpawnPlayerCharacter(AController* Controller, EJobType MyJob);
+
+	void RequestRespawn(AController* Controller);
+
+	void ExecuteRespawn(AController* Controller);
+protected:
+	void RespawnPlayerElapsed(AController* DeadController);
+
+	//부활 위치 계산
+	FTransform GetRespawnTransform(AController* Controller);
 };

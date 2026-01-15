@@ -35,4 +35,8 @@ protected:
 	// 에디터에서 할당할 입력 액션 (스페이스바 등)
 	UPROPERTY(EditDefaultsOnly, Category = "BS|Input")
 	class UInputAction* IA_SpectateNext;
+
+public:
+	UPROPERTY(BlueprintReadOnly)
+	EJobType SavedJobType;
 };

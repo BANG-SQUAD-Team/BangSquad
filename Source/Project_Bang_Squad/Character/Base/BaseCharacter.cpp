@@ -9,6 +9,7 @@
 #include "TimerManager.h"
 #include "InputActionValue.h"
 #include "Kismet/GameplayStatics.h" // [필수] 데미지 처리를 위해 필요
+#include "Project_Bang_Squad/Game/Stage/StageGameMode.h"
 #include "Project_Bang_Squad/Game/Stage/StagePlayerController.h"
 
 ABaseCharacter::ABaseCharacter()
@@ -126,6 +127,16 @@ void ABaseCharacter::OnDeath()
         GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
     }
     GetMesh()->SetCollisionProfileName(TEXT("NoCollision"));
+
+	if (HasAuthority())
+	{
+		FTimerHandle RespawnTimerHandle;
+		FTimerDelegate RespawnDel;
+		RespawnDel.BindUObject(GetWorld()->GetAuthGameMode<AStageGameMode>(), &AStageGameMode::ExecuteRespawn, GetController());
+
+		GetWorldTimerManager().SetTimer(RespawnTimerHandle, RespawnDel, 3.0f, false);
+	}                     
+	
     // =========================================================
     // 4. 사망 몽타주 재생 및 소멸 예약
     // =========================================================
@@ -143,8 +154,6 @@ void ABaseCharacter::OnDeath()
     // 시체가 마지막 포즈로 딱 멈춰있게 하려면 유지, 아니면 생략 가능
     float FreezeDelay = (MontageDuration > 0.0f) ? (MontageDuration - 0.1f) : 0.0f;
     GetWorldTimerManager().SetTimer(DeathTimerHandle, this, &ABaseCharacter::FreezeAnimation, FreezeDelay, false);
-
-	
 	
 	// 컨트롤러에게 관전 시작 요청
 	if (AStagePlayerController* PC = Cast<AStagePlayerController>(GetController()))
@@ -153,8 +162,6 @@ void ABaseCharacter::OnDeath()
 		FTimerHandle Handle;
 		GetWorldTimerManager().SetTimer(Handle,PC,&AStagePlayerController::StartSpectating, 2.0f, false);
 	}
-	
-	
 }
 
 void ABaseCharacter::FreezeAnimation()
