@@ -229,10 +229,14 @@ void ATitanCharacter::Attack()
 {
 	if (!CanAttack()) return;
 
+	// [수정] A/B 공격 분기 처리
+	FName SkillRowName = bIsNextAttackA ? TEXT("Attack_A") : TEXT("Attack_B");
+
 	if (SkillDataTable)
 	{
 		static const FString ContextString(TEXT("TitanAttack"));
-		FSkillData* Row = SkillDataTable->FindRow<FSkillData>(TEXT("Attack"), ContextString);
+		// 동적으로 결정된 SkillRowName으로 데이터 조회
+		FSkillData* Row = SkillDataTable->FindRow<FSkillData>(SkillRowName, ContextString);
 		if (Row)
 		{
 			if (Row->Cooldown > 0.0f)
@@ -243,7 +247,11 @@ void ATitanCharacter::Attack()
 	}
 
 	StartAttackCooldown();
-	ProcessSkill(TEXT("Attack"));
+
+	// [수정] 결정된 스킬 이름으로 실행
+	ProcessSkill(SkillRowName);
+
+	bIsNextAttackA = !bIsNextAttackA;
 }
 
 void ATitanCharacter::UpdateHoverHighlight()

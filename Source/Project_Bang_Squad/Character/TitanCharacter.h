@@ -21,29 +21,23 @@ protected:
 
 	virtual void OnDeath() override;
 
-	// =============================================================
-	// 입력 바인딩 함수 (Override)
-	// =============================================================
-	virtual void JobAbility() override; // 잡기/던지기
-	virtual void Attack() override;     // 평타
-	virtual void Skill1() override;     // 내려찍기 (지진)
-	virtual void Skill2() override;     // 돌진 (Charge)
+	virtual void JobAbility() override; 
+	virtual void Attack() override;    
+	virtual void Skill1() override;     
+	virtual void Skill2() override;    
 
-	// 스킬 몽타주 재생 처리
 	void ProcessSkill(FName SkillRowName, FName StartSectionName = NAME_None);
 
-	// 마우스 오버 하이라이트
 	void UpdateHoverHighlight();
 
 private:
-	// =============================================================
-	// [Job Ability] 잡기 & 던지기
-	// =============================================================
+	bool bIsNextAttackA = true;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	bool bIsGrabbing = false;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
-	bool bIsCooldown = false; // 직업 스킬 쿨타임 체크용
+	bool bIsCooldown = false; 
 
 	UPROPERTY(Replicated)
 	AActor* GrabbedActor = nullptr;
@@ -69,12 +63,10 @@ private:
 	void SetHeldState(ACharacter* Target, bool bIsHeld);
 
 public:
-	// 애니메이션 노티파이에서 호출될 함수
 	UFUNCTION(BlueprintCallable)
 	void ExecuteGrab();
 
 protected:
-	// [Skill 2] 돌진
 	UFUNCTION(Server, Reliable)
 	void Server_Skill2();
 
