@@ -29,6 +29,10 @@ public:
 	// 이동 속도
 	UPROPERTY(EditAnywhere, Category = "Stats")
 	float MoveSpeed = 4000.0f;
+	
+	// 회전속도 조절용 변수
+	UPROPERTY(EditAnywhere, Category = "Stats")
+	float TurnSpeed = 1.0f;
 
 	// [인터페이스 함수 선언]
 	//1. 아웃라인 켜기/끄기
