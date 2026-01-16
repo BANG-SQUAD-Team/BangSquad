@@ -99,11 +99,11 @@ void AStagePlayerController::ViewNextPlayer()
 
 void AStagePlayerController::ServerRequestSpawn_Implementation(EJobType MyJob)
 {
+	SavedJobType = MyJob;
+	
 	//서버에서 게임모드를 찾아 실제 소환명령
 	if (AStageGameMode* GM = GetWorld()->GetAuthGameMode<AStageGameMode>())
 	{
 		GM->SpawnPlayerCharacter(this, MyJob);
 	}
 }
-
-
