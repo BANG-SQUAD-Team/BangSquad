@@ -59,6 +59,9 @@ protected:
 	UFUNCTION()
 	void OnRep_GrabbedActor(); // 잡힌 상태 동기화 (핵심)
 
+	UFUNCTION(NetMulticast, Unreliable)
+	void Multicast_PlayJobMontage(FName SectionName);
+
 	// =================================================================
 	// [네트워크: 스킬 1 (Rock Throw)]
 	// =================================================================
