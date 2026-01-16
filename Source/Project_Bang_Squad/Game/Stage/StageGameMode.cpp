@@ -4,6 +4,7 @@
 #include "Project_Bang_Squad/Game/Stage/StageGameMode.h"
 
 #include "StagePlayerController.h"
+#include "StagePlayerState.h"
 #include "GameFramework/Character.h"
 #include "Kismet/GameplayStatics.h"
 #include "Project_Bang_Squad/Character/Base/BaseCharacter.h"
@@ -67,6 +68,11 @@ void AStageGameMode::RequestRespawn(AController* Controller)
 		WaitTime = FMath::Min(CalculatedTime, 15.f);
 
 		StagePC->IncreaseDeathCount();
+	}
+
+	if (AStagePlayerState* PS = Controller->GetPlayerState<AStagePlayerState>())
+	{
+		PS->SetRespawnEndTime(GetWorld()->GetTimeSeconds() + WaitTime);
 	}
 	
 	//UI 띄우기
