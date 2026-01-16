@@ -39,4 +39,15 @@ protected:
 public:
 	UPROPERTY(BlueprintReadOnly)
 	EJobType SavedJobType;
+
+	FORCEINLINE int32 GetDeathCount() const { return DeathCount; };
+
+	void IncreaseDeathCount() { DeathCount++; }
+
+	//첫 스폰 여부
+	bool bHasSpawnedOnce = false;
+
+private:
+	UPROPERTY()
+	int32 DeathCount = 0;
 };

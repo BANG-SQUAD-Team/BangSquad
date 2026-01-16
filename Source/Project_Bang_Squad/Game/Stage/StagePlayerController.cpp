@@ -5,6 +5,7 @@
 
 #include "EnhancedInputComponent.h"
 #include "StageGameMode.h"
+#include "StagePlayerState.h"
 #include "GameFramework/GameStateBase.h"
 #include "GameFramework/PlayerState.h"
 #include "Project_Bang_Squad/Character/Base/BaseCharacter.h"
@@ -33,6 +34,14 @@ void AStagePlayerController::BeginPlay()
 void AStagePlayerController::StartSpectating()
 {
 	ViewNextPlayer();
+
+	if (HasAuthority())
+	{
+		if (AStageGameMode* GM = GetWorld()->GetAuthGameMode<AStageGameMode>())
+		{
+			GM->RequestRespawn(this);
+		}
+	}
 }
 
 void AStagePlayerController::SetupInputComponent()
@@ -100,6 +109,11 @@ void AStagePlayerController::ViewNextPlayer()
 void AStagePlayerController::ServerRequestSpawn_Implementation(EJobType MyJob)
 {
 	SavedJobType = MyJob;
+
+	if (AStagePlayerState* PS = GetPlayerState<AStagePlayerState>())
+	{
+		PS->SetJob(MyJob);
+	}
 	
 	//서버에서 게임모드를 찾아 실제 소환명령
 	if (AStageGameMode* GM = GetWorld()->GetAuthGameMode<AStageGameMode>())
