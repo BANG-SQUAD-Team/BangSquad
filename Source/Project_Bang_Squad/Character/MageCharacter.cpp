@@ -1,6 +1,6 @@
 #include "Project_Bang_Squad/Character/MageCharacter.h"
 #include "Project_Bang_Squad/Projectile/MageProjectile.h"
-#include "Project_Bang_Squad/Character/Pillar.h" 
+#include "Project_Bang_Squad/Character/Pillar.h" // [유지] 기둥 헤더
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Camera/CameraComponent.h" 
 #include "EnhancedInputComponent.h"
@@ -23,22 +23,31 @@ AMageCharacter::AMageCharacter()
     GetCharacterMovement()->bOrientRotationToMovement = false;
     GetCharacterMovement()->RotationRate = FRotator(0.0f, 720.0f, 0.0f);
     
-    // 공격 쿨타임
     AttackCooldownTime = 1.f;
-    
-    
-    //해금 레벨
     UnlockedStageLevel = 1;
 
     FocusedPillar = nullptr;
     CurrentTargetPillar = nullptr;
 
+    // [기둥용] 타임라인 컴포넌트
     CameraTimelineComp = CreateDefaultSubobject<UTimelineComponent>(TEXT("CameraTimelineComp"));
+    
+    // [보트용] 탑다운 카메라 컴포넌트
+    TopDownSpringArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("TopDownSpringArm"));
+    TopDownSpringArm->SetupAttachment(GetRootComponent());
+    TopDownSpringArm->SetRelativeRotation(FRotator(-90.0f, 0.0f, 0.0f)); // 수직
+    TopDownSpringArm->TargetArmLength = 1200.0f; 
+    TopDownSpringArm->bDoCollisionTest = false; 
+
+    TopDownCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("TopDownCamera"));
+    TopDownCamera->SetupAttachment(TopDownSpringArm, USpringArmComponent::SocketName);
+    TopDownCamera->SetAutoActivate(false); 
     
     if (SpringArm) 
     {
         SpringArm->TargetOffset = FVector(0.0f, 0.0f, 150.0f); 
         SpringArm->ProbeSize = 12.0f; 
+        SpringArm->bUsePawnControlRotation = true;
     }
 }
 
@@ -46,12 +55,24 @@ void AMageCharacter::BeginPlay()
 {
     Super::BeginPlay();
 
+    // [강제 적용] 블루프린트 설정 무시하고 코드로 강제 설정
+    // 이 코드가 없으면 BP가 생성자 값을 씹어버립니다.
     if (SpringArm)
     {
+        SpringArm->bUsePawnControlRotation = true; // 마우스 회전 따라가기 (필수)
+        SpringArm->bInheritPitch = true;           // 위아래 회전 허용
+        SpringArm->bInheritYaw = true;             // 좌우 회전 허용
+        SpringArm->bInheritRoll = false;           
+        
+        // 기존 암 길이/오프셋 저장
         DefaultArmLength = SpringArm->TargetArmLength;
         DefaultSocketOffset = SpringArm->SocketOffset;
     }
-
+    
+    // 시작 시 탑다운 카메라는 꺼둠
+    if (TopDownCamera) TopDownCamera->SetActive(false);
+    
+    // 타임라인 설정
     FOnTimelineFloat TimelineProgress; 
     TimelineProgress.BindDynamic(this, &AMageCharacter::CameraTimelineProgress);
     
@@ -68,29 +89,23 @@ void AMageCharacter::BeginPlay()
     FOnTimelineEvent TimelineFinishedEvent;
     TimelineFinishedEvent.BindDynamic(this, &AMageCharacter::OnCameraTimelineFinished);
     CameraTimelineComp->SetTimelineFinishedFunc(TimelineFinishedEvent);
-
     CameraTimelineComp->SetLooping(false);
 }
 
 void AMageCharacter::OnDeath()
 {
-    // 이미 죽었으면 리턴 (중복 방지)
     if (bIsDead) return;
     
-    // 마법사 전용 직업능력 (JobAbility) 강제 종료
-    if (bIsJobAbilityActive)
+    // 직업 능력 강제 종료
+    if (bIsPillarMode || bIsBoatMode)
     {
         EndJobAbility();
     }
     
-    // 공격 관련 타이머들 싹 다 정지
     GetWorldTimerManager().ClearTimer(ComboResetTimer);
     GetWorldTimerManager().ClearTimer(ProjectileTimerHandle);
-    
-    // 시전 중이던 몽타주 정지
     StopAnimMontage();
     
-    // 부모 클래스의 사망 로직 실행
     Super::OnDeath();
 }
 
@@ -100,6 +115,7 @@ void AMageCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 
     if (UEnhancedInputComponent* EIC = Cast<UEnhancedInputComponent>(PlayerInputComponent))
     {
+        
         if (JobAbilityAction)
         {
             EIC->BindAction(JobAbilityAction, ETriggerEvent::Started, this, &AMageCharacter::JobAbility);
@@ -118,105 +134,138 @@ void AMageCharacter::Tick(float DeltaTime)
         CameraTimelineComp->TickComponent(DeltaTime, ELevelTick::LEVELTICK_TimeOnly, nullptr);
     }
 
-    //  상태 탈출
-    if (bIsJobAbilityActive)
+    // 탈출 조건 (유지)
+    if (bIsPillarMode)
     {
         if (!IsValid(CurrentTargetPillar) || CurrentTargetPillar->bIsFallen)
         {
-            EndJobAbility();
+            EndJobAbility(); 
             return; 
         }
     }
 
-    UpdatePillarInteraction();
+    CheckInteractableTarget(); 
 
-    //  락온 및 제스처
-    if (bIsJobAbilityActive && IsValid(CurrentTargetPillar) && !CurrentTargetPillar->bIsFallen)
+    // [수정] 락온만 남기고 마우스 감지 코드는 싹 지움 (Look으로 이사감)
+    if (bIsPillarMode && IsValid(CurrentTargetPillar) && !CurrentTargetPillar->bIsFallen)
     {
         LockOnPillar(DeltaTime);
+        
+        // [삭제됨] 여기서 MouseX 체크하던 코드 제거
+    }
+}
 
-        float MouseX, MouseY;
-        APlayerController* PC = Cast<APlayerController>(GetController());
-        if (PC)
+void AMageCharacter::CheckInteractableTarget()
+{
+    // 조종 중엔 타겟 변경 금지
+    if (bIsPillarMode || bIsBoatMode) return;
+
+    FHitResult HitResult;
+    FVector Start = Camera->GetComponentLocation();
+    FVector End = Start + (Camera->GetForwardVector() * TraceDistance);
+    FCollisionQueryParams Params;
+    Params.AddIgnoredActor(this); 
+
+    bool bHit = GetWorld()->LineTraceSingleByChannel(HitResult, Start, End, ECC_Visibility, Params);
+    AActor* HitActor = HitResult.GetActor();
+
+    // 1. 기둥(Pillar)인지 확인
+    APillar* HitPillar = Cast<APillar>(HitActor);
+    
+    // 2. 인터페이스(Boat 등)인지 확인
+    // Implements는 "이 인터페이스를 가지고 있니?"라고 묻는 것
+    bool bIsInterface = (HitActor && HitActor->Implements<UMagicInteractableInterface>());
+
+    // A. 기둥 처리 (기존 로직)
+    if (HitPillar && !HitPillar->bIsFallen)
+    {
+        if (FocusedPillar != HitPillar)
         {
-            PC->GetInputMouseDelta(MouseX, MouseY);
+            // 이전 하이라이트 끄기
+            if (FocusedPillar) FocusedPillar->PillarMesh->SetRenderCustomDepth(false);
             
-            // 마우스 제스처 감지
-            if (FMath::Abs(MouseX) > 0.1f && FMath::Sign(MouseX) == CurrentTargetPillar->RequiredMouseDirection)
+            // [수정] 인터페이스 끄기 (Cast 사용)
+            if (HoveredActor)
             {
-                Server_TriggerPillarFall(CurrentTargetPillar);
+                if (IMagicInteractableInterface* Interface = Cast<IMagicInteractableInterface>(HoveredActor))
+                {
+                    Interface->SetMageHighlight(false);
+                }
             }
+            HoveredActor = nullptr;
+
+            // 새 기둥 켜기
+            HitPillar->PillarMesh->SetRenderCustomDepth(true);
+            HitPillar->PillarMesh->SetCustomDepthStencilValue(250);
+            FocusedPillar = HitPillar;
         }
     }
-}
-
-// =========================================================
-//  공격 및 콤보 시스템
-// =========================================================
-
-void AMageCharacter::Attack()
-{
-    // 공격 가능한 상태인지 체크, 아니면 그냥 무시
-    if (!CanAttack()) return;
-    
-    // 공격 시작! -> 즉시 쿨타임
-    StartAttackCooldown();
-    
-    // 1. 현재 콤보 순서에 맞는 스킬 이름 선택
-    FName SkillName;
-    if (CurrentComboIndex == 0)
+    // B. 인터페이스 액터 처리 (신규 로직)
+    else if (bIsInterface)
     {
-        SkillName = TEXT("Attack_A"); // 1타
+        if (HoveredActor != HitActor)
+        {
+            // 이전 하이라이트 끄기
+            if (FocusedPillar) 
+            {
+                FocusedPillar->PillarMesh->SetRenderCustomDepth(false);
+                FocusedPillar = nullptr;
+            }
+            // [수정] 이전 인터페이스 끄기
+            if (HoveredActor)
+            {
+                if (IMagicInteractableInterface* Interface = Cast<IMagicInteractableInterface>(HoveredActor))
+                {
+                    Interface->SetMageHighlight(false);
+                }
+            }
+
+            // [수정] 새 액터 켜기 (Cast 사용)
+            if (IMagicInteractableInterface* Interface = Cast<IMagicInteractableInterface>(HitActor))
+            {
+                Interface->SetMageHighlight(true);
+            }
+            HoveredActor = HitActor;
+        }
     }
+    // C. 허공
     else
     {
-        SkillName = TEXT("Attack_B"); // 2타
+        if (FocusedPillar)
+        {
+            FocusedPillar->PillarMesh->SetRenderCustomDepth(false);
+            FocusedPillar = nullptr;
+        }
+        //  인터페이스 끄기
+        if (HoveredActor)
+        {
+            if (IMagicInteractableInterface* Interface = Cast<IMagicInteractableInterface>(HoveredActor))
+            {
+                Interface->SetMageHighlight(false);
+            }
+        }
+        HoveredActor = nullptr;
     }
-
-    // 2. 스킬 실행
-    ProcessSkill(SkillName);
-
-    // 3. 콤보 카운트 증가 (0 -> 1 -> 0 -> 1 ...)
-    CurrentComboIndex++;
-    if (CurrentComboIndex > 1) 
-    {
-        CurrentComboIndex = 0;
-    }
-
-    // 4. 콤보 리셋 타이머 설정 (1.2초 뒤 초기화)
-    GetWorldTimerManager().ClearTimer(ComboResetTimer);
-    GetWorldTimerManager().SetTimer(ComboResetTimer, this, &AMageCharacter::ResetCombo, 1.2f, false);
 }
 
-void AMageCharacter::ResetCombo()
-{
-    CurrentComboIndex = 0;
-}
-
-void AMageCharacter::Skill1()
-{
-    if (bIsDead) return;
-    ProcessSkill(TEXT("Skill1"));
-}
-void AMageCharacter::Skill2()
-{
-    if (bIsDead) return;
-    ProcessSkill(TEXT("Skill2"));
-}
-
+// =========================================================
+//  직업 능력 (우클릭) 시작/종료
+// =========================================================
 void AMageCharacter::JobAbility()
 {
     if (bIsDead) return;
     
+    // Case 1: 기둥 모드 진입
     if (FocusedPillar)
     {
+        bIsPillarMode = true;
         CurrentTargetPillar = FocusedPillar;
-        bIsJobAbilityActive = true;
 
-        if (APlayerController* PC = Cast<APlayerController>(GetController()))
-        {
-            PC->SetIgnoreLookInput(true);
-        }
+        // [삭제] 이 코드가 마우스 입력을 0으로 만들어서 문제였음!
+        // if (APlayerController* PC = Cast<APlayerController>(GetController()))
+        // {
+        //     PC->SetIgnoreLookInput(true); 
+        // }
 
         if (SpringArm) 
         {
@@ -225,24 +274,57 @@ void AMageCharacter::JobAbility()
             SpringArm->bInheritYaw = true;
             SpringArm->bInheritRoll = true;
         }
+        if (CameraTimelineComp) CameraTimelineComp->Play();
+    }
+    // Case 2: 보트 모드 (그대로 유지)
+    else if (HoveredActor)
+    {
+        bIsBoatMode = true;
+        CurrentControlledActor = HoveredActor;
 
-        if (CameraTimelineComp)
+        if (IsLocallyControlled())
         {
-            CameraTimelineComp->Play();
+            if (Camera) Camera->SetActive(false);
+            if (TopDownCamera) TopDownCamera->SetActive(true);
         }
     }
 }
 
 void AMageCharacter::EndJobAbility()
 {
-    bIsJobAbilityActive = false;
-    CurrentTargetPillar = nullptr;
-
-    if (APlayerController* PC = Cast<APlayerController>(GetController()))
+    // Case 1: 기둥 모드 종료
+    if (bIsPillarMode)
     {
-        PC->SetIgnoreLookInput(false);
+        bIsPillarMode = false;
+        CurrentTargetPillar = nullptr;
+
+        // [삭제] 위에서 안 잠갔으니 풀 필요도 없음
+        // if (APlayerController* PC = Cast<APlayerController>(GetController()))
+        // {
+        //     PC->SetIgnoreLookInput(false);
+        // }
+        
+        if (CameraTimelineComp) CameraTimelineComp->Reverse();
     }
 
+    // Case 2: 보트 모드 종료 (그대로 유지)
+    if (bIsBoatMode)
+    {
+        if (CurrentControlledActor)
+        {
+            Server_InteractActor(CurrentControlledActor, FVector::ZeroVector);
+        }
+        bIsBoatMode = false;
+        CurrentControlledActor = nullptr;
+
+        if (IsLocallyControlled())
+        {
+            if (TopDownCamera) TopDownCamera->SetActive(false);
+            if (Camera) Camera->SetActive(true);
+        }
+    }
+    
+    // 공통 복구
     if (SpringArm)
     {
         SpringArm->bUsePawnControlRotation = true;
@@ -250,12 +332,77 @@ void AMageCharacter::EndJobAbility()
         SpringArm->bInheritYaw = true;
         SpringArm->bInheritRoll = true;
     }
+}
 
-    if (CameraTimelineComp) 
+void AMageCharacter::Look(const FInputActionValue& Value)
+{
+    FVector2D LookInput = Value.Get<FVector2D>();
+
+    // 1. 보트 모드
+    if (bIsBoatMode && CurrentControlledActor)
     {
-        CameraTimelineComp->Reverse();
+        if (TopDownCamera)
+        {
+            FVector ScreenUp = TopDownCamera->GetUpVector();
+            FVector ScreenRight = TopDownCamera->GetRightVector();
+            ScreenUp.Z = 0; ScreenRight.Z = 0;
+            ScreenUp.Normalize(); ScreenRight.Normalize();
+
+            FVector MoveDir = (ScreenUp * LookInput.Y) + (ScreenRight * LookInput.X);
+
+            if (!MoveDir.IsNearlyZero())
+            {
+                Server_InteractActor(CurrentControlledActor, MoveDir);
+            }
+        }
+    }
+    // 2. [수정] 기둥 모드: 시점 회전은 막고, 제스처만 감지!
+    else if (bIsPillarMode)
+    {
+        // AddControllerYawInput을 호출 안 하니까 시점은 자동으로 잠김.
+        // 대신 여기서 마우스 흔들기를 직접 체크함.
+        if (IsValid(CurrentTargetPillar) && !CurrentTargetPillar->bIsFallen)
+        {
+            // LookInput.X가 마우스 좌우 움직임임
+            // 감도 조절: 0.5f 정도로 설정 (너무 민감하면 올리세요)
+            if (FMath::Abs(LookInput.X) > 0.5f && FMath::Sign(LookInput.X) == CurrentTargetPillar->RequiredMouseDirection)
+            {
+                // 1. 무너뜨리기
+                Server_TriggerPillarFall(CurrentTargetPillar);
+                
+                // 2. 즉시 탈출 (락온 해제)
+                EndJobAbility();
+            }
+        }
+    }
+    // 3. 일반 모드
+    else
+    {
+        Super::Look(Value);
     }
 }
+
+// =========================================================
+//  공격 및 스킬 로직 (기존 유지)
+// =========================================================
+void AMageCharacter::Attack()
+{
+    if (!CanAttack()) return;
+    StartAttackCooldown();
+    
+    FName SkillName = (CurrentComboIndex == 0) ? TEXT("Attack_A") : TEXT("Attack_B");
+    ProcessSkill(SkillName);
+
+    CurrentComboIndex++;
+    if (CurrentComboIndex > 1) CurrentComboIndex = 0;
+
+    GetWorldTimerManager().ClearTimer(ComboResetTimer);
+    GetWorldTimerManager().SetTimer(ComboResetTimer, this, &AMageCharacter::ResetCombo, 1.2f, false);
+}
+
+void AMageCharacter::ResetCombo() { CurrentComboIndex = 0; }
+void AMageCharacter::Skill1() { if (!bIsDead) ProcessSkill(TEXT("Skill1")); }
+void AMageCharacter::Skill2() { if (!bIsDead) ProcessSkill(TEXT("Skill2")); }
 
 void AMageCharacter::ProcessSkill(FName SkillRowName)
 {
@@ -267,38 +414,23 @@ void AMageCharacter::ProcessSkill(FName SkillRowName)
     {
         if (!IsSkillUnlocked(Data->RequiredStage)) return;
 
-        // 1. [클라이언트] 즉각적인 반응을 위해 내 화면에서 몽타주 재생
-        if (Data->SkillMontage) 
-        {
-            PlayAnimMontage(Data->SkillMontage);
-        }
+        if (Data->SkillMontage) PlayAnimMontage(Data->SkillMontage);
 
-        // 2. [서버] 권한이 있으면(서버라면) 직접 로직 수행
         if (HasAuthority())
         {
-            // A. 다른 클라이언트들에게 몽타주 보여주기
-            if (Data->SkillMontage)
-            {
-                Server_PlayMontage(Data->SkillMontage);
-            }
+            if (Data->SkillMontage) Server_PlayMontage(Data->SkillMontage);
 
-            // B. 타이머 및 투사체 로직 (서버에서 관리)
             if (Data->ProjectileClass)
             {
                 FTimerDelegate TimerDel;
                 TimerDel.BindUObject(this, &AMageCharacter::SpawnDelayedProjectile, Data->ProjectileClass.Get());
                 
                 if (Data->ActionDelay > 0.0f)
-                {
                     GetWorldTimerManager().SetTimer(ProjectileTimerHandle, TimerDel, Data->ActionDelay, false);
-                }
                 else
-                {
                     SpawnDelayedProjectile(Data->ProjectileClass);
-                }
             }
         }
-        // 3. [클라이언트] 서버에게 "나 스킬 썼어, 처리해줘" 요청
         else
         {
             Server_ProcessSkill(SkillRowName);
@@ -306,44 +438,33 @@ void AMageCharacter::ProcessSkill(FName SkillRowName)
     }
 }
 
-// 서버 RPC 구현
+// =========================================================
+//  RPC 구현부
+// =========================================================
 void AMageCharacter::Server_ProcessSkill_Implementation(FName SkillRowName)
 {
-    // 서버에서 다시 ProcessSkill을 호출 -> HasAuthority()가 True이므로 로직(B) 실행됨
     ProcessSkill(SkillRowName);
 }
 
 void AMageCharacter::SpawnDelayedProjectile(UClass* ProjectileClass)
 {
-    // 서버가 아니면 실행 금지 (안전장치)
     if (!HasAuthority() || !ProjectileClass) return;
 
-    // 1. 서버 기준으로 위치 계산 (보안 강화: 클라이언트가 거짓말 못함)
     FVector SpawnLoc;
-    FRotator SpawnRot = GetControlRotation(); // 서버가 알고 있는 컨트롤러 회전값
+    FRotator SpawnRot = GetControlRotation(); 
     FName SocketName = TEXT("Weapon_Root_R"); 
 
     if (GetMesh() && GetMesh()->DoesSocketExist(SocketName))
-    {
         SpawnLoc = GetMesh()->GetSocketLocation(SocketName);
-    }
     else
-    {
         SpawnLoc = GetActorLocation() + (GetActorForwardVector() * 100.f);
-    }
 
-    // 2. 서버에서 바로 생성 (Replicates 옵션이 켜진 액터라면 알아서 클라에도 보임)
     FActorSpawnParameters SpawnParams;
     SpawnParams.Owner = this;            
     SpawnParams.Instigator = GetInstigator(); 
 
     GetWorld()->SpawnActor<AActor>(ProjectileClass, SpawnLoc, SpawnRot, SpawnParams);
 }
-
-// =========================================================
-// 서버 RPC 구현부
-// =========================================================
-
 
 void AMageCharacter::Server_PlayMontage_Implementation(UAnimMontage* MontageToPlay)
 {
@@ -352,100 +473,71 @@ void AMageCharacter::Server_PlayMontage_Implementation(UAnimMontage* MontageToPl
 
 void AMageCharacter::Multicast_PlayMontage_Implementation(UAnimMontage* MontageToPlay)
 {
-    // 내가 아닌 다른 클라이언트에서만 재생
     if (MontageToPlay && !IsLocallyControlled())
     {
         PlayAnimMontage(MontageToPlay);
     }
 }
 
-void AMageCharacter::Server_TriggerPillarFall_Implementation(APillar* TargetPillar)
+
+void AMageCharacter::Server_InteractActor_Implementation(AActor* TargetActor, FVector Direction)
 {
-    if (TargetPillar)
+    // [수정] Cast를 이용해서 안전하게 호출
+    if (TargetActor)
     {
-        TargetPillar->TriggerFall();
+        // 인터페이스로 형변환 시도
+        IMagicInteractableInterface* Interface = Cast<IMagicInteractableInterface>(TargetActor);
+        
+        // 형변환 성공하면(인터페이스가 있으면) 함수 실행
+        if (Interface)
+        {
+            Interface->ProcessMageInput(Direction);
+        }
     }
 }
 
-// =========================================================
-// 기타 기능 (타임라인, 상호작용)
-// =========================================================
+// [유지] 기둥 파괴
+void AMageCharacter::Server_TriggerPillarFall_Implementation(APillar* TargetPillar)
+{
+    if (TargetPillar) TargetPillar->TriggerFall();
+}
 
+// =========================================================
+//  타임라인 & 락온 (기존 유지)
+// =========================================================
 void AMageCharacter::CameraTimelineProgress(float Alpha)
 {
     if (!SpringArm) return;
-
     float NewArmLength = FMath::Lerp(DefaultArmLength, 1200.f, Alpha);
     SpringArm->TargetArmLength = NewArmLength;
-
     FVector NewOffset = FMath::Lerp(DefaultSocketOffset, FVector::ZeroVector, Alpha);
     SpringArm->SocketOffset = NewOffset;
 }
-
 
 void AMageCharacter::OnCameraTimelineFinished()
 {
     if (CameraTimelineComp && CameraTimelineComp->GetPlaybackPosition() <= 0.01f)
     {
-        APlayerController* PC = Cast<APlayerController>(GetController());
-        if (PC)
+        if (APlayerController* PC = Cast<APlayerController>(GetController()))
         {
             PC->bShowMouseCursor = false;
             PC->bEnableClickEvents = false;
             PC->bEnableMouseOverEvents = false;
-            
             FInputModeGameOnly InputMode;
             PC->SetInputMode(InputMode);
         }
     }
 }
 
-void AMageCharacter::UpdatePillarInteraction()
-{
-    if (!Camera || bIsJobAbilityActive) return;
-
-    FHitResult HitResult;
-    FVector Start = Camera->GetComponentLocation();
-    FVector End = Start + (Camera->GetForwardVector() * TraceDistance);
-
-    FCollisionQueryParams Params;
-    Params.AddIgnoredActor(this); 
-
-    bool bHit = GetWorld()->LineTraceSingleByChannel(HitResult, Start, End, ECC_Visibility, Params);
-    APillar* HitPillar = bHit ? Cast<APillar>(HitResult.GetActor()) : nullptr;
-
-    if (HitPillar && !HitPillar->bIsFallen)
-    {
-        if (FocusedPillar != HitPillar)
-        {
-            if (FocusedPillar) FocusedPillar->PillarMesh->SetRenderCustomDepth(false);
-            
-            HitPillar->PillarMesh->SetRenderCustomDepth(true);
-            HitPillar->PillarMesh->SetCustomDepthStencilValue(250);
-
-            FocusedPillar = HitPillar;
-        }
-    }
-    else if (FocusedPillar)
-    {
-        FocusedPillar->PillarMesh->SetRenderCustomDepth(false);
-        FocusedPillar = nullptr;
-    }
-}
-
-// Pillar에 시점 고정
 void AMageCharacter::LockOnPillar(float DeltaTime)
 {
     APlayerController* PC = Cast<APlayerController>(GetController());
-    
     if (PC && CurrentTargetPillar && !CurrentTargetPillar->bIsFallen)
     {
         FVector StartLoc = Camera->GetComponentLocation();
         FVector TargetLoc = CurrentTargetPillar->GetActorLocation() + FVector(0.0f, 0.0f, 300.0f);
-
         FRotator TargetRot = UKismetMathLibrary::FindLookAtRotation(StartLoc, TargetLoc);
         FRotator NewRot = FMath::RInterpTo(PC->GetControlRotation(), TargetRot, DeltaTime, 5.0f);
-        
         PC->SetControlRotation(NewRot);
     }
 }
