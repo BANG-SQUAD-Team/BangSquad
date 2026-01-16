@@ -47,7 +47,7 @@ void AMagicBoat::Tick(float DeltaTime)
 		
 		// 부드럽게 회전
 		
-		FRotator SmoothRot = FMath::RInterpTo(GetActorRotation(), NewRot, DeltaTime, 3.0f);
+		FRotator SmoothRot = FMath::RInterpTo(GetActorRotation(), NewRot, DeltaTime, TurnSpeed);
 		SetActorRotation(SmoothRot);
 	}
 
