@@ -4,6 +4,8 @@
 ARotatingPad::ARotatingPad()
 {
     PrimaryActorTick.bCanEverTick = true;
+    bReplicates = true;
+    AActor::SetReplicateMovement(true);
 
     MeshComp = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MeshComp"));
     RootComponent = MeshComp;
@@ -20,28 +22,30 @@ void ARotatingPad::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
 
-    Timer += DeltaTime;
-
-    if (CurrentState == ERotateState::Rotating)
+    if (HasAuthority())
     {
-        float Alpha = FMath::Clamp(Timer / RotateDuration, 0.0f, 1.0f);
+        Timer += DeltaTime;
 
-        float TargetAlpha = bTargetingMax ? Alpha : 1.0f - Alpha;
-        UpdateRotation(TargetAlpha);
-
-        if (Timer >= RotateDuration)
+        if (CurrentState == ERotateState::Rotating)
         {
-            Timer = 0.0f;
-            CurrentState = ERotateState::Waiting;
+            float Alpha = FMath::Clamp(Timer / RotateDuration, 0.0f, 1.0f);
+            float TargetAlpha = bTargetingMax ? Alpha : 1.0f - Alpha;
+            UpdateRotation(TargetAlpha);
+
+            if (Timer >= RotateDuration)
+            {
+                Timer = 0.0f;
+                CurrentState = ERotateState::Waiting;
+            }
         }
-    }
-    else if (CurrentState == ERotateState::Waiting)
-    {
-        if (Timer >= StayDuration)
+        else if (CurrentState == ERotateState::Waiting)
         {
-            Timer = 0.0f;
-            bTargetingMax = !bTargetingMax;
-            CurrentState = ERotateState::Rotating;
+            if (Timer >= StayDuration)
+            {
+                Timer = 0.0f;
+                bTargetingMax = !bTargetingMax;
+                CurrentState = ERotateState::Rotating;
+            }
         }
     }
 }
@@ -49,6 +53,5 @@ void ARotatingPad::Tick(float DeltaTime)
 void ARotatingPad::UpdateRotation(float Alpha)
 {
     float CurrentRoll = FMath::Lerp(0.0f, 180.0f, Alpha);
-
     SetActorRelativeRotation(FRotator(0.0f, 0.0f, CurrentRoll));
 }

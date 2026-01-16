@@ -4,7 +4,8 @@
 AMovingPad::AMovingPad()
 {
 	PrimaryActorTick.bCanEverTick = false;
-	bReplicates = true;
+	bReplicates = true; 
+	AActor::SetReplicateMovement(true); 
 
 	SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
 	RootComponent = SceneRoot;
@@ -20,16 +21,15 @@ void AMovingPad::BeginPlay()
 {
 	Super::BeginPlay();
 
-	StartRelativeLocation = Mesh->GetRelativeLocation();
+	StartLocation = GetActorLocation();
 
-	if (MoveCurve)
+	if (HasAuthority() && MoveCurve)
 	{
 		FOnTimelineFloat ProgressFunction;
 		ProgressFunction.BindUFunction(this, FName("HandleMoveProgress"));
 		MoveTimeline->AddInterpFloat(MoveCurve, ProgressFunction);
 
 		MoveTimeline->SetTimelineLengthMode(ETimelineLengthMode::TL_LastKeyFrame);
-
 		MoveTimeline->SetLooping(true);
 		MoveTimeline->Play();
 	}
@@ -37,6 +37,6 @@ void AMovingPad::BeginPlay()
 
 void AMovingPad::HandleMoveProgress(float Value)
 {
-	FVector CurrentLocation = FMath::Lerp(StartRelativeLocation, StartRelativeLocation + EndLocation, Value);
-	Mesh->SetRelativeLocation(CurrentLocation);
+	FVector CurrentLocation = FMath::Lerp(StartLocation, StartLocation + EndLocation, Value);
+	SetActorLocation(CurrentLocation);
 }

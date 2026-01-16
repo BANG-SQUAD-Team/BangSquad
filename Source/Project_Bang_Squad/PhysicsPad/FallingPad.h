@@ -18,6 +18,9 @@ protected:
     UFUNCTION()
     void OnBoxOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
 
+    UFUNCTION(NetMulticast, Reliable)
+    void Multicast_StartFalling(); 
+
 public:
     UPROPERTY(VisibleAnywhere, Category = "Components")
     class UStaticMeshComponent* MeshComp;
@@ -26,10 +29,9 @@ public:
     class UBoxComponent* DetectionBox;
 
     UPROPERTY(EditAnywhere, Category = "Settings")
-    float FallDelay = 0.1f;
+    float FallDelay = 0.0f;
 
 private:
     FTimerHandle FallTimerHandle;
-
     void StartFalling();
 };

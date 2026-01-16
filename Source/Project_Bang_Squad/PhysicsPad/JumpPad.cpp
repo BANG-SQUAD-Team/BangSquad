@@ -7,7 +7,8 @@
 AJumpPad::AJumpPad()
 {
 	PrimaryActorTick.bCanEverTick = true;
-	bReplicates = true;
+	bReplicates = true; // 액터 복제 활성화
+	AActor::SetReplicateMovement(true); // 이동 및 스케일 변화 복제
 
 	SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
 	RootComponent = SceneRoot;
@@ -15,7 +16,6 @@ AJumpPad::AJumpPad()
 	Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Mesh"));
 	Mesh->SetupAttachment(RootComponent);
 	Mesh->SetCollisionProfileName(TEXT("BlockAllDynamic"));
-	Mesh->CanCharacterStepUpOn = ECB_Yes;
 
 	TriggerBox = CreateDefaultSubobject<UBoxComponent>(TEXT("TriggerBox"));
 	TriggerBox->SetupAttachment(Mesh);
@@ -30,7 +30,6 @@ AJumpPad::AJumpPad()
 void AJumpPad::BeginPlay()
 {
 	Super::BeginPlay();
-
 	InitialMeshScale = Mesh->GetRelativeScale3D();
 
 	if (BounceCurve)
@@ -43,11 +42,8 @@ void AJumpPad::BeginPlay()
 		FinishedFunction.BindUFunction(this, FName("OnTimelineFinished"));
 		BounceTimeline->SetTimelineFinishedFunc(FinishedFunction);
 	}
-	else
-	{
-		UE_LOG(LogTemp, Error, TEXT("JumpPad: BounceCurve is missing in Blueprint!"));
-	}
 
+	// 서버에서만 오버랩 이벤트를바인딩하여 판정 독점
 	if (HasAuthority())
 	{
 		TriggerBox->OnComponentBeginOverlap.AddDynamic(this, &AJumpPad::OnOverlapBegin);
@@ -73,25 +69,15 @@ void AJumpPad::OnOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* Other
 {
 	if (!HasAuthority()) return;
 
-	UE_LOG(LogTemp, Warning, TEXT("JumpPad: Overlap detected with %s"), *OtherActor->GetName());
-
 	if (ACharacter* Character = Cast<ACharacter>(OtherActor))
 	{
 		float PadTopZ = Mesh->GetComponentLocation().Z + (Mesh->Bounds.BoxExtent.Z);
 		float PlayerFootZ = Character->GetActorLocation().Z - (Character->GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
 
-		UE_LOG(LogTemp, Log, TEXT("JumpPad: PlayerFootZ: %f, PadTopZ: %f"), PlayerFootZ, PadTopZ);
-
 		if (PlayerFootZ >= (PadTopZ - SurfaceThreshold))
 		{
 			Character->LaunchCharacter(FVector(0.f, 0.f, LaunchStrength), false, true);
-			UE_LOG(LogTemp, Warning, TEXT("JumpPad: Character Launched!"));
-
-			Multicast_PlayBounceAnimation();
-		}
-		else
-		{
-			UE_LOG(LogTemp, Warning, TEXT("JumpPad: Foot position too low for jump."));
+			Multicast_PlayBounceAnimation(); 
 		}
 	}
 }
