@@ -17,6 +17,24 @@ ATitanCharacter::ATitanCharacter()
 {
 	PrimaryActorTick.bCanEverTick = true;
 	bReplicates = true; // 서버 복제 활성화
+
+	ThrowSpawnPoint = CreateDefaultSubobject<UArrowComponent>(TEXT("ThrowSpawnPoint"));
+
+	// 2. 카메라에 붙입니다. (카메라가 움직이면 던지는 위치도 따라다님)
+	// 주의: Camera 변수가 선언된 이후에 작성해야 합니다.
+	if (Camera)
+	{
+		ThrowSpawnPoint->SetupAttachment(Camera);
+	}
+	else
+	{
+		// 혹시 카메라가 없으면 루트에라도 붙임
+		ThrowSpawnPoint->SetupAttachment(GetRootComponent());
+	}
+
+	// 화살표가 잘 보이게 크기와 색상 조절 (에디터 편의용)
+	ThrowSpawnPoint->ArrowSize = 0.5f;
+	ThrowSpawnPoint->ArrowColor = FColor::Cyan;
 }
 
 // =================================================================
@@ -54,10 +72,9 @@ void ATitanCharacter::OnDeath()
 {
 	if (bIsDead) return;
 
-	// 죽으면 잡고 있던 것 놓기 (서버 권한 확인)
 	if (HasAuthority() && bIsGrabbing && GrabbedActor)
 	{
-		Server_ThrowTarget();
+		AutoThrowTimeout(); // 새로 만든 함수 호출
 	}
 
 	// 돌진 중지
@@ -108,16 +125,16 @@ void ATitanCharacter::JobAbility()
 
 	if (!bIsGrabbing)
 	{
-		// 잡기 시도: 하이라이트된 대상이 있으면 서버에 요청
-		if (HoveredActor)
-		{
-			Server_TryGrab(HoveredActor);
-		}
+		if (HoveredActor) Server_TryGrab(HoveredActor);
 	}
 	else
 	{
-		// 던지기 시도
-		Server_ThrowTarget();
+		// [핵심] 컴포넌트의 현재 월드 위치를 가져옵니다.
+		// 에디터에서 이 컴포넌트를 카메라 앞 500 거리로 옮겨두면, 딱 그 좌표가 나옵니다.
+		FVector ThrowOrigin = ThrowSpawnPoint->GetComponentLocation();
+
+		// 서버로 "이 좌표에서 던져!" 요청
+		Server_ThrowTarget(ThrowOrigin);
 	}
 }
 
@@ -202,7 +219,17 @@ void ATitanCharacter::Server_TryGrab_Implementation(AActor* TargetToGrab)
 
 	// 4. 모션 및 타이머
 	Multicast_PlayJobMontage(TEXT("Grab"));
-	GetWorldTimerManager().SetTimer(GrabTimerHandle, this, &ATitanCharacter::Server_ThrowTarget, GrabMaxDuration, false);
+	GetWorldTimerManager().SetTimer(GrabTimerHandle, this, &ATitanCharacter::AutoThrowTimeout, GrabMaxDuration, false);
+}
+
+void ATitanCharacter::AutoThrowTimeout()
+{
+	// 강제로 던질 때는 그냥 내 앞쪽 적당한 곳으로 설정
+	FVector Forward = GetActorForwardVector();
+	FVector ThrowOrigin = GetActorLocation() + FVector(0.f, 0.f, 60.f) + (Forward * 200.0f);
+
+	// 서버 함수 호출
+	Server_ThrowTarget(ThrowOrigin);
 }
 
 void ATitanCharacter::OnRep_GrabbedActor()
@@ -240,7 +267,7 @@ void ATitanCharacter::Multicast_PlayJobMontage_Implementation(FName SectionName)
 	ProcessSkill(TEXT("JobAbility"), SectionName);
 }
 
-void ATitanCharacter::Server_ThrowTarget_Implementation()
+void ATitanCharacter::Server_ThrowTarget_Implementation(FVector ThrowStartLocation)
 {
 	if (!bIsGrabbing || !GrabbedActor) return;
 
@@ -256,23 +283,31 @@ void ATitanCharacter::Server_ThrowTarget_Implementation()
 
 	Multicast_PlayJobMontage(TEXT("Throw"));
 
-	// 부착 해제
+	// 손에서 떼어내기
 	GrabbedActor->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+
+	// =================================================================
+	// [핵심 수정] 클라이언트가 보내준 '화살표 위치'로 이동!
+	// =================================================================
+	GrabbedActor->SetActorLocation(ThrowStartLocation, false, nullptr, ETeleportType::TeleportPhysics);
 
 	// 회전값 초기화
 	FRotator ActorRot = GrabbedActor->GetActorRotation();
 	GrabbedActor->SetActorRotation(FRotator(0.f, ActorRot.Yaw, 0.f));
-	GrabbedActor->AddActorWorldOffset(FVector(0.f, 0.f, 50.f), false, nullptr, ETeleportType::TeleportPhysics);
 
-	// 물리력 가하기 (LaunchCharacter는 서버 호출 시 동기화됨)
+	// 발사 (방향은 여전히 카메라 뷰 기준이 직관적)
+	FRotator ThrowRotation = GetControlRotation();
+	FVector ThrowDir = ThrowRotation.Vector();
+
+	// 물리력 가하기
 	if (ACharacter* Victim = Cast<ACharacter>(GrabbedActor))
 	{
 		SetHeldState(Victim, false);
 
-		FVector ThrowDir = GetControlRotation().Vector();
-		ThrowDir = (ThrowDir + FVector(0.f, 0.f, 0.25f)).GetSafeNormal();
+		// 살짝 위로 던지기 보정
+		FVector FinalThrowDir = (ThrowDir + FVector(0.f, 0.f, 0.25f)).GetSafeNormal();
 
-		Victim->LaunchCharacter(ThrowDir * ThrowForce, true, true);
+		Victim->LaunchCharacter(FinalThrowDir * ThrowForce, true, true);
 
 		// 복구 타이머
 		FTimerHandle RecoveryHandle;
@@ -283,17 +318,16 @@ void ATitanCharacter::Server_ThrowTarget_Implementation()
 	else if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(GrabbedActor->GetRootComponent()))
 	{
 		RootComp->SetSimulatePhysics(true);
-		RootComp->AddImpulse(GetControlRotation().Vector() * ThrowForce * 50.f);
+		RootComp->AddImpulse(ThrowDir * ThrowForce * 50.f);
 	}
 
-	// 상태 초기화 (OnRep 트리거)
+	// 상태 초기화
 	GrabbedActor = nullptr;
 	bIsGrabbing = false;
 
 	bIsCooldown = true;
 	GetWorldTimerManager().SetTimer(CooldownTimerHandle, this, &ATitanCharacter::ResetCooldown, ThrowCooldownTime, false);
 }
-
 // =================================================================
 // [네트워크 구현: 스킬 1 (바위)]
 // =================================================================
@@ -556,6 +590,12 @@ void ATitanCharacter::RecoverCharacter(ACharacter* Victim)
 		}
 		Victim->GetCharacterMovement()->StopMovementImmediately();
 	}
+	
+	AAIController* AIC = Cast<AAIController>(Victim->GetController());
+	if (AIC && AIC->GetBrainComponent())
+	{
+		AIC->GetBrainComponent()->RestartLogic();
+	}
 }
 
 void ATitanCharacter::SetHeldState(ACharacter* Target, bool bIsHeld)
@@ -586,10 +626,7 @@ void ATitanCharacter::SetHeldState(ACharacter* Target, bool bIsHeld)
 	{
 		if (Capsule) Capsule->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 		if (CMC) CMC->SetMovementMode(MOVE_Falling);
-		if (AIC && AIC->GetBrainComponent())
-		{
-			AIC->GetBrainComponent()->RestartLogic();
-		}
+		
 	}
 }
 
