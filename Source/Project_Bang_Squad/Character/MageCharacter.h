@@ -3,13 +3,15 @@
 #include "CoreMinimal.h"
 #include "Project_Bang_Squad/Character/Base/BaseCharacter.h"
 #include "Engine/DataTable.h" 
+#include "Project_Bang_Squad/Character/Player/Mage/MagicInteractableInterface.h"
+#include "GameFramework/SpringArmComponent.h"
+#include "Camera/CameraComponent.h"
+#include "InputActionValue.h" // [필수] FInputActionValue 사용 위해 추가
 #include "MageCharacter.generated.h"
 
 class UTimelineComponent;
-class APillar; 
+class APillar; //  기둥 전용 로직을 위해 필요
 class UCurveFloat; 
-
-
 
 UCLASS()
 class PROJECT_BANG_SQUAD_API AMageCharacter : public ABaseCharacter
@@ -22,6 +24,14 @@ public:
     virtual void Tick(float DeltaTime) override;
     virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
     
+    // [보트용] 탑다운 카메라
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
+    USpringArmComponent* TopDownSpringArm;
+    
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
+    UCameraComponent* TopDownCamera;
+    
+    // [기둥용] 타임라인
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Timeline")
     UTimelineComponent* CameraTimelineComp;
 
@@ -34,56 +44,41 @@ public:
     
     UFUNCTION(Server, Reliable)
     void Server_ProcessSkill(FName SkillRowName);
-    void Server_ProcessSkill_Implementation(FName SkillRowName);
     
-    // 서버: 몽타주 재생 알림
     UFUNCTION(Server, Reliable)
     void Server_PlayMontage(UAnimMontage* MontageToPlay);
-    void Server_PlayMontage_Implementation(UAnimMontage* MontageToPlay);
     
-    // 클라: 몽타주 재생 실행
     UFUNCTION(NetMulticast, Reliable)
     void Multicast_PlayMontage(UAnimMontage* MontageToPlay);
-    void Multicast_PlayMontage_Implementation(UAnimMontage* MontageToPlay); 
 
-    // 서버: 기둥 넘어뜨리기
+    //  범용 상호작용 RPC (기둥 파괴, 보트 이동 모두 처리)
+    UFUNCTION(Server, Reliable)
+    void Server_InteractActor(AActor* TargetActor, FVector Direction);
+    
+    // 기존 기둥 파괴 RPC (삭제해도 되지만, 기둥 로직 보존을 위해 남겨둠)
     UFUNCTION(Server, Reliable)
     void Server_TriggerPillarFall(APillar* TargetPillar);
-    void Server_TriggerPillarFall_Implementation(APillar* TargetPillar);
-    
-
 
 protected:
     virtual void BeginPlay() override;
-    
-    // 부모(BaseCharacter)의 OnDeath를 상속받아 마법사 전용 처리 추가
     virtual void OnDeath() override;
     
-    // 공격 함수들
     virtual void Attack() override;
     virtual void Skill1() override;
     virtual void Skill2() override;
     
-    // =========================================================
-    // 일반 공격 콤보 애니메이션 (Combo)
-    // =========================================================
+    //  Look 함수 (override 제거하고 독자 함수로 선언)
+    void Look(const FInputActionValue& Value) override;
+    
+    // 콤보 및 스킬 관련 변수
     int32 CurrentComboIndex = 0;
     FTimerHandle ComboResetTimer;
-    
     void ResetCombo();
 
-    // =========================================================
-    // 투사체 발사 타이밍 (Timing)
-    // =========================================================
-    // 발사 지연 타이머
     FTimerHandle ProjectileTimerHandle;
-
-    // 타이머 끝나면 실제 발사하는 함수
     void SpawnDelayedProjectile(UClass* ProjectileClass);
 
-    // =========================================================
     // 직업 능력 (Job Ability)
-    // =========================================================
     virtual void JobAbility() override;
     void EndJobAbility();
 
@@ -102,17 +97,28 @@ private:
     
     void ProcessSkill(FName SkillRowName);
     
-    void UpdatePillarInteraction();
+    // 범용 타겟 감지 함수로 통합
+    void CheckInteractableTarget();
+
+    // 기둥 전용 락온 로직
     void LockOnPillar(float DeltaTime);
     
     UPROPERTY(EditAnywhere, Category = "Telekinesis")
     float TraceDistance = 5000.f;
 
+    //  기둥 관련 변수
     UPROPERTY()
     APillar* FocusedPillar;
-
     UPROPERTY()
     APillar* CurrentTargetPillar;
 
-    bool bIsJobAbilityActive = false;
+    // [추가] 보트(범용) 관련 변수
+    UPROPERTY()
+    AActor* HoveredActor; // 마우스 오버된 대상
+    UPROPERTY()
+    AActor* CurrentControlledActor; // 조종 중인 대상
+
+    // [추가] 상태 플래그
+    bool bIsPillarMode = false;
+    bool bIsBoatMode = false;
 };

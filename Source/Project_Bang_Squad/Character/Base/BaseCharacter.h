@@ -57,7 +57,6 @@ public:
 	ABaseCharacter();
 	virtual void Tick(float DeltaTime) override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
-
 	//  서버에서만 실행되어야 하는 데미지 처리 함수
 	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent,
 		class AController* EventInstigator, AActor* DamageCauser) override;
@@ -139,7 +138,7 @@ protected:
 
 	/* ===== 공통 로직 함수 ===== */
 	void Move(const FInputActionValue& Value);
-	void Look(const FInputActionValue& Value);
+	virtual void Look(const FInputActionValue& Value);
 
 	virtual void Attack() {}
 	virtual void Skill1() {}
