@@ -38,5 +38,5 @@ protected:
 	void HandleMoveProgress(float Value);
 
 private:
-	FVector StartRelativeLocation;
+	FVector StartLocation;
 };
