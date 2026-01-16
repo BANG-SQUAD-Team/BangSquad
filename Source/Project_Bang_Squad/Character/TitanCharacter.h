@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Project_Bang_Squad/Character/Base/BaseCharacter.h"
+#include "Components/ArrowComponent.h"
 #include "TitanCharacter.generated.h"
 
 class ATitanRock;
@@ -53,8 +54,14 @@ protected:
 	UFUNCTION(Server, Reliable)
 	void Server_TryGrab(AActor* TargetToGrab); // 잡기 요청
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	UArrowComponent* ThrowSpawnPoint;
+
+	// [변경 없음] 위치를 인자로 받는 서버 함수
 	UFUNCTION(Server, Reliable)
-	void Server_ThrowTarget(); // 던지기 요청
+	void Server_ThrowTarget(FVector ThrowStartLocation);
+
+	void AutoThrowTimeout();
 
 	UFUNCTION()
 	void OnRep_GrabbedActor(); // 잡힌 상태 동기화 (핵심)
@@ -116,7 +123,7 @@ private:
 	FTimerHandle GrabTimerHandle;
 	FTimerHandle CooldownTimerHandle;
 
-	float ThrowForce = 3500.f;
+	float ThrowForce = 800.f;
 	float GrabMaxDuration = 5.0f;
 	float ThrowCooldownTime = 3.0f;
 
