@@ -1,4 +1,4 @@
-#include "EnemyNormal.h"
+﻿#include "EnemyNormal.h"
 
 #include "AIController.h"
 #include "Animation/AnimMontage.h"
@@ -106,7 +106,7 @@ void AEnemyNormal::StartChase(APawn* NewTarget)
 
 	TargetPawn = NewTarget;
 
-	UpdateMoveTo();
+	//UpdateMoveTo();
 
 	GetWorldTimerManager().ClearTimer(RepathTimer);
 	GetWorldTimerManager().SetTimer(
