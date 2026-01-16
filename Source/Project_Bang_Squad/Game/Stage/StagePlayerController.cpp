@@ -33,6 +33,14 @@ void AStagePlayerController::BeginPlay()
 void AStagePlayerController::StartSpectating()
 {
 	ViewNextPlayer();
+
+	if (HasAuthority())
+	{
+		if (AStageGameMode* GM = GetWorld()->GetAuthGameMode<AStageGameMode>())
+		{
+			GM->RequestRespawn(this);
+		}
+	}
 }
 
 void AStagePlayerController::SetupInputComponent()

@@ -8,6 +8,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Project_Bang_Squad/Character/Base/BaseCharacter.h"
 #include "Project_Bang_Squad/UI/Lobby/JobSelectWidget.h"
+#include "Project_Bang_Squad/UI/Stage/RespawnWidget.h"
 
 void AStageGameMode::SpawnPlayerCharacter(AController* Controller, EJobType JobType)
 {
@@ -20,29 +21,29 @@ void AStageGameMode::SpawnPlayerCharacter(AController* Controller, EJobType JobT
 		OldPawn->Destroy();
 	}
 
-	//스폰할 위치 찾기(PlayerStart 중 하나)
-	/*AActor* StartSpot = FindPlayerStart(Controller);
-
-	FVector SpawnLocation = FVector::ZeroVector;
-	FRotator SpawnRotation = FRotator::ZeroRotator;
-
-	if (StartSpot)
-	{
-		SpawnLocation = StartSpot->GetActorLocation();
-		SpawnRotation = StartSpot->GetActorRotation();
-	}
-
-	//소환
-	UClass* PawnClass = JobCharacterMap[JobType];
-	if (APawn* NewPawn = GetWorld()->SpawnActor<APawn>(PawnClass, SpawnLocation, SpawnRotation))
-	{
-		Controller->Possess(NewPawn);
-	}*/
-
 	FTransform SpawnTransform = GetRespawnTransform(Controller);
+	AStagePlayerController* StagePC = Cast<AStagePlayerController>(Controller);
+
+	if (StagePC && !StagePC->bHasSpawnedOnce)
+	{
+		AActor* StartSpot = FindPlayerStart(Controller);
+		if (StartSpot)
+		{
+			SpawnTransform = StartSpot->GetActorTransform();
+		}
+		else
+		{
+			SpawnTransform = FTransform::Identity;
+		}
+		StagePC->bHasSpawnedOnce = true;
+	}
+	else
+	{
+		SpawnTransform = GetRespawnTransform(Controller);
+	}
 	FVector SpawnLocation = SpawnTransform.GetLocation();
 	FRotator SpawnRotation = SpawnTransform.GetRotation().Rotator();
-
+	
 	// 소환 (충돌 처리 옵션 추가: 겹쳐도 강제 소환)
 	UClass* PawnClass = JobCharacterMap[JobType];
 	FActorSpawnParameters SpawnParams;
@@ -58,13 +59,37 @@ void AStageGameMode::RequestRespawn(AController* Controller)
 {
 	if (!Controller) return;
 
+	float WaitTime = 3.f;
+
+	if (AStagePlayerController* StagePC = Cast<AStagePlayerController>(Controller))
+	{
+		float CalculatedTime = 3.f + (StagePC->GetDeathCount() * 2.f);
+		WaitTime = FMath::Min(CalculatedTime, 15.f);
+
+		StagePC->IncreaseDeathCount();
+	}
+	
+	//UI 띄우기
+	if (RespawnWidgetClass)
+	{
+		if (!RespawnWidgetInstance)
+		{
+			RespawnWidgetInstance = CreateWidget<URespawnWidget>(GetWorld(), RespawnWidgetClass);
+		}
+
+		if (RespawnWidgetInstance)
+		{
+			RespawnWidgetInstance->AddToViewport();
+			RespawnWidgetInstance->StartCountdown(WaitTime);
+		}
+	}
+	
 	FTimerDelegate TimerDelegate;
 	TimerDelegate.BindUObject(this, &AStageGameMode::RespawnPlayerElapsed, Controller);
 
 	FTimerHandle TimerHandle;
-	GetWorld()->GetTimerManager().SetTimer(TimerHandle, TimerDelegate, 3.f, false);
-
-	UE_LOG(LogTemp, Warning, TEXT("[GameMode] 3초 뒤 부활 예정..."));
+	GetWorld()->GetTimerManager().SetTimer(TimerHandle, TimerDelegate, WaitTime, false);
+	UE_LOG(LogTemp, Warning, TEXT("[GameMode] 플레이어 사망! %f초 뒤 부활"), WaitTime);
 }
 
 void AStageGameMode::ExecuteRespawn(AController* Controller)
@@ -72,13 +97,31 @@ void AStageGameMode::ExecuteRespawn(AController* Controller)
 	if (!Controller) return;
 
 	//컨트롤러에서 저장해둔 직업 정보를 가져옴
-	EJobType JobToSpawn = EJobType::Mage;
+	EJobType JobToSpawn = EJobType::Titan;
 	if (AStagePlayerController* StagePC = Cast<AStagePlayerController>(Controller))
 	{
-		JobToSpawn = StagePC->SavedJobType;
+		if (StagePC->SavedJobType != EJobType::None)
+			JobToSpawn = StagePC->SavedJobType;
 	}
 
+	if (JobToSpawn == EJobType::None)
+	{
+		return;
+	}
+	
 	SpawnPlayerCharacter(Controller, JobToSpawn);
+}
+
+void AStageGameMode::ClearStageAndMove(FString NextMapName)
+{
+	if (UBSGameInstance* GI = Cast<UBSGameInstance>(GetGameInstance()))
+	{
+		//GI->ResetDeathPenalty();
+	}
+
+	//맵 이동
+	FString Url = "/Game/TeamShare/Level/" + NextMapName + "?listen";
+	GetWorld()->ServerTravel(Url);
 }
 
 void AStageGameMode::RespawnPlayerElapsed(AController* DeadController)
@@ -91,7 +134,12 @@ void AStageGameMode::RespawnPlayerElapsed(AController* DeadController)
 		OldPawn->Destroy();
 	}
 
-	RestartPlayer(DeadController);
+	ExecuteRespawn(DeadController);
+
+	if (RespawnWidgetInstance)
+	{
+		RespawnWidgetInstance->RemoveFromParent();
+	}
 }
 
 FTransform AStageGameMode::GetRespawnTransform(AController* Controller)
