@@ -201,7 +201,7 @@ void ATitanCharacter::Server_TryGrab_Implementation(AActor* TargetToGrab)
 	}
 
 	// 4. 모션 및 타이머
-	ProcessSkill(TEXT("JobAbility"), TEXT("Grab"));
+	Multicast_PlayJobMontage(TEXT("Grab"));
 	GetWorldTimerManager().SetTimer(GrabTimerHandle, this, &ATitanCharacter::Server_ThrowTarget, GrabMaxDuration, false);
 }
 
@@ -234,6 +234,12 @@ void ATitanCharacter::OnRep_GrabbedActor()
 	}
 }
 
+void ATitanCharacter::Multicast_PlayJobMontage_Implementation(FName SectionName)
+{
+	// 모든 클라이언트에서 JobAbility의 특정 섹션(Grab/Throw) 재생
+	ProcessSkill(TEXT("JobAbility"), SectionName);
+}
+
 void ATitanCharacter::Server_ThrowTarget_Implementation()
 {
 	if (!bIsGrabbing || !GrabbedActor) return;
@@ -248,7 +254,7 @@ void ATitanCharacter::Server_ThrowTarget_Implementation()
 		if (Row && Row->Cooldown > 0.0f) ThrowCooldownTime = Row->Cooldown;
 	}
 
-	ProcessSkill(TEXT("JobAbility"), TEXT("Throw"));
+	Multicast_PlayJobMontage(TEXT("Throw"));
 
 	// 부착 해제
 	GrabbedActor->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
