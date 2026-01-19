@@ -6,7 +6,8 @@
 #include "Project_Bang_Squad/Character/Player/Mage/MagicInteractableInterface.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Camera/CameraComponent.h"
-#include "InputActionValue.h" // [필수] FInputActionValue 사용 위해 추가
+#include "InputActionValue.h" // 
+#include "Project_Bang_Squad/Character/Player/Mage/PillarRotate.h"
 #include "MageCharacter.generated.h"
 
 class UTimelineComponent;
@@ -125,13 +126,14 @@ private:
     UPROPERTY()
     APillar* CurrentTargetPillar;
 
-    // [추가] 보트(범용) 관련 변수
+    //  보트(범용) 관련 변수
     UPROPERTY()
     AActor* HoveredActor; // 마우스 오버된 대상
     UPROPERTY()
     AActor* CurrentControlledActor; // 조종 중인 대상
 
-    // [추가] 상태 플래그
+    
+    //  상태 플래그
     bool bIsPillarMode = false;
     bool bIsBoatMode = false;
 };

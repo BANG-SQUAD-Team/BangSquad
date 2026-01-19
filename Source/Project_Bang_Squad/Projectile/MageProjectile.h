@@ -43,7 +43,7 @@ protected:
     
 	/** 무언가에 부딪혔을 때 호출되는 함수 */
 	UFUNCTION()
-	void OnOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, 
+	virtual void OnOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, 
 	   UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, 
 	   bool bFromSweep, const FHitResult& SweepResult);
     

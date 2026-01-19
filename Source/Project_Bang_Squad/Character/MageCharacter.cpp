@@ -178,23 +178,21 @@ void AMageCharacter::CheckInteractableTarget()
     // Implements는 "이 인터페이스를 가지고 있니?"라고 묻는 것
     bool bIsInterface = (HitActor && HitActor->Implements<UMagicInteractableInterface>());
 
-    // A. 기둥 처리 (기존 로직)
+    // A. 일반 기둥
     if (HitPillar && !HitPillar->bIsFallen)
     {
         if (FocusedPillar != HitPillar)
         {
-            // 이전 하이라이트 끄기
-            if (FocusedPillar) FocusedPillar->PillarMesh->SetRenderCustomDepth(false);
-            
-            // [수정] 인터페이스 끄기 (Cast 사용)
+            //  인터페이스 끄기 
             if (HoveredActor)
             {
                 if (IMagicInteractableInterface* Interface = Cast<IMagicInteractableInterface>(HoveredActor))
                 {
                     Interface->SetMageHighlight(false);
                 }
+                HoveredActor = nullptr;
             }
-            HoveredActor = nullptr;
+            if (FocusedPillar) FocusedPillar->PillarMesh->SetRenderCustomDepth(false);
 
             // 새 기둥 켜기
             HitPillar->PillarMesh->SetRenderCustomDepth(true);
@@ -213,16 +211,15 @@ void AMageCharacter::CheckInteractableTarget()
                 FocusedPillar->PillarMesh->SetRenderCustomDepth(false);
                 FocusedPillar = nullptr;
             }
-            // [수정] 이전 인터페이스 끄기
+            // 이전 인터페이스 끄기
             if (HoveredActor)
             {
-                if (IMagicInteractableInterface* Interface = Cast<IMagicInteractableInterface>(HoveredActor))
+                if (IMagicInteractableInterface* Iface = Cast<IMagicInteractableInterface>(HoveredActor))
                 {
-                    Interface->SetMageHighlight(false);
+                    Iface->SetMageHighlight(false);
                 }
             }
-
-            // [수정] 새 액터 켜기 (Cast 사용)
+            //  새 인터페이스 타겟 켜기 (Cast 사용)
             if (IMagicInteractableInterface* Interface = Cast<IMagicInteractableInterface>(HitActor))
             {
                 Interface->SetMageHighlight(true);
@@ -245,8 +242,8 @@ void AMageCharacter::CheckInteractableTarget()
             {
                 Interface->SetMageHighlight(false);
             }
+            HoveredActor = nullptr;
         }
-        HoveredActor = nullptr;
     }
 }
 
@@ -257,13 +254,13 @@ void AMageCharacter::JobAbility()
 {
     if (bIsDead) return;
     
-    // Case 1: 기둥 모드 진입
+    // Case 1: 일반 기둥 모드 진입
     if (FocusedPillar)
     {
         if (JobAbilityMontage)
         {
-            PlayAnimMontage(JobAbilityMontage);      // 나한테 바로 보여주기
-            Server_PlayMontage(JobAbilityMontage);   // 남들한테 보여주기
+            PlayAnimMontage(JobAbilityMontage);      
+            Server_PlayMontage(JobAbilityMontage);   
         }
         
         bIsPillarMode = true;
@@ -278,26 +275,35 @@ void AMageCharacter::JobAbility()
         }
         if (CameraTimelineComp) CameraTimelineComp->Play();
     }
-    // Case 2: 보트 모드 (그대로 유지)
+    // Case 2: 인터페이스 액터 (보트 OR 회전기둥)
     else if (HoveredActor)
     {
+        // 보트인지 확인 (탑승 조건 검사용)
         AMagicBoat* TargetBoat = Cast<AMagicBoat>(HoveredActor);
-        //  내 캐릭터가 밟고 있는 바닥 가져오기
-        UPrimitiveComponent* BaseComponent = GetMovementBase();
-    
-        // 바닥이 있고, 그 바닥의 주인(Actor)이 보트인지 확인
-        if (TargetBoat && BaseComponent && BaseComponent->GetOwner() == TargetBoat)
+        
+        // 보트라면, 반드시 위에 타 있어야 함!
+        if (TargetBoat)
         {
-            if (JobAbilityMontage)
-            {
-                PlayAnimMontage(JobAbilityMontage);      // 나한테 바로 보여주기
-                Server_PlayMontage(JobAbilityMontage);   // 남들한테 보여주기
-            }
+            UPrimitiveComponent* BaseComponent = GetMovementBase();
+            bool bIsRiding = (BaseComponent && BaseComponent->GetOwner() == TargetBoat);
             
-            // === 조건 통과! 보트 위에 있음 ===
-            bIsBoatMode = true;
-            CurrentControlledActor = TargetBoat;
+            // 안 탔으면 능력 발동 취소
+            if (!bIsRiding) return; 
+        }
 
+        if (JobAbilityMontage)
+        {
+            PlayAnimMontage(JobAbilityMontage);      
+            Server_PlayMontage(JobAbilityMontage);   
+        }
+        
+        // bIsBoatMode를 "인터페이스 조종 모드" 플래그로 사용
+        bIsBoatMode = true;
+        CurrentControlledActor = HoveredActor;
+
+        // 보트 전용 추가 설정
+        if (TargetBoat)
+        {
             Server_SetBoatRideState(TargetBoat, true);
             GetCharacterMovement()->bEnablePhysicsInteraction = false;
 
@@ -314,13 +320,9 @@ void AMageCharacter::EndJobAbility()
 {
     if (JobAbilityMontage)
     {
-        // 1. 내 화면에서 즉시 끄기 
         StopAnimMontage(JobAbilityMontage);
-        
-        // 2. 서버한테 나 껐어, 남들한테도 꺼줘라고 알림
         Server_StopMontage(JobAbilityMontage);
     }
-    
     
     // Case 1: 기둥 모드 종료
     if (bIsPillarMode)
@@ -328,32 +330,34 @@ void AMageCharacter::EndJobAbility()
         bIsPillarMode = false;
         CurrentTargetPillar = nullptr;
         
-        
         if (CameraTimelineComp) CameraTimelineComp->Reverse();
     }
 
-    // Case 2: 보트 모드 종료 (그대로 유지)
+    // Case 2: 인터페이스 모드 종료 (보트 + 회전기둥)
     if (bIsBoatMode)
     {
-        GetCharacterMovement()->bEnablePhysicsInteraction = true;
-        
+        // 보트였다면 물리 복구 및 하차 처리
         AMagicBoat* Boat = Cast<AMagicBoat>(CurrentControlledActor);
         if (Boat)
         {
+            GetCharacterMovement()->bEnablePhysicsInteraction = true;
             Server_SetBoatRideState(Boat, false);
+            
+            if (IsLocallyControlled())
+            {
+                if (TopDownCamera) TopDownCamera->SetActive(false);
+                if (Camera) Camera->SetActive(true);
+            }
         }
+
+        // [공통] 입력 중단 신호 보내기 (Zero Vector) -> 보트는 멈추고, 회전기둥은 멈춤
         if (CurrentControlledActor)
         {
             Server_InteractActor(CurrentControlledActor, FVector::ZeroVector);
         }
+        
         bIsBoatMode = false;
         CurrentControlledActor = nullptr;
-
-        if (IsLocallyControlled())
-        {
-            if (TopDownCamera) TopDownCamera->SetActive(false);
-            if (Camera) Camera->SetActive(true);
-        }
     }
     
     // 공통 복구
@@ -370,44 +374,54 @@ void AMageCharacter::Look(const FInputActionValue& Value)
 {
     FVector2D LookInput = Value.Get<FVector2D>();
 
-    // 1. 보트 모드
+    // 1. 인터페이스 조종 모드 (보트 + 회전기둥)
     if (bIsBoatMode && CurrentControlledActor)
     {
-        if (TopDownCamera)
+        FVector MoveDir = FVector::ZeroVector;
+
+        // A. 보트일 때 (카메라 기준 이동 방향 계산)
+        if (Cast<AMagicBoat>(CurrentControlledActor))
         {
-            FVector ScreenUp = TopDownCamera->GetUpVector();
-            FVector ScreenRight = TopDownCamera->GetRightVector();
-            ScreenUp.Z = 0; ScreenRight.Z = 0;
-            ScreenUp.Normalize(); ScreenRight.Normalize();
-
-            FVector MoveDir = (ScreenUp * LookInput.Y) + (ScreenRight * LookInput.X);
-
-            if (!MoveDir.IsNearlyZero())
+            if (TopDownCamera)
             {
-                Server_InteractActor(CurrentControlledActor, MoveDir);
+                FVector ScreenUp = TopDownCamera->GetUpVector();
+                FVector ScreenRight = TopDownCamera->GetRightVector();
+                ScreenUp.Z = 0; ScreenRight.Z = 0;
+                ScreenUp.Normalize(); ScreenRight.Normalize();
+
+                MoveDir = (ScreenUp * LookInput.Y) + (ScreenRight * LookInput.X);
             }
         }
+        // B. 그 외 (회전 기둥 등): 마우스 Y 움직임을 전달
+        else
+        {
+            // 감도 조절 (너무 미세한 움직임 무시)
+            if (FMath::Abs(LookInput.Y) > 0.1f)
+            {
+                // PillarRotate는 Y값이 0.4 이상일 때 반응
+                MoveDir = FVector(0.f, LookInput.Y, 0.f); 
+            }
+        }
+
+        // [공통] 인터페이스를 통해 입력 전달
+        if (!MoveDir.IsNearlyZero())
+        {
+            Server_InteractActor(CurrentControlledActor, MoveDir);
+        }
     }
-    // 2. [수정] 기둥 모드: 시점 회전은 막고, 제스처만 감지!
+    // 2. 일반 기둥 모드 (Look 입력 무시, 제스처는 별도 로직)
     else if (bIsPillarMode)
     {
-        // AddControllerYawInput을 호출 안 하니까 시점은 자동으로 잠김.
-        // 대신 여기서 마우스 흔들기를 직접 체크함.
         if (IsValid(CurrentTargetPillar) && !CurrentTargetPillar->bIsFallen)
         {
-            // LookInput.X가 마우스 좌우 움직임임
-            // 감도 조절: 0.5f 정도로 설정 (너무 민감하면 올리세요)
             if (FMath::Abs(LookInput.X) > 0.5f && FMath::Sign(LookInput.X) == CurrentTargetPillar->RequiredMouseDirection)
             {
-                // 1. 무너뜨리기
                 Server_TriggerPillarFall(CurrentTargetPillar);
-                
-                // 2. 즉시 탈출 (락온 해제)
                 EndJobAbility();
             }
         }
     }
-    // 3. 일반 모드
+    // 3. 일반 시점
     else
     {
         Super::Look(Value);
