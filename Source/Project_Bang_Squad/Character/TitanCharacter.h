@@ -68,6 +68,9 @@ protected:
 
 	FName MyAttackSocket;
 
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_FixMesh(ACharacter* Victim);
+
 	// =================================================================
 	// [네트워크: 평타 (Attack)]
 	// =================================================================

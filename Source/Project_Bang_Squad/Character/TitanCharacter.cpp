@@ -107,7 +107,6 @@ void ATitanCharacter::Attack()
 
 	FName SkillRowName = bIsNextAttackA ? TEXT("Attack_A") : TEXT("Attack_B");
 
-	// [수정] 클라이언트 선제적 쿨타임 적용 (데이터 테이블 조회)
 	if (SkillDataTable)
 	{
 		static const FString ContextString(TEXT("TitanAttack_Local"));
@@ -272,7 +271,41 @@ void ATitanCharacter::StopMeleeTrace()
 	SwingDamagedActors.Empty();
 }
 
-// ... (이하 기존 스킬 구현 유지) ...
+void ATitanCharacter::Multicast_FixMesh_Implementation(ACharacter* Victim)
+{
+	if (!Victim || !Victim->IsValidLowLevel()) return;
+
+	// 1. [가장 중요] 클라이언트에서 꺼져있던 콜리전과 이동 기능을 강제로 켭니다.
+	// 이걸 안 하면 클라이언트 화면에서 캐릭터가 굳거나 땅을 뚫습니다.
+	if (Victim->GetCapsuleComponent())
+	{
+		Victim->GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	}
+
+	if (Victim->GetCharacterMovement())
+	{
+		// 멈춰있던 무브먼트를 깨우고 Falling 모드로 전환
+		Victim->GetCharacterMovement()->SetMovementMode(MOVE_Falling);
+		Victim->GetCharacterMovement()->GravityScale = 1.0f;
+		Victim->GetCharacterMovement()->Velocity = FVector::ZeroVector; // 초기화
+	}
+
+	// 2. 캡슐 회전 초기화
+	FRotator CurrentRot = Victim->GetActorRotation();
+	Victim->SetActorRotation(FRotator(0.f, CurrentRot.Yaw, 0.f));
+
+	// 3. 메쉬 위치/회전 바로잡기 (기존 기능)
+	if (Victim->GetMesh())
+	{
+		Victim->GetMesh()->SetRelativeLocationAndRotation(
+			FVector(0.f, 0.f, -90.f),
+			FRotator(0.f, -90.f, 0.f)
+		);
+	}
+
+	// 4. 강제 업데이트 요청
+	Victim->ForceNetUpdate();
+}
 
 void ATitanCharacter::JobAbility()
 {
@@ -387,38 +420,84 @@ void ATitanCharacter::Multicast_PlayJobMontage_Implementation(FName SectionName)
 	ProcessSkill(TEXT("JobAbility"), SectionName); 
 }
 
-void ATitanCharacter::Server_ThrowTarget_Implementation(FVector ThrowStartLocation) 
-{ 
+void ATitanCharacter::Server_ThrowTarget_Implementation(FVector ThrowStartLocation)
+{
 	if (!bIsGrabbing || !GrabbedActor) return;
+
 	GetWorldTimerManager().ClearTimer(GrabTimerHandle);
-	if (SkillDataTable) 
+
+	if (SkillDataTable)
 	{
-		static const FString ContextString(TEXT("TitanThrowContext")); 
-		FSkillData* Row = SkillDataTable->FindRow<FSkillData>(TEXT("JobAbility"), ContextString); 
-		if (Row && Row->Cooldown > 0.0f) ThrowCooldownTime = Row->Cooldown; 
+		static const FString ContextString(TEXT("TitanThrowContext"));
+		FSkillData* Row = SkillDataTable->FindRow<FSkillData>(TEXT("JobAbility"), ContextString);
+		if (Row && Row->Cooldown > 0.0f) ThrowCooldownTime = Row->Cooldown;
 	}
 
-	Multicast_PlayJobMontage(TEXT("Throw")); 
-	GrabbedActor->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform); 
-	GrabbedActor->SetActorLocation(ThrowStartLocation, false, nullptr, ETeleportType::TeleportPhysics); 
-	FRotator ActorRot = GrabbedActor->GetActorRotation(); 
-	GrabbedActor->SetActorRotation(FRotator(0.f, ActorRot.Yaw, 0.f)); 
-	FRotator ThrowRotation = GetControlRotation(); FVector ThrowDir = ThrowRotation.Vector(); 
-	if (ACharacter* Victim = Cast<ACharacter>(GrabbedActor)) 
-	{ 
-		SetHeldState(Victim, false); FVector FinalThrowDir = (ThrowDir + FVector(0.f, 0.f, 0.25f)).GetSafeNormal(); 
-		Victim->LaunchCharacter(FinalThrowDir * ThrowForce, true, true); 
-		FTimerHandle RecoveryHandle; FTimerDelegate Delegate; 
-		Delegate.BindUFunction(this, TEXT("RecoverCharacter"), Victim); 
-		GetWorldTimerManager().SetTimer(RecoveryHandle, Delegate, 1.5f, false); 
-	} 
-	else if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(GrabbedActor->GetRootComponent())) 
-	{ 
-		RootComp->SetSimulatePhysics(true); RootComp->AddImpulse(ThrowDir * ThrowForce * 50.f); 
-	} 
-	GrabbedActor = nullptr; 
-	bIsGrabbing = false; 
-	bIsCooldown = true; GetWorldTimerManager().SetTimer(CooldownTimerHandle, this, &ATitanCharacter::ResetCooldown, ThrowCooldownTime, false); 
+	Multicast_PlayJobMontage(TEXT("Throw"));
+
+	// 1. 붙어있던 대상 떼어내기
+	GrabbedActor->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+
+	// 2. [수정] 위치 보정 (땅 꺼짐/깜빡임 방지)
+	FVector SafeThrowLocation = ThrowStartLocation;
+
+	float MyZ = GetActorLocation().Z;
+	float MinZ = MyZ + GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 20.0f;
+
+	if (SafeThrowLocation.Z < MinZ)
+	{
+		SafeThrowLocation.Z = MinZ;
+	}
+
+	// 던지는 사람(나)과 겹치지 않게 앞으로 조금 더 밈
+	FVector ForwardOffset = GetActorForwardVector() * 100.0f;
+	SafeThrowLocation += ForwardOffset;
+
+	GrabbedActor->SetActorLocation(SafeThrowLocation, false, nullptr, ETeleportType::TeleportPhysics);
+
+	// 3. 던지는 방향 계산
+	FRotator ThrowRotation = GetControlRotation();
+	FVector ThrowDir = ThrowRotation.Vector();
+
+	// 땅으로 꽂히는 각도 제한
+	if (ThrowDir.Z < -0.1f)
+	{
+		ThrowDir.Z = -0.1f;
+		ThrowDir.Normalize();
+	}
+
+	// 4. 캐릭터 처리
+	if (ACharacter* Victim = Cast<ACharacter>(GrabbedActor))
+	{
+		SetHeldState(Victim, false);
+
+		Multicast_FixMesh(Victim);
+
+		if (Victim->GetCharacterMovement())
+		{
+			Victim->GetCharacterMovement()->SetMovementMode(MOVE_Falling);
+		}
+
+		// 살짝 위로 띄워서 던짐 (마찰 방지)
+		FVector FinalThrowDir = (ThrowDir + FVector(0.f, 0.f, 0.3f)).GetSafeNormal();
+		Victim->LaunchCharacter(FinalThrowDir * ThrowForce, true, true);
+
+		FTimerHandle RecoveryHandle;
+		FTimerDelegate Delegate;
+		Delegate.BindUFunction(this, TEXT("RecoverCharacter"), Victim);
+		GetWorldTimerManager().SetTimer(RecoveryHandle, Delegate, 1.5f, false);
+	}
+	// 5. 사물 처리
+	else if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(GrabbedActor->GetRootComponent()))
+	{
+		RootComp->SetSimulatePhysics(true);
+		RootComp->AddImpulse(ThrowDir * ThrowForce * 50.f);
+	}
+
+	GrabbedActor = nullptr;
+	bIsGrabbing = false;
+	bIsCooldown = true;
+	GetWorldTimerManager().SetTimer(CooldownTimerHandle, this, &ATitanCharacter::ResetCooldown, ThrowCooldownTime, false);
 }
 
 void ATitanCharacter::Server_Skill1_Implementation()
@@ -648,23 +727,36 @@ void ATitanCharacter::RecoverCharacter(ACharacter* Victim)
 {
 	if (!Victim || !Victim->IsValidLowLevel()) return;
 
-	FRotator CurrentRot = Victim->GetActorRotation();
-	Victim->SetActorRotation(FRotator(0.f, CurrentRot.Yaw, 0.f));
+	// 1. [중요] 메쉬 위치/회전 강제 정렬 (땅속으로 꺼져 보이는 시각적 문제 해결)
+	Multicast_FixMesh(Victim);
 
+	// 2. 캡슐 콜리전 다시 켜기
 	if (Victim->GetCapsuleComponent())
 	{
 		Victim->GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 	}
 
+	// 3. [핵심 수정] 물리 엔진 상태 강제 초기화
 	if (Victim->GetCharacterMovement())
 	{
-		if (Victim->GetCharacterMovement()->MovementMode == MOVE_None || Victim->GetCharacterMovement()->MovementMode == MOVE_Falling)
-		{
-			Victim->GetCharacterMovement()->SetMovementMode(MOVE_Walking);
-		}
+		// 가속도/속도 즉시 제거 (미끄러짐 방지)
 		Victim->GetCharacterMovement()->StopMovementImmediately();
+		Victim->GetCharacterMovement()->Velocity = FVector::ZeroVector;
+
+		// [땅꺼짐 해결] 현재 위치가 땅속일 수 있으므로, 아주 살짝(5cm) 위로 올려줍니다.
+		// 이렇게 하면 "땅에 박힘" 판정이 사라지고 "땅 위에 있음" 판정이 성공합니다.
+		FVector FixLoc = Victim->GetActorLocation() + FVector(0.f, 0.f, 5.0f);
+		Victim->SetActorLocation(FixLoc, false, nullptr, ETeleportType::TeleportPhysics);
+
+		// [Falling 문제 해결] 바닥 체크고 뭐고 일단 "너는 걷는 상태야"라고 강제 변경
+		// SetMovementMode를 Walking으로 하면 엔진이 알아서 바닥을 스냅(Snap) 잡습니다.
+		Victim->GetCharacterMovement()->SetMovementMode(MOVE_Walking);
 	}
 
+	// 4. 위치 강제 동기화 (서버->클라)
+	Victim->ForceNetUpdate();
+
+	// 5. AI 재시작
 	AAIController* AIC = Cast<AAIController>(Victim->GetController());
 	if (AIC && AIC->GetBrainComponent())
 	{
