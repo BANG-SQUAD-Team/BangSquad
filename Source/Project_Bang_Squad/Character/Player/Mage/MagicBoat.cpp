@@ -18,6 +18,10 @@ AMagicBoat::AMagicBoat()
 	// 아웃라인 준비 (CustomDepth)
 	MeshComp->SetRenderCustomDepth(false);
 	MeshComp->SetCustomDepthStencilValue(250); // 노란색 등 설정값
+	
+	NetUpdateFrequency = 100.0f;
+	MinNetUpdateFrequency = 60.0f;
+	NetPriority = 3.0f;
 }
 
 // Called when the game starts or when spawned
@@ -27,28 +31,38 @@ void AMagicBoat::BeginPlay()
 	
 }
 
-// Called every frame
+
 void AMagicBoat::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 	
 	// 서버 권한이 있고 입력이 있을 때만 힘을 줌
-	if (HasAuthority() && MeshComp && !CurrentMoveDirection.IsNearlyZero())
+	if (HasAuthority() && MeshComp)
 	{
-		// 1. 이동 처리
-		// GetMass()를 곱해주면 보트 무게를 100kg로 하든 10,000kg로 하든 똑같은 속도로 움직임!
-		FVector Force = CurrentMoveDirection * MoveSpeed * MeshComp->GetMass();
-		MeshComp->AddForce(Force);
+		if (HasAuthority() && MeshComp && !CurrentMoveDirection.IsNearlyZero() && bIsOccupied)
+		{
+			MeshComp->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+			// 내적 연산 
+			// 결과 양수면 전진, 음수면 후진
+			float ForwardInput = FVector::DotProduct(CurrentMoveDirection, GetActorForwardVector());
 		
-		// 2. 회전 처리 (보트가 가능 방향을 바라보게)
-		FRotator TargetRot = CurrentMoveDirection.Rotation();
-		// 기울어짐 방지
-		FRotator NewRot = FRotator(0.0f, TargetRot.Yaw, 0.0f);
-		
-		// 부드럽게 회전
-		
-		FRotator SmoothRot = FMath::RInterpTo(GetActorRotation(), NewRot, DeltaTime, TurnSpeed);
-		SetActorRotation(SmoothRot);
+			// 보트가 바라보는 방향으로 힘을 줌
+			FVector MoveForce = GetActorForwardVector() * ForwardInput * MoveSpeed * MeshComp->GetMass();
+			MeshComp->AddForce(MoveForce);
+			
+		}
+		// 입력이 없을때 (정지 처리)
+		else
+		{
+			// 손 떼면 마찰력 높여서 브레이크
+			MeshComp->SetLinearDamping(5.0f);
+			
+			// 속도가 거의 0이면 확실하게 멈춤
+			if (MeshComp->GetPhysicsLinearVelocity().SizeSquared() < 100.0f)
+			{
+				MeshComp->SetPhysicsLinearVelocity(FVector::ZeroVector);
+			}
+		}
 	}
 
 }
@@ -70,6 +84,17 @@ void AMagicBoat::ProcessMageInput(FVector Direction)
 		// 만약 Direction이 (0,0,0)이면 멈추게 됨
 		CurrentMoveDirection = Direction.GetSafeNormal();
 		CurrentMoveDirection.Z = 0.0f; // 위아래 이동 차단
+	}
+}
+
+void AMagicBoat::SetRideState(bool bRiding)
+{
+	bIsOccupied = bRiding;
+	
+	// 내렸을 때 이동 명령도 초기화
+	if (!bIsOccupied)
+	{
+		CurrentMoveDirection = FVector::ZeroVector;
 	}
 }
 

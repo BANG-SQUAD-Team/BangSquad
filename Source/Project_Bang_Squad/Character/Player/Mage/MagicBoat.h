@@ -19,6 +19,9 @@ protected:
 	virtual void BeginPlay() override;
 
 	FVector CurrentMoveDirection = FVector::ZeroVector;
+	
+	// 현재 보트에 탑승 중인지 체크하는 플래그
+	bool bIsOccupied = false;
 public:
 	virtual void Tick(float DeltaTime) override;
 	
@@ -30,15 +33,17 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Stats")
 	float MoveSpeed = 4000.0f;
 	
-	// 회전속도 조절용 변수
-	UPROPERTY(EditAnywhere, Category = "Stats")
-	float TurnSpeed = 1.0f;
 
 	// [인터페이스 함수 선언]
 	//1. 아웃라인 켜기/끄기
 	virtual void SetMageHighlight(bool bActive) override;
 	//2. 메이지의 마법 입력 처리 (보트는 이동으로 반응)
 	virtual void ProcessMageInput(FVector Direction) override;
+	
+	// 외부에서 탑승 상태를 알리는 함수
+	void SetRideState(bool bRiding);
+	
+	
 	
 
 };

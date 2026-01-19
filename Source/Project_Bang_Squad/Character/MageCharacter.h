@@ -50,6 +50,12 @@ public:
     
     UFUNCTION(NetMulticast, Reliable)
     void Multicast_PlayMontage(UAnimMontage* MontageToPlay);
+    
+    UFUNCTION(Server,Reliable)
+    void Server_StopMontage(UAnimMontage* MontageToStop);
+    
+    UFUNCTION(NetMulticast, Reliable)
+    void Multicast_StopMontage(UAnimMontage* MontageToStop);
 
     //  범용 상호작용 RPC (기둥 파괴, 보트 이동 모두 처리)
     UFUNCTION(Server, Reliable)
@@ -58,6 +64,10 @@ public:
     // 기존 기둥 파괴 RPC (삭제해도 되지만, 기둥 로직 보존을 위해 남겨둠)
     UFUNCTION(Server, Reliable)
     void Server_TriggerPillarFall(APillar* TargetPillar);
+    
+    //서버한테 보트 탑승/하차 상태를 알리는 함수
+    UFUNCTION(Server, Reliable)
+    void Server_SetBoatRideState(AMagicBoat* Boat, bool bRiding);
 
 protected:
     virtual void BeginPlay() override;
@@ -85,6 +95,9 @@ protected:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Data")
     UDataTable* SkillDataTable;
 
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Mage|Animation")
+    UAnimMontage* JobAbilityMontage;
+    
 private:
     UFUNCTION()
     void CameraTimelineProgress(float Alpha);

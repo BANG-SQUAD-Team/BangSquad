@@ -1,6 +1,6 @@
 #include "Project_Bang_Squad/Character/MageCharacter.h"
 #include "Project_Bang_Squad/Projectile/MageProjectile.h"
-#include "Project_Bang_Squad/Character/Pillar.h" // [유지] 기둥 헤더
+#include "Project_Bang_Squad/Character/Pillar.h" 
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Camera/CameraComponent.h" 
 #include "EnhancedInputComponent.h"
@@ -9,8 +9,10 @@
 #include "GameFramework/SpringArmComponent.h"
 #include "Engine/DataTable.h"
 #include "Components/TimelineComponent.h" 
+#include "Components/PrimitiveComponent.h"
 #include "Curves/CurveFloat.h" 
 #include "Net/UnrealNetwork.h"
+#include "Player/Mage/MagicBoat.h"
 
 AMageCharacter::AMageCharacter()
 {
@@ -258,15 +260,15 @@ void AMageCharacter::JobAbility()
     // Case 1: 기둥 모드 진입
     if (FocusedPillar)
     {
+        if (JobAbilityMontage)
+        {
+            PlayAnimMontage(JobAbilityMontage);      // 나한테 바로 보여주기
+            Server_PlayMontage(JobAbilityMontage);   // 남들한테 보여주기
+        }
+        
         bIsPillarMode = true;
         CurrentTargetPillar = FocusedPillar;
-
-        // [삭제] 이 코드가 마우스 입력을 0으로 만들어서 문제였음!
-        // if (APlayerController* PC = Cast<APlayerController>(GetController()))
-        // {
-        //     PC->SetIgnoreLookInput(true); 
-        // }
-
+        
         if (SpringArm) 
         {
             SpringArm->bUsePawnControlRotation = true; 
@@ -279,30 +281,53 @@ void AMageCharacter::JobAbility()
     // Case 2: 보트 모드 (그대로 유지)
     else if (HoveredActor)
     {
-        bIsBoatMode = true;
-        CurrentControlledActor = HoveredActor;
-
-        if (IsLocallyControlled())
+        AMagicBoat* TargetBoat = Cast<AMagicBoat>(HoveredActor);
+        //  내 캐릭터가 밟고 있는 바닥 가져오기
+        UPrimitiveComponent* BaseComponent = GetMovementBase();
+    
+        // 바닥이 있고, 그 바닥의 주인(Actor)이 보트인지 확인
+        if (TargetBoat && BaseComponent && BaseComponent->GetOwner() == TargetBoat)
         {
-            if (Camera) Camera->SetActive(false);
-            if (TopDownCamera) TopDownCamera->SetActive(true);
+            if (JobAbilityMontage)
+            {
+                PlayAnimMontage(JobAbilityMontage);      // 나한테 바로 보여주기
+                Server_PlayMontage(JobAbilityMontage);   // 남들한테 보여주기
+            }
+            
+            // === 조건 통과! 보트 위에 있음 ===
+            bIsBoatMode = true;
+            CurrentControlledActor = TargetBoat;
+
+            Server_SetBoatRideState(TargetBoat, true);
+            GetCharacterMovement()->bEnablePhysicsInteraction = false;
+
+            if (IsLocallyControlled())
+            {
+                if (Camera) Camera->SetActive(false);
+                if (TopDownCamera) TopDownCamera->SetActive(true);
+            }
         }
     }
 }
 
 void AMageCharacter::EndJobAbility()
 {
+    if (JobAbilityMontage)
+    {
+        // 1. 내 화면에서 즉시 끄기 
+        StopAnimMontage(JobAbilityMontage);
+        
+        // 2. 서버한테 나 껐어, 남들한테도 꺼줘라고 알림
+        Server_StopMontage(JobAbilityMontage);
+    }
+    
+    
     // Case 1: 기둥 모드 종료
     if (bIsPillarMode)
     {
         bIsPillarMode = false;
         CurrentTargetPillar = nullptr;
-
-        // [삭제] 위에서 안 잠갔으니 풀 필요도 없음
-        // if (APlayerController* PC = Cast<APlayerController>(GetController()))
-        // {
-        //     PC->SetIgnoreLookInput(false);
-        // }
+        
         
         if (CameraTimelineComp) CameraTimelineComp->Reverse();
     }
@@ -310,6 +335,13 @@ void AMageCharacter::EndJobAbility()
     // Case 2: 보트 모드 종료 (그대로 유지)
     if (bIsBoatMode)
     {
+        GetCharacterMovement()->bEnablePhysicsInteraction = true;
+        
+        AMagicBoat* Boat = Cast<AMagicBoat>(CurrentControlledActor);
+        if (Boat)
+        {
+            Server_SetBoatRideState(Boat, false);
+        }
         if (CurrentControlledActor)
         {
             Server_InteractActor(CurrentControlledActor, FVector::ZeroVector);
@@ -479,10 +511,24 @@ void AMageCharacter::Multicast_PlayMontage_Implementation(UAnimMontage* MontageT
     }
 }
 
+void AMageCharacter::Server_StopMontage_Implementation(UAnimMontage* MontageToStop)
+{
+    Multicast_StopMontage(MontageToStop);
+}
+
+void AMageCharacter::Multicast_StopMontage_Implementation(UAnimMontage* MontageToStop)
+{
+    // 내 화면(LocallyControlled)에서는 이미 껐을 테니, 
+    // "내가 아닌 다른 사람 화면"에서만 끄도록 함
+    if (MontageToStop && !IsLocallyControlled())
+    {
+        StopAnimMontage(MontageToStop);
+    }
+}
 
 void AMageCharacter::Server_InteractActor_Implementation(AActor* TargetActor, FVector Direction)
 {
-    // [수정] Cast를 이용해서 안전하게 호출
+    //  Cast를 이용해서 안전하게 호출
     if (TargetActor)
     {
         // 인터페이스로 형변환 시도
@@ -539,5 +585,14 @@ void AMageCharacter::LockOnPillar(float DeltaTime)
         FRotator TargetRot = UKismetMathLibrary::FindLookAtRotation(StartLoc, TargetLoc);
         FRotator NewRot = FMath::RInterpTo(PC->GetControlRotation(), TargetRot, DeltaTime, 5.0f);
         PC->SetControlRotation(NewRot);
+    }
+}
+
+void AMageCharacter::Server_SetBoatRideState_Implementation(AMagicBoat* Boat, bool bRiding)
+{
+    if (Boat)
+    {
+        // 서버에 있는 보트의 상태를 변경! -> 이제 Tick이 돌아감
+        Boat->SetRideState(bRiding);
     }
 }
