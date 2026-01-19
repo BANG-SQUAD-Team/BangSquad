@@ -453,8 +453,23 @@ void AMageCharacter::Skill2() { if (!bIsDead) ProcessSkill(TEXT("Skill2")); }
 void AMageCharacter::ProcessSkill(FName SkillRowName)
 {
     if (!SkillDataTable) return;
+    
+    // 데이터 테이블에서 정보 가져오기
     static const FString ContextString(TEXT("SkillContext"));
     FSkillData* Data = SkillDataTable->FindRow<FSkillData>(SkillRowName, ContextString);
+    
+    if (SkillTimers.Contains(SkillRowName))
+    {
+        // 타이머가 아직 활성화 상태라면? -> 쿨타임 중이라는 뜻
+        if (GetWorldTimerManager().IsTimerActive(SkillTimers[SkillRowName]))
+        {
+            // (옵션) 로그 출력: "아직 쿨타임입니다!"
+             GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, FString::Printf(TEXT("%s Cooldown!"), *SkillRowName.ToString()));
+            return; 
+        }
+    }
+
+   
     
     if (Data)
     {
@@ -480,6 +495,19 @@ void AMageCharacter::ProcessSkill(FName SkillRowName)
         else
         {
             Server_ProcessSkill(SkillRowName);
+        }
+        
+        // ====================================================
+        // 3. [쿨타임 등록] 스킬을 썼으니 이제 타이머를 돌리자!
+        // ====================================================
+        if (Data->Cooldown > 0.0f)
+        {
+            // TMap에서 타이머 핸들을 찾거나, 없으면 새로 만듦
+            FTimerHandle& Handle = SkillTimers.FindOrAdd(SkillRowName);
+            
+            // 데이터 테이블에 적힌 시간(Data->Cooldown)만큼 타이머 작동
+            // false: 반복하지 않음 (한 번 돌고 끝)
+            GetWorldTimerManager().SetTimer(Handle, Data->Cooldown, false);
         }
     }
 }

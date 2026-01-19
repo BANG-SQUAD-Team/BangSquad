@@ -88,6 +88,10 @@ protected:
 
     FTimerHandle ProjectileTimerHandle;
     void SpawnDelayedProjectile(UClass* ProjectileClass);
+    
+    //  스킬 이름별 쿨타임 타이머 관리 (Key: 스킬이름, Value: 타이머 핸들)
+    UPROPERTY()
+    TMap<FName, FTimerHandle> SkillTimers;
 
     // 직업 능력 (Job Ability)
     virtual void JobAbility() override;

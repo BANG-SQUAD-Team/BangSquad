@@ -80,6 +80,9 @@ public:
 	//  나를 던진 타이탄 (데미지 주체)
 	UPROPERTY()
 	AActor* TitanThrower = nullptr;
+	
+	// 장판이 호출할 함수 (속도 조절 요청)
+	void ApplySlowDebuff(bool bActive, float Ratio);
 
 	UFUNCTION()
 	bool IsDead() {return bIsDead;}
@@ -150,6 +153,7 @@ protected:
 	// 공격 쿨타임 중인지 확인
 	bool bIsAttackCoolingDown = false;
 	
+
 	// 기본 공격 쿨타임 (초 단위, 자식 클래스에서 변경 가능)
 	// 이 시간이 지나야 다음 공격이 나감
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
@@ -172,4 +176,8 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Game Progress")
 	int32 UnlockedStageLevel = 1;
+	
+	// 서버와 클라이언트 모두 속도를 바꾸게 하는 방송 함수
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_SetMaxWalkSpeed(float NewSpeed);
 };

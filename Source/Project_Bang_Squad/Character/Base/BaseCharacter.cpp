@@ -343,3 +343,37 @@ bool ABaseCharacter::IsSkillUnlocked(int32 RequiredStage)
 	if (RequiredStage == 0) return true;
 	return UnlockedStageLevel >= RequiredStage;
 }
+
+void ABaseCharacter::ApplySlowDebuff(bool bActive, float Ratio)
+{
+	if (!HasAuthority()) return; // 서버만 명령 가능
+
+	UCharacterMovementComponent* MoveComp = GetCharacterMovement();
+	if (!MoveComp) return;
+
+	// 내 원래 속도를 '설계도(Default Object)'에서 가져옴
+	// 이렇게 하면 캐릭터마다(전사, 메이지 등) 기본 속도가 달라도 정확히 복구됨
+	float OriginalSpeed = 550.0f; // 비상용 기본값
+	if (ACharacter* DefaultChar = GetClass()->GetDefaultObject<ACharacter>())
+	{
+		if (UCharacterMovementComponent* DefMove = DefaultChar->GetCharacterMovement())
+		{
+			OriginalSpeed = DefMove->MaxWalkSpeed;
+		}
+	}
+
+	// 목표 속도 계산
+	float TargetSpeed = bActive ? (OriginalSpeed * Ratio) : OriginalSpeed;
+
+	// 방송!
+	Multicast_SetMaxWalkSpeed(TargetSpeed);
+}
+
+void ABaseCharacter::Multicast_SetMaxWalkSpeed_Implementation(float NewSpeed)
+{
+	// 나(서버)와 저쪽(클라이언트) 모두 동시에 바뀜 -> 렉 없음!
+	if (GetCharacterMovement())
+	{
+		GetCharacterMovement()->MaxWalkSpeed = NewSpeed;
+	}
+}

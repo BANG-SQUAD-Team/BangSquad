@@ -6,10 +6,13 @@
 #include "Components/DecalComponent.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "Project_Bang_Squad/Character/Base/BaseCharacter.h"
 
 AIcePad::AIcePad()
 {
 	PrimaryActorTick.bCanEverTick = false;
+	
+	bReplicates = true;
 	
 	// 충돌 박스 설정
 	CollisionBox = CreateDefaultSubobject<UBoxComponent>(TEXT("CollisionBox"));
@@ -45,22 +48,88 @@ void AIcePad::BeginPlay()
 void AIcePad::OnOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp,
 	int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-	ACharacter* TargetChar = Cast<ACharacter>(OtherActor);
-	// 시전자는 제외하거나, 적군인지 확인하는 로직 추가 가능
-	if (TargetChar && TargetChar != GetInstigator())
-		{
-			// 속도 감소
-			TargetChar->GetCharacterMovement()->MaxWalkSpeed *= SlowPercentage;
-		}
-}
+	if (!HasAuthority() || !OtherActor || OtherActor == GetInstigator()) return;
 
+	// A. 플레이어라면? -> 아까 만든 함수 호출 (렉 방지)
+	if (ABaseCharacter* Player = Cast<ABaseCharacter>(OtherActor))
+	{
+		if (!AffectedPlayers.Contains(Player))
+		{
+			Player->ApplySlowDebuff(true, SlowPercentage);
+			AffectedPlayers.Add(Player);
+		}
+		return;
+	}
+
+	// B. 몬스터라면? -> 직접 조작 (코드 수정 불필요)
+	if (ACharacter* Enemy = Cast<ACharacter>(OtherActor))
+	{
+		// 이미 기록된 놈이면 패스
+		if (EnemyOriginalSpeeds.Contains(Enemy)) return;
+
+		UCharacterMovementComponent* MoveComp = Enemy->GetCharacterMovement();
+		if (MoveComp)
+		{
+			// 원래 속도 장부에 적기
+			EnemyOriginalSpeeds.Add(Enemy, MoveComp->MaxWalkSpeed);
+			// 속도 깎기
+			MoveComp->MaxWalkSpeed *= SlowPercentage;
+		}
+	}
+}
 void AIcePad::OnOverlapEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp,
 	int32 OtherBodyIndex)
 {
-	ACharacter* TargetChar = Cast<ACharacter>(OtherActor);
-	if (TargetChar && TargetChar != GetInstigator())
+	// A. 플레이어
+	if (ABaseCharacter* Player = Cast<ABaseCharacter>(OtherActor))
+	{
+		if (AffectedPlayers.Contains(Player))
 		{
-			TargetChar->GetCharacterMovement()->MaxWalkSpeed /= SlowPercentage;
+			Player->ApplySlowDebuff(false, SlowPercentage);
+			AffectedPlayers.Remove(Player);
 		}
+		return;
+	}
+
+	// B. 몬스터
+	if (ACharacter* Enemy = Cast<ACharacter>(OtherActor))
+	{
+		// 장부에 있니?
+		if (EnemyOriginalSpeeds.Contains(Enemy))
+		{
+			// 장부에서 원래 속도 꺼내서 복구
+			float SavedSpeed = EnemyOriginalSpeeds[Enemy];
+			if (Enemy->GetCharacterMovement())
+			{
+				Enemy->GetCharacterMovement()->MaxWalkSpeed = SavedSpeed;
+			}
+			EnemyOriginalSpeeds.Remove(Enemy);
+		}
+	}
 }
 
+// 3. 장판 사라질 때 (뒷정리)
+void AIcePad::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	Super::EndPlay(EndPlayReason);
+
+	// 플레이어들 복구
+	for (ABaseCharacter* Player : AffectedPlayers)
+	{
+		if (IsValid(Player)) Player->ApplySlowDebuff(false, SlowPercentage);
+	}
+	AffectedPlayers.Empty();
+
+	// 몬스터들 복구 (장부 털기)
+	for (auto& Elem : EnemyOriginalSpeeds)
+	{
+		ACharacter* Enemy = Elem.Key;
+		float SavedSpeed = Elem.Value;
+
+		if (IsValid(Enemy) && Enemy->GetCharacterMovement())
+		{
+			Enemy->GetCharacterMovement()->MaxWalkSpeed = SavedSpeed;
+		}
+	}
+	EnemyOriginalSpeeds.Empty();
+}
