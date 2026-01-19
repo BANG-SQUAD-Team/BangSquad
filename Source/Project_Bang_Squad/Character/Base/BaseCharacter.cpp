@@ -1,5 +1,6 @@
 #include "BaseCharacter.h" 
 #include "Project_Bang_Squad/Character/Component/HealthComponent.h"
+#include "Project_Bang_Squad/Character/StageBoss/StageBossGameMode.h" 
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/SpringArmComponent.h"
@@ -102,12 +103,31 @@ void ABaseCharacter::OnDeath()
 	// 3. [핵심] 모든 클라이언트(나 포함)에게 "충돌 끄고 죽는 연기 해!"라고 방송
 	Multicast_Death();
 
-	// 4. [서버 로직] 관전 모드 전환 예약
-	if (AStagePlayerController* PC = Cast<AStagePlayerController>(GetController()))
+	// 4. 게임 모드에 따라 다르게 처리 (보스전 vs 일반 스테이지)
+	if (HasAuthority())
 	{
-		FTimerHandle Handle;
-		GetWorldTimerManager().SetTimer(Handle, PC, &AStagePlayerController::StartSpectating, 2.0f, false);
+		UWorld* World = GetWorld();
+		if (!World) return;
+		
+		AGameModeBase* GM = World->GetAuthGameMode();
+		
+		// [A] 보스전인가? -> 데스카운트 차감 요청
+		if (AStageBossGameMode* BossGM = Cast<AStageBossGameMode>(GM))
+		{
+			// BossGM이 알아서 부활타이머를 돌리거나 전멸을 체크함
+			BossGM->OnPlayerDied(GetController());
+		}
+		
+		//[B] 일반 스테이지인가? -> 관전 모드 전환
+		else if (AStagePlayerController* PC = Cast<AStagePlayerController>(GetController()))
+		{
+			FTimerHandle Handle;
+			
+			World->GetTimerManager().SetTimer(Handle, PC, &AStagePlayerController::StartSpectating,
+				2.0f, false);
+		}
 	}
+	
 }
 
 void ABaseCharacter::Multicast_Death_Implementation()
