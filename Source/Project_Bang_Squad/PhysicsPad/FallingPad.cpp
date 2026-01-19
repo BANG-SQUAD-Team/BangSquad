@@ -2,12 +2,13 @@
 #include "Components/StaticMeshComponent.h"
 #include "Components/BoxComponent.h"
 #include "GameFramework/Character.h"
+#include "Net/UnrealNetwork.h"
 
 AFallingPad::AFallingPad()
 {
     PrimaryActorTick.bCanEverTick = false;
     bReplicates = true;
-    AActor::SetReplicateMovement(true); 
+    AActor::SetReplicateMovement(true);
 
     MeshComp = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MeshComp"));
     RootComponent = MeshComp;
@@ -23,15 +24,22 @@ void AFallingPad::BeginPlay()
 {
     Super::BeginPlay();
 
-    if (HasAuthority() && DetectionBox) 
+    if (HasAuthority() && DetectionBox)
     {
         DetectionBox->OnComponentBeginOverlap.AddDynamic(this, &AFallingPad::OnBoxOverlap);
     }
 }
 
+void AFallingPad::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+    Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+    DOREPLIFETIME(AFallingPad, bIsFalling);
+}
+
 void AFallingPad::OnBoxOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-    if (HasAuthority() && OtherActor && OtherActor->IsA(ACharacter::StaticClass()))
+    if (HasAuthority() && !bIsFalling && OtherActor && OtherActor->IsA(ACharacter::StaticClass()))
     {
         DetectionBox->SetGenerateOverlapEvents(false);
         GetWorldTimerManager().SetTimer(FallTimerHandle, this, &AFallingPad::StartFalling, FallDelay, false);
@@ -40,14 +48,20 @@ void AFallingPad::OnBoxOverlap(UPrimitiveComponent* OverlappedComp, AActor* Othe
 
 void AFallingPad::StartFalling()
 {
-    Multicast_StartFalling();
+    bIsFalling = true;
+    ExecuteFall();
 }
 
-void AFallingPad::Multicast_StartFalling_Implementation()
+void AFallingPad::OnRep_bIsFalling()
+{
+    ExecuteFall();
+}
+
+void AFallingPad::ExecuteFall()
 {
     if (MeshComp)
     {
         MeshComp->SetSimulatePhysics(true);
-        MeshComp->WakeRigidBody(); 
+        MeshComp->WakeRigidBody();
     }
 }

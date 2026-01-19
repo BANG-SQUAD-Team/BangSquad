@@ -24,6 +24,7 @@ protected:
 
 public:
     virtual void Tick(float DeltaTime) override;
+    virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
     UPROPERTY(VisibleAnywhere, Category = "Components")
     class UStaticMeshComponent* MeshComp;
@@ -34,10 +35,20 @@ public:
     UPROPERTY(EditAnywhere, Category = "Settings")
     float StayDuration = 2.0f;
 
+    UPROPERTY(EditAnywhere, Category = "Settings")
+    float InterpSpeed = 10.0f;
+
+    UPROPERTY(ReplicatedUsing = OnRep_ServerAlpha)
+    float ServerAlpha = 0.0f;
+
 private:
     float Timer = 0.0f;
+    float CurrentAlpha = 0.0f;
     bool bTargetingMax = true;
     ERotateState CurrentState = ERotateState::Rotating;
+
+    UFUNCTION()
+    void OnRep_ServerAlpha();
 
     void UpdateRotation(float Alpha);
 };

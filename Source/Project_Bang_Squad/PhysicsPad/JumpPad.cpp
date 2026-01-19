@@ -7,8 +7,8 @@
 AJumpPad::AJumpPad()
 {
 	PrimaryActorTick.bCanEverTick = true;
-	bReplicates = true; // 액터 복제 활성화
-	AActor::SetReplicateMovement(true); // 이동 및 스케일 변화 복제
+	bReplicates = true;
+	AActor::SetReplicateMovement(true);
 
 	SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
 	RootComponent = SceneRoot;
@@ -43,7 +43,6 @@ void AJumpPad::BeginPlay()
 		BounceTimeline->SetTimelineFinishedFunc(FinishedFunction);
 	}
 
-	// 서버에서만 오버랩 이벤트를바인딩하여 판정 독점
 	if (HasAuthority())
 	{
 		TriggerBox->OnComponentBeginOverlap.AddDynamic(this, &AJumpPad::OnOverlapBegin);

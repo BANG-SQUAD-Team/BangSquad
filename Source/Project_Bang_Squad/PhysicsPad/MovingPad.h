@@ -34,8 +34,25 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Settings", meta = (MakeEditWidget = true))
 	FVector EndLocation;
 
+	UPROPERTY(EditAnywhere, Category = "Settings")
+	float InterpSpeed = 10.0f;
+
+	UPROPERTY(ReplicatedUsing = OnRep_ServerAlpha)
+	float ServerAlpha = 0.0f;
+
+	float CurrentAlpha = 0.0f;
+
+	UFUNCTION()
+	void OnRep_ServerAlpha();
+
 	UFUNCTION()
 	void HandleMoveProgress(float Value);
+
+	void UpdateLocation(float Value);
+
+public:
+	virtual void Tick(float DeltaTime) override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 private:
 	FVector StartLocation;

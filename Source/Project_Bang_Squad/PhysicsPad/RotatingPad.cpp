@@ -1,5 +1,6 @@
 ﻿#include "RotatingPad.h"
 #include "Components/StaticMeshComponent.h"
+#include "Net/UnrealNetwork.h"
 
 ARotatingPad::ARotatingPad()
 {
@@ -29,8 +30,7 @@ void ARotatingPad::Tick(float DeltaTime)
         if (CurrentState == ERotateState::Rotating)
         {
             float Alpha = FMath::Clamp(Timer / RotateDuration, 0.0f, 1.0f);
-            float TargetAlpha = bTargetingMax ? Alpha : 1.0f - Alpha;
-            UpdateRotation(TargetAlpha);
+            ServerAlpha = bTargetingMax ? Alpha : 1.0f - Alpha;
 
             if (Timer >= RotateDuration)
             {
@@ -48,6 +48,19 @@ void ARotatingPad::Tick(float DeltaTime)
             }
         }
     }
+
+    CurrentAlpha = FMath::FInterpTo(CurrentAlpha, ServerAlpha, DeltaTime, InterpSpeed);
+    UpdateRotation(CurrentAlpha);
+}
+
+void ARotatingPad::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+    Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+    DOREPLIFETIME(ARotatingPad, ServerAlpha);
+}
+
+void ARotatingPad::OnRep_ServerAlpha()
+{
 }
 
 void ARotatingPad::UpdateRotation(float Alpha)
