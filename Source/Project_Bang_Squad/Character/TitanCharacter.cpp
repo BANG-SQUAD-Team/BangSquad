@@ -13,39 +13,35 @@
 #include "Project_Bang_Squad/Character/Enemy/EnemyNormal.h"
 #include "Project_Bang_Squad/Character/Player/Titan/TitanRock.h"
 
+// [주의] BoxComponent 관련 헤더 및 코드는 삭제됨 (팔라딘 방식 Trace 사용)
+
 ATitanCharacter::ATitanCharacter()
 {
 	PrimaryActorTick.bCanEverTick = true;
-	bReplicates = true; // 서버 복제 활성화
+	bReplicates = true;
 
 	ThrowSpawnPoint = CreateDefaultSubobject<UArrowComponent>(TEXT("ThrowSpawnPoint"));
 
-	// 2. 카메라에 붙입니다. (카메라가 움직이면 던지는 위치도 따라다님)
-	// 주의: Camera 변수가 선언된 이후에 작성해야 합니다.
 	if (Camera)
 	{
 		ThrowSpawnPoint->SetupAttachment(Camera);
 	}
 	else
 	{
-		// 혹시 카메라가 없으면 루트에라도 붙임
 		ThrowSpawnPoint->SetupAttachment(GetRootComponent());
 	}
 
-	// 화살표가 잘 보이게 크기와 색상 조절 (에디터 편의용)
 	ThrowSpawnPoint->ArrowSize = 0.5f;
 	ThrowSpawnPoint->ArrowColor = FColor::Cyan;
-}
 
-// =================================================================
-// [생명주기 및 오버라이드]
-// =================================================================
+	// 타이탄 판정 박스 크기
+	HitBoxSize = FVector(80.0f, 80.0f, 80.0f);
+}
 
 void ATitanCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// 돌진 충돌 감지 바인딩
 	GetCapsuleComponent()->OnComponentBeginOverlap.AddDynamic(this, &ATitanCharacter::OnChargeOverlap);
 	GetCapsuleComponent()->OnComponentHit.AddDynamic(this, &ATitanCharacter::OnChargeHit);
 }
@@ -54,7 +50,6 @@ void ATitanCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	// 내가 조종하는 로컬 플레이어이고, 잡는 중이 아니라면 하이라이트 갱신
 	if (IsLocallyControlled() && !bIsGrabbing)
 	{
 		UpdateHoverHighlight();
@@ -64,7 +59,6 @@ void ATitanCharacter::Tick(float DeltaTime)
 void ATitanCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-	// GrabbedActor 변수가 바뀌면 클라이언트로 전송
 	DOREPLIFETIME(ATitanCharacter, GrabbedActor);
 }
 
@@ -74,23 +68,20 @@ void ATitanCharacter::OnDeath()
 
 	if (HasAuthority() && bIsGrabbing && GrabbedActor)
 	{
-		AutoThrowTimeout(); // 새로 만든 함수 호출
+		AutoThrowTimeout();
 	}
 
-	// 돌진 중지
 	if (bIsCharging)
 	{
 		StopCharge();
 	}
 
-	// 하이라이트 해제
 	if (HoveredActor)
 	{
 		SetHighlight(HoveredActor, false);
 		HoveredActor = nullptr;
 	}
 
-	// 타이머 정리
 	GetWorldTimerManager().ClearTimer(GrabTimerHandle);
 	GetWorldTimerManager().ClearTimer(ChargeTimerHandle);
 	GetWorldTimerManager().ClearTimer(CooldownTimerHandle);
@@ -98,239 +89,268 @@ void ATitanCharacter::OnDeath()
 	GetWorldTimerManager().ClearTimer(Skill1CooldownTimerHandle);
 	GetWorldTimerManager().ClearTimer(RockThrowTimerHandle);
 
+	// [추가] 공격 판정 타이머 정리
+	GetWorldTimerManager().ClearTimer(AttackHitTimerHandle);
+	GetWorldTimerManager().ClearTimer(HitLoopTimerHandle);
+
 	StopAnimMontage();
 	Super::OnDeath();
 }
 
 // =================================================================
-// [입력 핸들러] (플레이어 입력 -> 서버 요청)
+// [입력 핸들러]
 // =================================================================
 
 void ATitanCharacter::Attack()
 {
 	if (!CanAttack()) return;
 
-	// A/B 공격 모션 결정
 	FName SkillRowName = bIsNextAttackA ? TEXT("Attack_A") : TEXT("Attack_B");
-
-	// 서버에 공격 요청
 	Server_Attack(SkillRowName);
 
 	bIsNextAttackA = !bIsNextAttackA;
 }
 
-void ATitanCharacter::JobAbility()
-{
-	if (bIsDead || bIsCooldown) return;
-
-	if (!bIsGrabbing)
-	{
-		if (HoveredActor) Server_TryGrab(HoveredActor);
-	}
-	else
-	{
-		// [핵심] 컴포넌트의 현재 월드 위치를 가져옵니다.
-		// 에디터에서 이 컴포넌트를 카메라 앞 500 거리로 옮겨두면, 딱 그 좌표가 나옵니다.
-		FVector ThrowOrigin = ThrowSpawnPoint->GetComponentLocation();
-
-		// 서버로 "이 좌표에서 던져!" 요청
-		Server_ThrowTarget(ThrowOrigin);
-	}
-}
-
-void ATitanCharacter::Skill1()
-{
-	if (bIsDead || bIsSkill1Cooldown) return;
-
-	// 서버에 바위 던지기 요청
-	Server_Skill1();
-}
-
-void ATitanCharacter::Skill2()
-{
-	if (bIsDead || bIsSkill2Cooldown) return;
-
-	// 서버에 돌진 요청
-	Server_Skill2();
-}
-
-void ATitanCharacter::ExecuteGrab()
-{
-	// 몽타주 노티파이용 (실제 로직은 Server_TryGrab에서 처리됨)
-	if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Magenta, TEXT("ExecuteGrab Called (Visual Only)"));
-}
-
 // =================================================================
-// [네트워크 구현: 평타]
+// [네트워크 구현: 평타 (팔라딘 스타일)]
 // =================================================================
 
 void ATitanCharacter::Server_Attack_Implementation(FName SkillName)
 {
-	// 쿨타임 데이터 처리 (서버)
+	if (SkillName == TEXT("Attack_A"))
+	{
+		MyAttackSocket = TEXT("Hand_R_Socket"); // A 공격 -> 오른손
+	}
+	else
+	{
+		MyAttackSocket = TEXT("Hand_L_Socket"); // B 공격 -> 왼손
+	}
+
+	// ... (이 아래는 기존 코드 그대로 두세요) ...
+	float ActionDelay = 0.0f;
+
 	if (SkillDataTable)
 	{
 		static const FString ContextString(TEXT("TitanAttack"));
 		FSkillData* Row = SkillDataTable->FindRow<FSkillData>(SkillName, ContextString);
-		if (Row && Row->Cooldown > 0.0f)
+
+		if (Row)
 		{
-			AttackCooldownTime = Row->Cooldown;
+			CurrentSkillDamage = Row->Damage;
+			if (Row->Cooldown > 0.0f) AttackCooldownTime = Row->Cooldown;
+
+			// 데이터 테이블에서 딜레이 시간 가져옴
+			ActionDelay = Row->ActionDelay;
 		}
 	}
-	StartAttackCooldown();
 
-	// 모든 클라이언트에게 모션 재생 명령
+	StartAttackCooldown();
 	Multicast_Attack(SkillName);
+
+	// 타이머 초기화
+	GetWorldTimerManager().ClearTimer(AttackHitTimerHandle);
+	GetWorldTimerManager().ClearTimer(HitLoopTimerHandle);
+
+	if (ActionDelay > 0.0f)
+	{
+		// 딜레이 후 판정 시작
+		GetWorldTimerManager().SetTimer(AttackHitTimerHandle, this, &ATitanCharacter::StartMeleeTrace, ActionDelay, false);
+	}
+	else
+	{
+		// 즉시 판정 시작
+		StartMeleeTrace();
+	}
 }
 
 void ATitanCharacter::Multicast_Attack_Implementation(FName SkillName)
 {
-	// 모션 재생 (모든 클라이언트)
 	ProcessSkill(SkillName);
 }
 
-// =================================================================
-// [네트워크 구현: 직업 스킬 (잡기/던지기)]
-// =================================================================
+// =========================================================
+// [팔라딘 스타일] 스윕(Trace) 판정 로직 구현
+// =========================================================
+
+void ATitanCharacter::StartMeleeTrace()
+{
+	SwingDamagedActors.Empty();
+
+	// "Hand_R_Socket" 대신 -> MyAttackSocket 사용
+	if (GetMesh() && GetMesh()->DoesSocketExist(MyAttackSocket))
+	{
+		LastHandLocation = GetMesh()->GetSocketLocation(MyAttackSocket);
+	}
+	else
+	{
+		LastHandLocation = GetActorLocation() + GetActorForwardVector() * 100.f;
+	}
+
+	// 0.015초마다 궤적 검사 시작 (반복)
+	GetWorldTimerManager().SetTimer(HitLoopTimerHandle, this, &ATitanCharacter::PerformMeleeTrace, 0.015f, true);
+
+	// 일정 시간(HitDuration) 뒤에 검사 종료 예약
+	FTimerHandle StopTimer;
+	GetWorldTimerManager().SetTimer(StopTimer, this, &ATitanCharacter::StopMeleeTrace, HitDuration, false);
+}
+
+void ATitanCharacter::PerformMeleeTrace()
+{
+	FVector CurrentLoc;
+	FQuat CurrentRot;
+
+	if (GetMesh() && GetMesh()->DoesSocketExist(MyAttackSocket))
+	{
+		CurrentLoc = GetMesh()->GetSocketLocation(MyAttackSocket);
+		CurrentRot = GetMesh()->GetSocketQuaternion(MyAttackSocket);
+	}
+	else
+	{
+		CurrentLoc = GetActorLocation() + GetActorForwardVector() * 200.f;
+		CurrentRot = GetActorQuat();
+	}
+
+	TArray<FHitResult> HitResults;
+	FCollisionQueryParams Params;
+	Params.AddIgnoredActor(this);
+
+	bool bHit = GetWorld()->SweepMultiByChannel(
+		HitResults,
+		LastHandLocation,
+		CurrentLoc,
+		CurrentRot,
+		ECC_Pawn,
+		FCollisionShape::MakeBox(HitBoxSize),
+		Params
+	);
+
+	if (bHit)
+	{
+		for (const FHitResult& Hit : HitResults)
+		{
+			AActor* HitActor = Hit.GetActor();
+
+			// 1. 유효성 검사 & 중복 타격 방지
+			if (HitActor && HitActor != this && !SwingDamagedActors.Contains(HitActor))
+			{
+				// 2. [팀킬 방지] 상대가 Player 태그를 가지고 있으면 때리지 않음
+				if (HitActor->ActorHasTag("Player")) continue;
+
+				// 3. 데미지 적용
+				float Dmg = (CurrentSkillDamage > 0.0f) ? CurrentSkillDamage : 10.0f;
+				UGameplayStatics::ApplyDamage(
+					HitActor,
+					Dmg,
+					GetController(),
+					this,
+					UDamageType::StaticClass()
+				);
+
+				SwingDamagedActors.Add(HitActor);
+			}
+		}
+	}
+
+	LastHandLocation = CurrentLoc;
+}
+
+void ATitanCharacter::StopMeleeTrace()
+{
+	GetWorldTimerManager().ClearTimer(HitLoopTimerHandle);
+	SwingDamagedActors.Empty();
+}
+
+// ... (이하 기존 스킬 구현 유지) ...
+
+void ATitanCharacter::JobAbility()
+{
+	if (bIsDead || bIsCooldown) return;
+	if (!bIsGrabbing) { if (HoveredActor) Server_TryGrab(HoveredActor); }
+	else { FVector ThrowOrigin = ThrowSpawnPoint->GetComponentLocation(); Server_ThrowTarget(ThrowOrigin); }
+}
+void ATitanCharacter::Skill1() { if (bIsDead || bIsSkill1Cooldown) return; Server_Skill1(); }
+void ATitanCharacter::Skill2() { if (bIsDead || bIsSkill2Cooldown) return; Server_Skill2(); }
+void ATitanCharacter::ExecuteGrab() { if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Magenta, TEXT("ExecuteGrab Called")); }
 
 void ATitanCharacter::Server_TryGrab_Implementation(AActor* TargetToGrab)
 {
 	if (!TargetToGrab || bIsGrabbing) return;
-
-	// 거리 검증
 	float DistSq = FVector::DistSquared(GetActorLocation(), TargetToGrab->GetActorLocation());
 	if (DistSq > 1000.f * 1000.f) return;
-
-	// 1. 변수 업데이트 (Replicated)
 	GrabbedActor = TargetToGrab;
 	bIsGrabbing = true;
-
-	// 2. 서버에서 부착 수행
 	GrabbedActor->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, TEXT("Hand_R_Socket"));
-
-	// 3. 물리 상태 제어
-	if (ACharacter* Victim = Cast<ACharacter>(GrabbedActor))
-	{
-		SetHeldState(Victim, true);
-	}
-	else if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(GrabbedActor->GetRootComponent()))
-	{
-		RootComp->SetSimulatePhysics(false);
-	}
-
-	// 4. 모션 및 타이머
+	if (ACharacter* Victim = Cast<ACharacter>(GrabbedActor)) { SetHeldState(Victim, true); }
+	else if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(GrabbedActor->GetRootComponent())) { RootComp->SetSimulatePhysics(false); }
 	Multicast_PlayJobMontage(TEXT("Grab"));
 	GetWorldTimerManager().SetTimer(GrabTimerHandle, this, &ATitanCharacter::AutoThrowTimeout, GrabMaxDuration, false);
 }
-
-void ATitanCharacter::AutoThrowTimeout()
-{
-	// 강제로 던질 때는 그냥 내 앞쪽 적당한 곳으로 설정
-	FVector Forward = GetActorForwardVector();
+void ATitanCharacter::AutoThrowTimeout() 
+{ 
+	FVector Forward = GetActorForwardVector(); 
 	FVector ThrowOrigin = GetActorLocation() + FVector(0.f, 0.f, 60.f) + (Forward * 200.0f);
-
-	// 서버 함수 호출
-	Server_ThrowTarget(ThrowOrigin);
+	Server_ThrowTarget(ThrowOrigin); 
 }
 
-void ATitanCharacter::OnRep_GrabbedActor()
-{
-	// 서버에서 GrabbedActor 변수가 변경되면 모든 클라이언트에서 실행됨
-	if (GrabbedActor)
-	{
-		// [잡혔을 때] 동기화
-		bIsGrabbing = true;
-
-		// 물리/이동 끄기
-		if (ACharacter* Victim = Cast<ACharacter>(GrabbedActor))
-		{
-			SetHeldState(Victim, true);
-		}
-		else if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(GrabbedActor->GetRootComponent()))
-		{
-			RootComp->SetSimulatePhysics(false);
-		}
-
-		// 시각적 부착 (클라이언트 보정)
-		GrabbedActor->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, TEXT("Hand_R_Socket"));
-	}
-	else
-	{
-		// [놓아줬을 때] 동기화
-		bIsGrabbing = false;
-		// 상태 복구는 던지기 로직(LaunchCharacter 등)에 의해 처리됨
-	}
+void ATitanCharacter::OnRep_GrabbedActor() 
+{ 
+	if (GrabbedActor) 
+	{ 
+		bIsGrabbing = true; 
+		if (ACharacter* Victim = Cast<ACharacter>(GrabbedActor)) 
+		{ 
+			SetHeldState(Victim, true); 
+		} 
+		else if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(GrabbedActor->GetRootComponent())) 
+		{ 
+			RootComp->SetSimulatePhysics(false); 
+		} 
+		GrabbedActor->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, TEXT("Hand_R_Socket")); 
+	} 
+	else 
+	{ 
+		bIsGrabbing = false; 
+	} 
 }
 
-void ATitanCharacter::Multicast_PlayJobMontage_Implementation(FName SectionName)
-{
-	// 모든 클라이언트에서 JobAbility의 특정 섹션(Grab/Throw) 재생
-	ProcessSkill(TEXT("JobAbility"), SectionName);
+void ATitanCharacter::Multicast_PlayJobMontage_Implementation(FName SectionName) 
+{ 
+	ProcessSkill(TEXT("JobAbility"), SectionName); 
 }
 
-void ATitanCharacter::Server_ThrowTarget_Implementation(FVector ThrowStartLocation)
-{
+void ATitanCharacter::Server_ThrowTarget_Implementation(FVector ThrowStartLocation) 
+{ 
 	if (!bIsGrabbing || !GrabbedActor) return;
-
 	GetWorldTimerManager().ClearTimer(GrabTimerHandle);
-
-	// 쿨타임 설정
-	if (SkillDataTable)
+	if (SkillDataTable) 
 	{
-		static const FString ContextString(TEXT("TitanThrowContext"));
-		FSkillData* Row = SkillDataTable->FindRow<FSkillData>(TEXT("JobAbility"), ContextString);
-		if (Row && Row->Cooldown > 0.0f) ThrowCooldownTime = Row->Cooldown;
+		static const FString ContextString(TEXT("TitanThrowContext")); 
+		FSkillData* Row = SkillDataTable->FindRow<FSkillData>(TEXT("JobAbility"), ContextString); 
+		if (Row && Row->Cooldown > 0.0f) ThrowCooldownTime = Row->Cooldown; 
 	}
 
-	Multicast_PlayJobMontage(TEXT("Throw"));
-
-	// 손에서 떼어내기
-	GrabbedActor->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
-
-	// =================================================================
-	// [핵심 수정] 클라이언트가 보내준 '화살표 위치'로 이동!
-	// =================================================================
-	GrabbedActor->SetActorLocation(ThrowStartLocation, false, nullptr, ETeleportType::TeleportPhysics);
-
-	// 회전값 초기화
-	FRotator ActorRot = GrabbedActor->GetActorRotation();
-	GrabbedActor->SetActorRotation(FRotator(0.f, ActorRot.Yaw, 0.f));
-
-	// 발사 (방향은 여전히 카메라 뷰 기준이 직관적)
-	FRotator ThrowRotation = GetControlRotation();
-	FVector ThrowDir = ThrowRotation.Vector();
-
-	// 물리력 가하기
-	if (ACharacter* Victim = Cast<ACharacter>(GrabbedActor))
-	{
-		SetHeldState(Victim, false);
-
-		// 살짝 위로 던지기 보정
-		FVector FinalThrowDir = (ThrowDir + FVector(0.f, 0.f, 0.25f)).GetSafeNormal();
-
-		Victim->LaunchCharacter(FinalThrowDir * ThrowForce, true, true);
-
-		// 복구 타이머
-		FTimerHandle RecoveryHandle;
-		FTimerDelegate Delegate;
-		Delegate.BindUFunction(this, TEXT("RecoverCharacter"), Victim);
-		GetWorldTimerManager().SetTimer(RecoveryHandle, Delegate, 1.5f, false);
-	}
-	else if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(GrabbedActor->GetRootComponent()))
-	{
-		RootComp->SetSimulatePhysics(true);
-		RootComp->AddImpulse(ThrowDir * ThrowForce * 50.f);
-	}
-
-	// 상태 초기화
-	GrabbedActor = nullptr;
-	bIsGrabbing = false;
-
-	bIsCooldown = true;
-	GetWorldTimerManager().SetTimer(CooldownTimerHandle, this, &ATitanCharacter::ResetCooldown, ThrowCooldownTime, false);
+	Multicast_PlayJobMontage(TEXT("Throw")); 
+	GrabbedActor->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform); 
+	GrabbedActor->SetActorLocation(ThrowStartLocation, false, nullptr, ETeleportType::TeleportPhysics); 
+	FRotator ActorRot = GrabbedActor->GetActorRotation(); 
+	GrabbedActor->SetActorRotation(FRotator(0.f, ActorRot.Yaw, 0.f)); 
+	FRotator ThrowRotation = GetControlRotation(); FVector ThrowDir = ThrowRotation.Vector(); 
+	if (ACharacter* Victim = Cast<ACharacter>(GrabbedActor)) 
+	{ 
+		SetHeldState(Victim, false); FVector FinalThrowDir = (ThrowDir + FVector(0.f, 0.f, 0.25f)).GetSafeNormal(); 
+		Victim->LaunchCharacter(FinalThrowDir * ThrowForce, true, true); 
+		FTimerHandle RecoveryHandle; FTimerDelegate Delegate; 
+		Delegate.BindUFunction(this, TEXT("RecoverCharacter"), Victim); 
+		GetWorldTimerManager().SetTimer(RecoveryHandle, Delegate, 1.5f, false); 
+	} 
+	else if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(GrabbedActor->GetRootComponent())) 
+	{ 
+		RootComp->SetSimulatePhysics(true); RootComp->AddImpulse(ThrowDir * ThrowForce * 50.f); 
+	} 
+	GrabbedActor = nullptr; 
+	bIsGrabbing = false; 
+	bIsCooldown = true; GetWorldTimerManager().SetTimer(CooldownTimerHandle, this, &ATitanCharacter::ResetCooldown, ThrowCooldownTime, false); 
 }
-// =================================================================
-// [네트워크 구현: 스킬 1 (바위)]
-// =================================================================
 
 void ATitanCharacter::Server_Skill1_Implementation()
 {
@@ -345,14 +365,14 @@ void ATitanCharacter::Server_Skill1_Implementation()
 
 		CurrentSkillDamage = Row->Damage;
 		if (Row->Cooldown > 0.0f) Skill1CooldownTime = Row->Cooldown;
-		if (Row->SkillMontage) PlayAnimMontage(Row->SkillMontage); // 서버에서 재생 시 클라 복제됨
+		if (Row->SkillMontage) PlayAnimMontage(Row->SkillMontage);
 	}
 
-	// 바위 생성 (서버에서 스폰 -> 자동 리플리케이션)
 	if (RockClass)
 	{
 		FVector SocketLoc = GetMesh()->GetSocketLocation(TEXT("Hand_R_Socket"));
 		FRotator SocketRot = GetMesh()->GetSocketRotation(TEXT("Hand_R_Socket"));
+
 		FActorSpawnParameters SpawnParams;
 		SpawnParams.Owner = this;
 		SpawnParams.Instigator = this;
@@ -362,7 +382,6 @@ void ATitanCharacter::Server_Skill1_Implementation()
 		if (HeldRock)
 		{
 			HeldRock->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, TEXT("Hand_R_Socket"));
-
 			if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(HeldRock->GetRootComponent()))
 			{
 				RootComp->SetSimulatePhysics(false);
@@ -371,9 +390,7 @@ void ATitanCharacter::Server_Skill1_Implementation()
 		}
 	}
 
-	// 일정 시간 후 던지기
 	GetWorldTimerManager().SetTimer(RockThrowTimerHandle, this, &ATitanCharacter::ThrowRock, 0.8f, false);
-
 	bIsSkill1Cooldown = true;
 	GetWorldTimerManager().SetTimer(Skill1CooldownTimerHandle, this, &ATitanCharacter::ResetSkill1Cooldown, Skill1CooldownTime, false);
 }
@@ -397,13 +414,10 @@ void ATitanCharacter::ThrowRock()
 	HeldRock = nullptr;
 }
 
-// =================================================================
-// [네트워크 구현: 스킬 2 (돌진)]
-// =================================================================
-
 void ATitanCharacter::Server_Skill2_Implementation()
 {
 	if (!SkillDataTable) return;
+
 	static const FString ContextString(TEXT("Skill2 Context"));
 	FSkillData* Row = SkillDataTable->FindRow<FSkillData>(TEXT("Skill2"), ContextString);
 
@@ -420,19 +434,17 @@ void ATitanCharacter::Server_Skill2_Implementation()
 		bIsCharging = true;
 		HitVictims.Empty();
 
-		// 마찰력/중력 제거 (서버)
 		DefaultGroundFriction = GetCharacterMovement()->GroundFriction;
 		DefaultGravityScale = GetCharacterMovement()->GravityScale;
+
 		GetCharacterMovement()->GroundFriction = 0.0f;
 		GetCharacterMovement()->GravityScale = 0.0f;
 		GetCharacterMovement()->BrakingDecelerationFlying = 0.0f;
 
-		// 충돌 설정
 		GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
 		GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Overlap);
 		GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_PhysicsBody, ECR_Overlap);
 
-		// 발사 (서버에서 실행 -> 동기화됨)
 		FVector LaunchDir = GetActorForwardVector();
 		LaunchCharacter(LaunchDir * 3000.f, true, true);
 
@@ -448,13 +460,14 @@ void ATitanCharacter::OnChargeOverlap(UPrimitiveComponent* OverlappedComp, AActo
 
 	if (ACharacter* VictimChar = Cast<ACharacter>(OtherActor))
 	{
+		if (VictimChar->ActorHasTag("Player")) return;
+
 		GetCapsuleComponent()->IgnoreActorWhenMoving(VictimChar, true);
 		VictimChar->GetCapsuleComponent()->IgnoreActorWhenMoving(this, true);
 		HitVictims.Add(VictimChar);
 
 		UGameplayStatics::ApplyDamage(OtherActor, CurrentSkillDamage, GetController(), this, UDamageType::StaticClass());
 
-		// 넉백 적용
 		FVector KnockbackDir = GetActorForwardVector();
 		FVector LaunchForce = (KnockbackDir * 500.f) + FVector(0, 0, 1000.f);
 		VictimChar->LaunchCharacter(LaunchForce, true, true);
@@ -464,21 +477,15 @@ void ATitanCharacter::OnChargeOverlap(UPrimitiveComponent* OverlappedComp, AActo
 void ATitanCharacter::OnChargeHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
 	if (!HasAuthority() || !bIsCharging) return;
-	// 벽 등에 부딪히면 멈춤
 	if (OtherActor->IsRootComponentStatic())
 	{
 		StopCharge();
 	}
 }
 
-// =================================================================
-// [헬퍼 및 유틸리티 함수]
-// =================================================================
-
 void ATitanCharacter::ProcessSkill(FName SkillRowName, FName StartSectionName)
 {
 	if (!SkillDataTable) return;
-
 	static const FString ContextString(TEXT("TitanSkillContext"));
 	FSkillData* Data = SkillDataTable->FindRow<FSkillData>(SkillRowName, ContextString);
 
@@ -503,7 +510,6 @@ void ATitanCharacter::StopCharge()
 {
 	bIsCharging = false;
 	GetCharacterMovement()->StopMovementImmediately();
-
 	GetCharacterMovement()->GroundFriction = DefaultGroundFriction;
 	GetCharacterMovement()->GravityScale = DefaultGravityScale;
 
@@ -542,7 +548,6 @@ void ATitanCharacter::UpdateHoverHighlight()
 	if (bHit && HitResult.GetActor())
 	{
 		AActor* HitActor = HitResult.GetActor();
-		// 보스나 미드보스가 아니면 잡기 가능
 		if (Cast<ACharacter>(HitActor) && !HitActor->ActorHasTag("Boss") && !HitActor->ActorHasTag("MidBoss"))
 		{
 			NewTarget = HitActor;
@@ -562,6 +567,7 @@ void ATitanCharacter::SetHighlight(AActor* Target, bool bEnable)
 	if (!Target) return;
 	TArray<UPrimitiveComponent*> Components;
 	Target->GetComponents<UPrimitiveComponent>(Components);
+
 	for (auto Comp : Components)
 	{
 		Comp->SetRenderCustomDepth(bEnable);
@@ -574,7 +580,7 @@ void ATitanCharacter::RecoverCharacter(ACharacter* Victim)
 	if (!Victim || !Victim->IsValidLowLevel()) return;
 
 	FRotator CurrentRot = Victim->GetActorRotation();
-	Victim->SetActorRotation(FRotator(0.f, CurrentRot.Yaw, 0.f)); // 기울어짐 복구
+	Victim->SetActorRotation(FRotator(0.f, CurrentRot.Yaw, 0.f));
 
 	if (Victim->GetCapsuleComponent())
 	{
@@ -583,14 +589,13 @@ void ATitanCharacter::RecoverCharacter(ACharacter* Victim)
 
 	if (Victim->GetCharacterMovement())
 	{
-		if (Victim->GetCharacterMovement()->MovementMode == MOVE_None ||
-			Victim->GetCharacterMovement()->MovementMode == MOVE_Falling)
+		if (Victim->GetCharacterMovement()->MovementMode == MOVE_None || Victim->GetCharacterMovement()->MovementMode == MOVE_Falling)
 		{
 			Victim->GetCharacterMovement()->SetMovementMode(MOVE_Walking);
 		}
 		Victim->GetCharacterMovement()->StopMovementImmediately();
 	}
-	
+
 	AAIController* AIC = Cast<AAIController>(Victim->GetController());
 	if (AIC && AIC->GetBrainComponent())
 	{
@@ -626,10 +631,20 @@ void ATitanCharacter::SetHeldState(ACharacter* Target, bool bIsHeld)
 	{
 		if (Capsule) Capsule->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 		if (CMC) CMC->SetMovementMode(MOVE_Falling);
-		
 	}
 }
 
-void ATitanCharacter::ResetCooldown() { bIsCooldown = false; }
-void ATitanCharacter::ResetSkill1Cooldown() { bIsSkill1Cooldown = false; }
-void ATitanCharacter::ResetSkill2Cooldown() { bIsSkill2Cooldown = false; }
+void ATitanCharacter::ResetCooldown()
+{
+	bIsCooldown = false;
+}
+
+void ATitanCharacter::ResetSkill1Cooldown()
+{
+	bIsSkill1Cooldown = false;
+}
+
+void ATitanCharacter::ResetSkill2Cooldown()
+{
+	bIsSkill2Cooldown = false;
+}

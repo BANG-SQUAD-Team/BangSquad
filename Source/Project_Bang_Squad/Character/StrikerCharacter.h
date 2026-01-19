@@ -35,6 +35,35 @@ public:
 
 protected:
 	// =================================================================
+	// [공격 판정 (Trace/Sweep) 변수]
+	// =================================================================
+
+	// 공격 판정 박스 크기
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
+	FVector HitBoxSize = FVector(40.0f, 40.0f, 40.0f);
+
+	// 판정 지속 시간
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
+	float HitDuration = 0.25f;
+
+	// 타이머 핸들
+	FTimerHandle AttackHitTimerHandle;
+	FTimerHandle HitLoopTimerHandle;
+
+	// 궤적 계산용
+	FVector LastHandLocation;
+
+	UPROPERTY()
+	TSet<AActor*> SwingDamagedActors;
+
+	// 판정 함수들
+	void StartMeleeTrace();
+	void PerformMeleeTrace();
+	void StopMeleeTrace();
+
+	FName MyAttackSocket;
+
+	// =================================================================
 	// [네트워크: 평타 (Attack)]
 	// =================================================================
 	UFUNCTION(Server, Reliable)
@@ -46,6 +75,11 @@ protected:
 	// 공격 이동 동기화
 	UFUNCTION(Server, Reliable)
 	void Server_ApplyAttackForwardForce();
+
+	UPROPERTY()
+	TArray<AActor*> HitVictims;
+
+	float CurrentSkillDamage = 0.0f;
 
 	// =================================================================
 	// [네트워크: 스킬 1 (공중 콤보)]

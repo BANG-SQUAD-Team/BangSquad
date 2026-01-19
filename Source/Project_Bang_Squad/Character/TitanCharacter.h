@@ -26,7 +26,7 @@ protected:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	// =================================================================
-	// [입력 핸들러] (클라이언트에서 최초 호출)
+	// [입력 핸들러]
 	// =================================================================
 	virtual void Attack() override;      // 평타
 	virtual void JobAbility() override;  // 잡기/던지기
@@ -34,11 +34,40 @@ protected:
 	virtual void Skill2() override;      // 돌진
 
 public:
-	// 몽타주 노티파이 등에서 호출될 수 있는 잡기 시도 함수
+	// 잡기 실행 함수 (몽타주 등에서 호출 가능)
 	UFUNCTION(BlueprintCallable)
 	void ExecuteGrab();
 
 protected:
+	// =================================================================
+	// [공격 판정 (Trace/Sweep) 변수]
+	// =================================================================
+
+	// 공격 판정 박스 크기
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
+	FVector HitBoxSize = FVector(80.0f, 80.0f, 80.0f);
+
+	// 판정 지속 시간
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
+	float HitDuration = 0.25f;
+
+	// 타이머 핸들
+	FTimerHandle AttackHitTimerHandle; // 딜레이용
+	FTimerHandle HitLoopTimerHandle;   // 반복 판정용
+
+	// 궤적 계산용
+	FVector LastHandLocation;
+
+	UPROPERTY()
+	TSet<AActor*> SwingDamagedActors; // 중복 타격 방지
+
+	// 판정 함수들
+	void StartMeleeTrace();
+	void PerformMeleeTrace();
+	void StopMeleeTrace();
+
+	FName MyAttackSocket;
+
 	// =================================================================
 	// [네트워크: 평타 (Attack)]
 	// =================================================================
@@ -52,19 +81,18 @@ protected:
 	// [네트워크: 직업 스킬 (JobAbility - Grab/Throw)]
 	// =================================================================
 	UFUNCTION(Server, Reliable)
-	void Server_TryGrab(AActor* TargetToGrab); // 잡기 요청
+	void Server_TryGrab(AActor* TargetToGrab);
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	UArrowComponent* ThrowSpawnPoint;
 
-	// [변경 없음] 위치를 인자로 받는 서버 함수
 	UFUNCTION(Server, Reliable)
 	void Server_ThrowTarget(FVector ThrowStartLocation);
 
 	void AutoThrowTimeout();
 
 	UFUNCTION()
-	void OnRep_GrabbedActor(); // 잡힌 상태 동기화 (핵심)
+	void OnRep_GrabbedActor();
 
 	UFUNCTION(NetMulticast, Unreliable)
 	void Multicast_PlayJobMontage(FName SectionName);
@@ -75,7 +103,7 @@ protected:
 	UFUNCTION(Server, Reliable)
 	void Server_Skill1();
 
-	void ThrowRock(); // 타이머에 의해 서버에서 호출됨
+	void ThrowRock();
 
 	// =================================================================
 	// [네트워크: 스킬 2 (Charge)]
@@ -111,8 +139,8 @@ private:
 	float AttackCooldownTime = 0.f;
 
 	// 잡기 관련
-	UPROPERTY(ReplicatedUsing = OnRep_GrabbedActor) // 변수 변경 시 OnRep 자동 호출
-		AActor* GrabbedActor = nullptr;
+	UPROPERTY(ReplicatedUsing = OnRep_GrabbedActor)
+	AActor* GrabbedActor = nullptr;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	bool bIsGrabbing = false;
@@ -154,7 +182,7 @@ private:
 
 	// 공통
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
-	bool bIsCooldown = false; 
+	bool bIsCooldown = false;
 
 	float CurrentSkillDamage = 0.0f;
 	float DefaultGroundFriction;
