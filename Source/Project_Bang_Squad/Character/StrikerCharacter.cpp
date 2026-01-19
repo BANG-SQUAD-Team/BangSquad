@@ -59,10 +59,29 @@ void AStrikerCharacter::OnDeath()
 
 void AStrikerCharacter::Attack()
 {
-	if (!CanAttack()) return;
-	FName SkillRowName = bIsNextAttackA ? TEXT("Attack_A") : TEXT("Attack_B");
-	Server_Attack(SkillRowName);
-	bIsNextAttackA = !bIsNextAttackA;
+    if (!CanAttack()) return;
+
+    FName SkillRowName = bIsNextAttackA ? TEXT("Attack_A") : TEXT("Attack_B");
+
+    if (SkillDataTable)
+    {
+        static const FString ContextString(TEXT("StrikerAttack_Local"));
+        FSkillData* Row = SkillDataTable->FindRow<FSkillData>(SkillRowName, ContextString);
+        if (Row)
+        {
+            // AttackCooldownTime은 BaseCharacter에 있다고 가정 (StartAttackCooldown에서 사용됨)
+            if (Row->Cooldown > 0.0f)
+            {
+                AttackCooldownTime = Row->Cooldown;
+            }
+        }
+    }
+
+    // 로컬에서 쿨타임 시작 (다음 클릭 방지)
+    StartAttackCooldown();
+
+    Server_Attack(SkillRowName);
+    bIsNextAttackA = !bIsNextAttackA;
 }
 
 void AStrikerCharacter::Server_Attack_Implementation(FName SkillName)

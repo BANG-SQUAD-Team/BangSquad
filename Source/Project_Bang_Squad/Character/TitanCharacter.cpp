@@ -106,8 +106,20 @@ void ATitanCharacter::Attack()
 	if (!CanAttack()) return;
 
 	FName SkillRowName = bIsNextAttackA ? TEXT("Attack_A") : TEXT("Attack_B");
-	Server_Attack(SkillRowName);
 
+	// [수정] 클라이언트 선제적 쿨타임 적용 (데이터 테이블 조회)
+	if (SkillDataTable)
+	{
+		static const FString ContextString(TEXT("TitanAttack_Local"));
+		FSkillData* Row = SkillDataTable->FindRow<FSkillData>(SkillRowName, ContextString);
+		if (Row && Row->Cooldown > 0.0f)
+		{
+			AttackCooldownTime = Row->Cooldown;
+		}
+	}
+	StartAttackCooldown(); // 로컬 쿨타임 시작
+
+	Server_Attack(SkillRowName);
 	bIsNextAttackA = !bIsNextAttackA;
 }
 
@@ -264,12 +276,69 @@ void ATitanCharacter::StopMeleeTrace()
 
 void ATitanCharacter::JobAbility()
 {
+	// 로컬 체크
 	if (bIsDead || bIsCooldown) return;
-	if (!bIsGrabbing) { if (HoveredActor) Server_TryGrab(HoveredActor); }
-	else { FVector ThrowOrigin = ThrowSpawnPoint->GetComponentLocation(); Server_ThrowTarget(ThrowOrigin); }
+
+	if (bIsGrabbing)
+	{
+		bIsCooldown = true;
+		// 데이터 테이블에서 쿨타임 가져오기
+		float LocalThrowCooldown = 3.0f; // 기본값
+		if (SkillDataTable)
+		{
+			FSkillData* Row = SkillDataTable->FindRow<FSkillData>(TEXT("JobAbility"), TEXT("TitanJob_Local"));
+			if (Row && Row->Cooldown > 0.0f) LocalThrowCooldown = Row->Cooldown;
+		}
+		GetWorldTimerManager().SetTimer(CooldownTimerHandle, this, &ATitanCharacter::ResetCooldown, LocalThrowCooldown, false);
+
+		FVector ThrowOrigin = ThrowSpawnPoint->GetComponentLocation();
+		Server_ThrowTarget(ThrowOrigin);
+	}
+	else
+	{
+		if (HoveredActor) Server_TryGrab(HoveredActor);
+	}
 }
-void ATitanCharacter::Skill1() { if (bIsDead || bIsSkill1Cooldown) return; Server_Skill1(); }
-void ATitanCharacter::Skill2() { if (bIsDead || bIsSkill2Cooldown) return; Server_Skill2(); }
+
+void ATitanCharacter::Skill1()
+{
+	if (bIsDead || bIsSkill1Cooldown) return;
+
+	// [수정] 클라이언트 선제적 쿨타임 적용
+	bIsSkill1Cooldown = true;
+
+	float LocalCooldown = 3.0f; // 기본값
+	if (SkillDataTable)
+	{
+		static const FString ContextString(TEXT("TitanSkill1_Local"));
+		FSkillData* Row = SkillDataTable->FindRow<FSkillData>(TEXT("Skill1"), ContextString);
+		if (Row && Row->Cooldown > 0.0f) LocalCooldown = Row->Cooldown;
+	}
+
+	GetWorldTimerManager().SetTimer(Skill1CooldownTimerHandle, this, &ATitanCharacter::ResetSkill1Cooldown, LocalCooldown, false);
+
+	Server_Skill1();
+}
+
+void ATitanCharacter::Skill2()
+{
+	if (bIsDead || bIsSkill2Cooldown) return;
+
+	// [수정] 클라이언트 선제적 쿨타임 적용
+	bIsSkill2Cooldown = true;
+
+	float LocalCooldown = 5.0f; // 기본값
+	if (SkillDataTable)
+	{
+		static const FString ContextString(TEXT("TitanSkill2_Local"));
+		FSkillData* Row = SkillDataTable->FindRow<FSkillData>(TEXT("Skill2"), ContextString);
+		if (Row && Row->Cooldown > 0.0f) LocalCooldown = Row->Cooldown;
+	}
+
+	GetWorldTimerManager().SetTimer(Skill2CooldownTimerHandle, this, &ATitanCharacter::ResetSkill2Cooldown, LocalCooldown, false);
+
+	Server_Skill2();
+}
 void ATitanCharacter::ExecuteGrab() { if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Magenta, TEXT("ExecuteGrab Called")); }
 
 void ATitanCharacter::Server_TryGrab_Implementation(AActor* TargetToGrab)
