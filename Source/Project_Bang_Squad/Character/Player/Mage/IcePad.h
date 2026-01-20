@@ -30,7 +30,7 @@ protected:
 	
 	// 감속 비율 
 	UPROPERTY(EditAnywhere, Category = "Balance")
-	float SlowPercentage = 0.5f;
+	float SlowPercentage = 0.3f;
 	
 	// 장판 지속 시간
 	UPROPERTY(EditAnywhere, Category = "Balance")

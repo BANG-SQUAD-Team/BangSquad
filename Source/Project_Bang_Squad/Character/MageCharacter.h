@@ -100,8 +100,7 @@ protected:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Data")
     UDataTable* SkillDataTable;
 
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Mage|Animation")
-    UAnimMontage* JobAbilityMontage;
+
     
 private:
     UFUNCTION()

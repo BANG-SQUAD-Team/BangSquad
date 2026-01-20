@@ -8,6 +8,7 @@
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Engine/DataTable.h"
+#include "Engine/World.h"
 #include "Components/TimelineComponent.h" 
 #include "Components/PrimitiveComponent.h"
 #include "Curves/CurveFloat.h" 
@@ -254,13 +255,26 @@ void AMageCharacter::JobAbility()
 {
     if (bIsDead) return;
     
+    //데이터 테이블에서 'JobAbility' 행 찾기
+    UAnimMontage* TargetMontage = nullptr;
+    static const FString ContextString(TEXT("JobAbilityContext"));
+    
+    if (SkillDataTable)
+    {
+        // JobAbility라는 이름의 행을 찾아서 데이터 가져옴
+        FSkillData* Data = SkillDataTable->FindRow<FSkillData>(FName("JobAbility"), ContextString);
+        if (Data)
+        {
+            TargetMontage = Data->SkillMontage;
+        }
+    }
     // Case 1: 일반 기둥 모드 진입
     if (FocusedPillar)
     {
-        if (JobAbilityMontage)
+        if (TargetMontage)
         {
-            PlayAnimMontage(JobAbilityMontage);      
-            Server_PlayMontage(JobAbilityMontage);   
+            PlayAnimMontage(TargetMontage);      
+            Server_PlayMontage(TargetMontage);   
         }
         
         bIsPillarMode = true;
@@ -281,6 +295,13 @@ void AMageCharacter::JobAbility()
         // 보트인지 확인 (탑승 조건 검사용)
         AMagicBoat* TargetBoat = Cast<AMagicBoat>(HoveredActor);
         
+        // 몽타주 재생
+        if (TargetMontage)
+        {
+            PlayAnimMontage(TargetMontage);      
+            Server_PlayMontage(TargetMontage);   
+        }
+        
         // 보트라면, 반드시 위에 타 있어야 함!
         if (TargetBoat)
         {
@@ -291,11 +312,6 @@ void AMageCharacter::JobAbility()
             if (!bIsRiding) return; 
         }
 
-        if (JobAbilityMontage)
-        {
-            PlayAnimMontage(JobAbilityMontage);      
-            Server_PlayMontage(JobAbilityMontage);   
-        }
         
         // bIsBoatMode를 "인터페이스 조종 모드" 플래그로 사용
         bIsBoatMode = true;
@@ -318,10 +334,24 @@ void AMageCharacter::JobAbility()
 
 void AMageCharacter::EndJobAbility()
 {
-    if (JobAbilityMontage)
+    //  끌 때도 어떤 몽타주인지 알아야 하니 데이터 테이블 조회
+    UAnimMontage* TargetMontage = nullptr;
+    static const FString ContextString(TEXT("JobAbilityContext"));
+    
+    if (SkillDataTable)
     {
-        StopAnimMontage(JobAbilityMontage);
-        Server_StopMontage(JobAbilityMontage);
+        FSkillData* Data = SkillDataTable->FindRow<FSkillData>(FName("JobAbility"), ContextString);
+        if (Data)
+        {
+            TargetMontage = Data->SkillMontage;
+        }
+    }
+    
+    // 몽타주 정지
+    if (TargetMontage)
+    {
+        StopAnimMontage(TargetMontage);
+        Server_StopMontage(TargetMontage);
     }
     
     // Case 1: 기둥 모드 종료
@@ -350,7 +380,7 @@ void AMageCharacter::EndJobAbility()
             }
         }
 
-        // [공통] 입력 중단 신호 보내기 (Zero Vector) -> 보트는 멈추고, 회전기둥은 멈춤
+        // 입력 중단 신호 보내기 (Zero Vector) -> 보트는 멈추고, 회전기둥은 멈춤
         if (CurrentControlledActor)
         {
             Server_InteractActor(CurrentControlledActor, FVector::ZeroVector);
@@ -525,7 +555,6 @@ void AMageCharacter::SpawnDelayedProjectile(UClass* ProjectileClass)
     if (!HasAuthority() || !ProjectileClass) return;
 
     FVector SpawnLoc;
-    FRotator SpawnRot = GetControlRotation(); 
     FName SocketName = TEXT("Weapon_Root_R"); 
 
     if (GetMesh() && GetMesh()->DoesSocketExist(SocketName))
@@ -533,11 +562,46 @@ void AMageCharacter::SpawnDelayedProjectile(UClass* ProjectileClass)
     else
         SpawnLoc = GetActorLocation() + (GetActorForwardVector() * 100.f);
 
+    // 회전 값 계산 : 화면 중앙 에임
+    FRotator SpawnRot = GetActorRotation();
+    
+    // 플레이어 컨트롤러를 가져와서 화면 중앙 계산
+    if (APlayerController* PC = Cast<APlayerController>(GetController()))
+    {
+        // 카메라 위치와 방향 가져오기
+        FVector CamLoc;
+        FRotator CamRot;
+        PC->GetPlayerViewPoint(CamLoc, CamRot);
+        
+        // 화면 중앙으로 가상의 레이저 (LineTrace) 발사 
+        FVector TraceStart = CamLoc;
+        FVector TraceEnd = CamLoc + (CamRot.Vector() * 5000.0f);
+        
+        FHitResult HitResult;
+        FCollisionQueryParams Params;
+        Params.AddIgnoredActor(this);
+        
+        bool bHit = GetWorld()->LineTraceSingleByChannel(
+            HitResult,
+            TraceStart,
+            TraceEnd,
+            ECC_Visibility,
+            Params
+            );
+        
+        // 목표점 결정
+        FVector TargetPoint = bHit ? HitResult.ImpactPoint : TraceEnd;
+        
+        // SpawnLoc에서 TargetPoint를 바라보는 회전값 구하기
+        SpawnRot = UKismetMathLibrary::FindLookAtRotation(SpawnLoc, TargetPoint);
+    }
+    
+    // 투사체 생성
     FActorSpawnParameters SpawnParams;
-    SpawnParams.Owner = this;            
-    SpawnParams.Instigator = GetInstigator(); 
-
-    GetWorld()->SpawnActor<AActor>(ProjectileClass, SpawnLoc, SpawnRot, SpawnParams);
+    SpawnParams.Owner = this;
+    SpawnParams.Instigator = GetInstigator();
+    
+    GetWorld()->SpawnActor<AActor>(ProjectileClass,SpawnLoc,SpawnRot,SpawnParams);
 }
 
 void AMageCharacter::Server_PlayMontage_Implementation(UAnimMontage* MontageToPlay)
