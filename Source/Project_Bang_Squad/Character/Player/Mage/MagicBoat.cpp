@@ -17,7 +17,7 @@ AMagicBoat::AMagicBoat()
 	
 	// 아웃라인 준비 (CustomDepth)
 	MeshComp->SetRenderCustomDepth(false);
-	MeshComp->SetCustomDepthStencilValue(250); // 노란색 등 설정값
+	MeshComp->SetCustomDepthStencilValue(251); // 노란색 등 설정값
 	
 	NetUpdateFrequency = 100.0f;
 	MinNetUpdateFrequency = 60.0f;
