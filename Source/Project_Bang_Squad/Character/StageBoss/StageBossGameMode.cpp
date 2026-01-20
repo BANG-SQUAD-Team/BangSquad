@@ -1,4 +1,4 @@
-// Source/Project_Bang_Squad/Game/StageBoss/StageBossGameMode.cpp
+// Source/Project_Bang_Squad/Character/StageBoss/StageBossGameMode.cpp
 #include "StageBossGameMode.h"
 #include "StageBossPlayerController.h"
 #include "Kismet/GameplayStatics.h"
@@ -9,17 +9,13 @@ AStageBossGameMode::AStageBossGameMode()
 	// 1. 초기값 설정
 	CurrentTeamLives = MaxTeamLives;
 
-	// 2. 기본 컨트롤러 클래스 지정 (중요!)
-	// BP에서 덮어쓸 수도 있지만, C++ 차원에서도 연결해둡니다.
+	// 2. 기본 컨트롤러 클래스 지정
 	PlayerControllerClass = AStageBossPlayerController::StaticClass();
 }
 
 void AStageBossGameMode::BeginPlay()
 {
 	Super::BeginPlay();
-
-	// 시작 시 모든 클라이언트에게 초기 목숨(10개) 동기화가 필요하다면 여기서 처리 가능
-	// (플레이어 접속 시점인 PostLogin에서 처리하는 것이 더 정확함)
 }
 
 void AStageBossGameMode::OnBossKilled()
@@ -47,11 +43,14 @@ void AStageBossGameMode::OnPlayerDied(AController* DeadController)
 
 	GetWorldTimerManager().SetTimer(RespawnTimer, RespawnDelegate, RespawnDelay, false);
 
-	// 3. 해당 플레이어에게 "부활 대기 중..." 타이머 UI 표시 알림
+	// 3. [삭제됨] 해당 플레이어에게 "부활 대기 중..." 타이머 UI 표시 알림
+	// 컨트롤러에서 기능을 뺐으므로 여기서도 호출하면 안 됨.
+	/*
 	if (AStageBossPlayerController* PC = Cast<AStageBossPlayerController>(DeadController))
 	{
 		PC->Client_ShowRespawnTimer(RespawnDelay);
 	}
+	*/
 }
 
 void AStageBossGameMode::AttemptRespawn(AController* ControllerToRespawn)
@@ -65,7 +64,9 @@ void AStageBossGameMode::AttemptRespawn(AController* ControllerToRespawn)
 		// 3. 목숨 차감
 		CurrentTeamLives--;
 
-		// 4. 모든 플레이어에게 목숨 갱신 알림 (UI 업데이트)
+		// 4. [삭제됨] 모든 플레이어에게 목숨 갱신 알림 (UI 업데이트)
+		// 컨트롤러에서 기능을 뺐으므로 주석 처리
+		/*
 		for (auto It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 		{
 			if (AStageBossPlayerController* PC = Cast<AStageBossPlayerController>(It->Get()))
@@ -73,6 +74,7 @@ void AStageBossGameMode::AttemptRespawn(AController* ControllerToRespawn)
 				PC->Client_UpdateTeamLives(CurrentTeamLives);
 			}
 		}
+		*/
 
 		UE_LOG(LogTemp, Log, TEXT("Player Respawned. Lives Left: %d"), CurrentTeamLives);
 	}
@@ -114,7 +116,10 @@ void AStageBossGameMode::CheckPartyWipe()
 
 void AStageBossGameMode::EndStage(bool bIsVictory)
 {
-	// 모든 플레이어에게 결과 통보
+	UE_LOG(LogTemp, Warning, TEXT("=== END STAGE: Victory? %s ==="), bIsVictory ? TEXT("YES") : TEXT("NO"));
+
+	// [삭제됨] 모든 플레이어에게 결과 통보 UI
+	/*
 	for (auto It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
 		if (AStageBossPlayerController* PC = Cast<AStageBossPlayerController>(It->Get()))
@@ -122,6 +127,7 @@ void AStageBossGameMode::EndStage(bool bIsVictory)
 			PC->Client_OnStageEnded(bIsVictory);
 		}
 	}
+	*/
 }
 
 void AStageBossGameMode::RestartStage()

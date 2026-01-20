@@ -6,7 +6,7 @@
 #include "Project_Bang_Squad/Core/TrueDamageType.h"
 #include "Project_Bang_Squad/Core/BSGameInstance.h"
 #include "Project_Bang_Squad/Game/Stage/StageGameMode.h"
-#include "Project_Bang_Squad/Character/Component/HealthComponent.h" // 체력 확인용
+#include "Project_Bang_Squad/Character/Component/HealthComponent.h"
 
 #include "Kismet/KismetSystemLibrary.h"
 #include "Kismet/GameplayStatics.h"
@@ -21,13 +21,19 @@
 
 AStage1Boss::AStage1Boss()
 {
-    // 보스 덩치에 맞게 캡슐 크기 조정 (필요시 주석 해제)
+    // 보스 덩치에 맞게 캡슐 크기 조정
     // GetCapsuleComponent()->SetCapsuleSize(60.f, 120.f);
 }
 
 void AStage1Boss::BeginPlay()
 {
     Super::BeginPlay();
+
+    // [Check] 데이터 에셋이 연결되어 있는지 개발자에게 경고
+    if (HasAuthority() && !BossData)
+    {
+        UE_LOG(LogTemp, Error, TEXT("[AStage1Boss] BossData is MISSING! Please assign DA_StageBoss in Blueprint."));
+    }
 
     // 시작 시 기믹 페이즈(무적)로 시작
     if (HasAuthority())
@@ -42,7 +48,7 @@ void AStage1Boss::BeginPlay()
 
 float AStage1Boss::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
-    // 1. 부모 로직 실행 (데미지 적용 및 무적 체크는 부모가 수행)
+    // 1. 부모 로직 실행 (데미지 적용 및 무적 체크)
     float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
 
     if (!HasAuthority()) return ActualDamage;
@@ -51,12 +57,15 @@ float AStage1Boss::TakeDamage(float DamageAmount, FDamageEvent const& DamageEven
     UHealthComponent* HC = FindComponentByClass<UHealthComponent>();
     if (!HC) return ActualDamage;
 
-    // 3. 체력 50% 체크 (페이즈 2 진입)
-    // 최대 체력이 0일 경우 방지
+    // 3. 체력 체크 (페이즈 2 진입)
     if (HC->MaxHealth > 0.0f)
     {
         float HpRatio = HC->GetHealth() / HC->MaxHealth;
-        if (HpRatio <= 0.5f && !bPhase2Started && CurrentPhase == EBossPhase::Phase1)
+
+        // [DataDriven] 데이터 에셋의 비율값 사용 (기본값 0.5)
+        float Threshold = BossData ? BossData->GimmickThresholdRatio : 0.5f;
+
+        if (HpRatio <= Threshold && !bPhase2Started && CurrentPhase == EBossPhase::Phase1)
         {
             EnterPhase2();
         }
@@ -71,7 +80,7 @@ void AStage1Boss::EnterPhase2()
 
     bPhase2Started = true;
 
-    // 1. 페이즈 상태 변경 (Phase2)
+    // 1. 페이즈 상태 변경
     SetPhase(EBossPhase::Phase2);
 
     // 2. 수정 재소환 + 무적
@@ -86,10 +95,15 @@ void AStage1Boss::EnterPhase2()
 
 void AStage1Boss::OnDeathStarted()
 {
-    // 부모 클래스의 사망 처리 (애니메이션, 래그돌 등)
     Super::OnDeathStarted();
 
     if (!HasAuthority()) return;
+
+    // [DataDriven] 사망 몽타주 재생 (있다면)
+    if (BossData && BossData->DeathMontage)
+    {
+        Multicast_PlayAttackMontage(BossData->DeathMontage);
+    }
 
     UE_LOG(LogTemp, Warning, TEXT("=== BOSS DEFEATED! STAGE CLEAR! ==="));
 
@@ -101,11 +115,11 @@ void AStage1Boss::OnDeathStarted()
         Wall->SetActorTickEnabled(false);
     }
 
-    // 2. 게임 모드에 승리 알림
-    if (AStageGameMode* GM = Cast<AStageGameMode>(GetWorld()->GetAuthGameMode()))
-    {
-        // GM->OnBossKilled(); // GameMode에 해당 함수가 있다면 호출
-    }
+    // 2. 게임 모드에 승리 알림 (예시)
+    // if (AStageGameMode* GM = Cast<AStageGameMode>(GetWorld()->GetAuthGameMode()))
+    // {
+    //     GM->OnBossKilled();
+    // }
 }
 
 // ============================================================================
@@ -124,9 +138,7 @@ void AStage1Boss::OnPhaseChanged(EBossPhase NewPhase)
     else if (NewPhase == EBossPhase::Phase1)
     {
         bIsInvincible = false;
-        // 전투 시작: AI 트리 활성화 등
     }
-    // Phase2는 EnterPhase2에서 별도 처리
 }
 
 void AStage1Boss::SpawnCrystals()
@@ -164,48 +176,63 @@ void AStage1Boss::OnGimmickResolved(int32 GimmickID)
 
     if (RemainingGimmickCount <= 0)
     {
-        // 페이즈 2였으면 전투 재개, 아니면 페이즈 1 시작
         if (bPhase2Started)
         {
-            SetPhase(EBossPhase::Phase2); // 무적 해제를 위해 페이즈 갱신
+            SetPhase(EBossPhase::Phase2);
             bIsInvincible = false;
         }
         else
         {
             SetPhase(EBossPhase::Phase1);
         }
-
         UE_LOG(LogTemp, Warning, TEXT("Stage1Boss: All Crystals Destroyed! Invincibility OFF!"));
     }
 }
 
 // ============================================================================
-// [Combat Logic: Slash & Swing]
+// [Combat Logic: Slash & Swing (DataDriven)]
 // ============================================================================
 
 void AStage1Boss::DoAttack_Slash()
 {
     if (!HasAuthority()) return;
-    Multicast_PlayAttackMontage(FName("Slash"));
+
+    if (BossData && BossData->SlashAttackMontage)
+    {
+        // [DataDriven] 참격 몽타주 실행
+        Multicast_PlayAttackMontage(BossData->SlashAttackMontage, FName("Slash"));
+        // 참고: 섹션 이름이 필요 없다면 NAME_None 혹은 생략 가능
+    }
 }
 
 void AStage1Boss::DoAttack_Swing()
 {
     if (!HasAuthority()) return;
-    Multicast_PlayAttackMontage(FName("Swing"));
+
+    // [DataDriven] 공격 몽타주 배열 중 0번(예시) 실행
+    // 데이터 에셋에 'AttackMontages' 배열이 있으므로 거기서 랜덤으로 꺼내거나 지정해서 쓸 수 있음
+    if (BossData && BossData->AttackMontages.Num() > 0)
+    {
+        Multicast_PlayAttackMontage(BossData->AttackMontages[0]);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("No AttackMontages in BossData!"));
+    }
 }
 
-void AStage1Boss::Multicast_PlayAttackMontage_Implementation(FName SectionName)
+void AStage1Boss::Multicast_PlayAttackMontage_Implementation(UAnimMontage* MontageToPlay, FName SectionName)
 {
-    if (AttackMontage)
+    if (MontageToPlay)
     {
-        PlayAnimMontage(AttackMontage, 1.0f, SectionName);
+        PlayAnimMontage(MontageToPlay, 1.0f, SectionName);
     }
 }
 
 void AStage1Boss::AnimNotify_SpawnSlash()
 {
-    if (!HasAuthority() || !SlashProjectileClass) return;
+    // [DataDriven] 데이터 에셋에 정의된 투사체 클래스 사용
+    if (!HasAuthority() || !BossData || !BossData->SlashProjectileClass) return;
 
     FVector SpawnLocation = GetActorLocation() + GetActorForwardVector() * 100.0f;
     FRotator SpawnRotation = GetActorRotation();
@@ -214,7 +241,7 @@ void AStage1Boss::AnimNotify_SpawnSlash()
     SpawnParams.Owner = this;
     SpawnParams.Instigator = this;
 
-    GetWorld()->SpawnActor<ASlashProjectile>(SlashProjectileClass, SpawnLocation, SpawnRotation, SpawnParams);
+    GetWorld()->SpawnActor<ASlashProjectile>(BossData->SlashProjectileClass, SpawnLocation, SpawnRotation, SpawnParams);
 }
 
 void AStage1Boss::AnimNotify_CheckMeleeHit()
@@ -222,6 +249,7 @@ void AStage1Boss::AnimNotify_CheckMeleeHit()
     if (!HasAuthority()) return;
 
     FVector TraceStart = GetActorLocation();
+    // 반경 정보도 추후엔 DataAsset으로 이동 권장
     float Radius = MeleeAttackRadius;
 
     TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;
@@ -233,13 +261,7 @@ void AStage1Boss::AnimNotify_CheckMeleeHit()
     TArray<AActor*> OutActors;
 
     bool bHit = UKismetSystemLibrary::SphereOverlapActors(
-        GetWorld(),
-        TraceStart,
-        Radius,
-        ObjectTypes,
-        nullptr,
-        ActorsToIgnore,
-        OutActors
+        GetWorld(), TraceStart, Radius, ObjectTypes, nullptr, ActorsToIgnore, OutActors
     );
 
     for (AActor* HitActor : OutActors)
@@ -281,8 +303,6 @@ void AStage1Boss::StartSpearQTE()
     if (QTEProgressMap.Num() == 0) return;
 
     Multicast_SetQTEWidget(true);
-
-    // 타이머 3초 설정
     GetWorldTimerManager().SetTimer(QTETimerHandle, this, &AStage1Boss::EndSpearQTE, QTEDuration, false);
 
     UE_LOG(LogTemp, Warning, TEXT("=== SPEAR QTE START! (Participants: %d) ==="), QTEProgressMap.Num());
@@ -327,15 +347,8 @@ void AStage1Boss::EndSpearQTE()
     if (bAllSuccess)
     {
         UE_LOG(LogTemp, Warning, TEXT("=== QTE SUCCESS! Boss Stunned! ==="));
-        // QTE 성공 -> 2페이즈 진입 (만약 아직 안 했다면) 또는 벽 소환
-        if (!bPhase2Started)
-        {
-            EnterPhase2();
-        }
-        else
-        {
-            SpawnDeathWall();
-        }
+        if (!bPhase2Started) EnterPhase2();
+        else SpawnDeathWall();
     }
     else
     {
@@ -352,14 +365,8 @@ void AStage1Boss::PerformWipeAttack()
         {
             if (APawn* TargetPawn = PC->GetPawn())
             {
-                float MassiveDamage = 1000.0f;
-
                 UGameplayStatics::ApplyDamage(
-                    TargetPawn,
-                    MassiveDamage,
-                    GetController(),
-                    this,
-                    UTrueDamageType::StaticClass()
+                    TargetPawn, 1000.0f, GetController(), this, UTrueDamageType::StaticClass()
                 );
             }
         }
@@ -383,8 +390,6 @@ void AStage1Boss::SpawnDeathWall()
 
     FActorSpawnParameters Params;
     Params.Owner = this;
-
-    // 벽은 보스가 보는 방향(또는 맵의 정해진 방향)으로 스폰
     FRotator SpawnRot = GetActorRotation();
 
     ADeathWall* NewWall = GetWorld()->SpawnActor<ADeathWall>(DeathWallClass, WallSpawnLocation, SpawnRot, Params);

@@ -1,41 +1,29 @@
-// Source/Project_Bang_Squad/Game/StageBoss/StageBossPlayerController.h
+// Source/Project_Bang_Squad/Character/StageBoss/StageBossPlayerController.h
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/PlayerController.h"
+#include "Project_Bang_Squad/Game/Stage/StagePlayerController.h" // 부모 클래스 (일반 스테이지 기능 상속)
 #include "StageBossPlayerController.generated.h"
 
 /**
- * 보스 스테이지 전용 플레이어 컨트롤러
- * 역할: QTE 입력 전송, 팀 목숨 UI 수신, 승리/패배 결과창 표시
+ * StageBossPlayerController
+ * - 일반 스테이지 컨트롤러 기능을 그대로 사용하면서,
+ * - 보스전 특화 기능(QTE 입력 전달 등)만 추가로 확장합니다.
  */
 UCLASS()
-class PROJECT_BANG_SQUAD_API AStageBossPlayerController : public APlayerController
+class PROJECT_BANG_SQUAD_API AStageBossPlayerController : public AStagePlayerController
 {
 	GENERATED_BODY()
 
 public:
-	// [Input] QTE 스페이스바 입력 전송 (Blueprint에서 호출: IA_QTE -> Call This)
+	// --- [Input Action Interface] ---
+
+	// QTE 입력(예: 스페이스바 연타)이 들어왔을 때 호출할 함수
 	UFUNCTION(BlueprintCallable, Category = "Boss|Input")
 	void SendBossQTEInput();
 
-	// [UI] 남은 팀 목숨 갱신 (Server -> Client)
-	UFUNCTION(Client, Reliable)
-	void Client_UpdateTeamLives(int32 NewCount);
-
-	// [UI] 부활 타이머 표시 (Server -> Client)
-	UFUNCTION(Client, Reliable)
-	void Client_ShowRespawnTimer(float Duration);
-
-	// [UI] 게임 종료(승리/패배) 알림 (Server -> Client)
-	UFUNCTION(Client, Reliable)
-	void Client_OnStageEnded(bool bIsVictory);
-
 protected:
-	// [Settings] 승리/패배 시 띄울 위젯 클래스 (BP에서 할당)
-	UPROPERTY(EditDefaultsOnly, Category = "UI")
-	TSubclassOf<UUserWidget> VictoryWidgetClass;
-
-	UPROPERTY(EditDefaultsOnly, Category = "UI")
-	TSubclassOf<UUserWidget> DefeatWidgetClass;
+	// --- [Extension Points] ---
+	// 추후 보스 체력바(BossHUD)나 연출 관련 로직이 필요하면 여기에 추가합니다.
+	// virtual void BeginPlay() override;
 };
