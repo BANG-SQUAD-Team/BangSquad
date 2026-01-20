@@ -531,6 +531,7 @@ void ATitanCharacter::Server_ThrowTarget_Implementation(FVector ThrowStartLocati
 	FVector SafeThrowLocation = ThrowStartLocation;
 
 	float MyZ = GetActorLocation().Z;
+
 	float MinZ = MyZ + GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 20.0f;
 
 	if (SafeThrowLocation.Z < MinZ)
@@ -608,8 +609,10 @@ void ATitanCharacter::Server_Skill1_Implementation()
 
 	if (RockClass)
 	{
-		FVector SocketLoc = GetMesh()->GetSocketLocation(TEXT("Hand_R_Socket"));
-		FRotator SocketRot = GetMesh()->GetSocketRotation(TEXT("Hand_R_Socket"));
+		FName SocketName = TEXT("Rock_Socket");
+
+		FVector SocketLoc = GetMesh()->GetSocketLocation(SocketName);
+		FRotator SocketRot = GetMesh()->GetSocketRotation(SocketName);
 
 		FActorSpawnParameters SpawnParams;
 		SpawnParams.Owner = this;
@@ -619,7 +622,7 @@ void ATitanCharacter::Server_Skill1_Implementation()
 
 		if (HeldRock)
 		{
-			HeldRock->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, TEXT("Hand_R_Socket"));
+			HeldRock->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, SocketName);
 			if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(HeldRock->GetRootComponent()))
 			{
 				RootComp->SetSimulatePhysics(false);
