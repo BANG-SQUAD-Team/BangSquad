@@ -1,87 +1,118 @@
-#include "Project_Bang_Squad/Character/Player/Titan/TitanRock.h" // 경로 주의
+#include "Project_Bang_Squad/Character/Player/Titan/TitanRock.h" // 경로가 맞는지 확인!
 #include "Components/StaticMeshComponent.h"
 #include "Components/SphereComponent.h"
 #include "Kismet/GameplayStatics.h"
-#include "GameFramework/ProjectileMovementComponent.h"
-#include "Project_Bang_Squad/Character/MonsterBase/EnemyCharacterBase.h"
-#include "Project_Bang_Squad/Character/StageBoss/StageBossBase.h"
+#include "Kismet/KismetSystemLibrary.h" // SphereOverlapActors용
+#include "GameFramework/Character.h"    // LaunchCharacter용
 
 ATitanRock::ATitanRock()
 {
-    PrimaryActorTick.bCanEverTick = false;
+	PrimaryActorTick.bCanEverTick = false;
 
-    // 1. 충돌체 생성
-    CollisionComp = CreateDefaultSubobject<USphereComponent>(TEXT("SphereComp"));
-    CollisionComp->InitSphereRadius(40.0f);
-    CollisionComp->SetCollisionProfileName(TEXT("BlockAllDynamic")); // 물리 충돌 가능하게
+	// 1. 충돌체 생성
+	CollisionComp = CreateDefaultSubobject<USphereComponent>(TEXT("SphereComp"));
+	CollisionComp->InitSphereRadius(40.0f);
+	CollisionComp->SetCollisionProfileName(TEXT("BlockAllDynamic"));
+	CollisionComp->SetNotifyRigidBodyCollision(true); // Hit 이벤트 필수
 
-    // [중요] 이 코드가 없으면 물리 이동 중인 물체는 OnHit 로그가 안 뜹니다!
-    CollisionComp->SetNotifyRigidBodyCollision(true);
+	RootComponent = CollisionComp;
 
-    RootComponent = CollisionComp;
+	// 2. 바위 메시 생성
+	RockMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("RockMesh"));
+	RockMesh->SetupAttachment(RootComponent);
+	RockMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
-    // 2. 바위 메시 생성
-    RockMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("RockMesh"));
-    RockMesh->SetupAttachment(RootComponent);
-    RockMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-
-    // 충돌 이벤트 바인딩
-    CollisionComp->OnComponentHit.AddDynamic(this, &ATitanRock::OnHit);
+	// 충돌 이벤트 바인딩
+	CollisionComp->OnComponentHit.AddDynamic(this, &ATitanRock::OnHit);
 }
 
 void ATitanRock::BeginPlay()
 {
-    Super::BeginPlay();
-    // 3초 뒤 자동 파괴 (너무 멀리 날아가는 것 방지)
-    SetLifeSpan(5.0f);
+	Super::BeginPlay();
+	SetLifeSpan(5.0f); // 5초 뒤 자동 삭제
 }
 
 void ATitanRock::InitializeRock(float InDamage, AActor* InOwner)
 {
-    Damage = InDamage;
-    OwnerCharacter = InOwner;
+	Damage = InDamage;
+	OwnerCharacter = InOwner;
+	SetOwner(InOwner); // 주인 설정
 }
 
 void ATitanRock::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
-    // [로그 1] 충돌 이벤트 자체가 발생하는지 확인
-    // 화면에 빨간 글씨로 뜹니다.
-    if (GEngine)
-        GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, FString::Printf(TEXT("Rock Hit Actor: %s"), *OtherActor->GetName()));
+	// 나를 던진 주인과 바로 부딪히는 것 방지
+	if (OtherActor == OwnerCharacter) return;
 
-    // UE_LOG로도 남깁니다 (하단 Output Log 탭 확인용)
-    UE_LOG(LogTemp, Warning, TEXT("[TitanRock] Hit Actor: %s"), *OtherActor->GetName());
+	// 무엇이든 부딪히면 폭발
+	Explode();
+}
 
-    // 1. 기본 체크
-    if (!OtherActor || OtherActor == this || OtherActor == OwnerCharacter) return;
+void ATitanRock::Explode()
+{
+	FVector ExplosionLocation = GetActorLocation();
 
-    // 2. 캐스팅 시도
-    AEnemyCharacterBase* Enemy = Cast<AEnemyCharacterBase>(OtherActor);
-    AStageBossBase* Boss = Cast<AStageBossBase>(OtherActor);
+	// [로그] 폭발 확인용
+	// UE_LOG(LogTemp, Warning, TEXT("TitanRock Exploded!"));
 
-    // [로그 2] 캐스팅 결과 확인
-    if (Enemy) UE_LOG(LogTemp, Warning, TEXT("[TitanRock] -> Cast Success: It is EnemyCharacterBase!"));
-    if (Boss) UE_LOG(LogTemp, Warning, TEXT("[TitanRock] -> Cast Success: It is StageBossBase!"));
+	// 1. 범위 내 액터 찾기
+	TArray<AActor*> OverlappedActors;
+	TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;
+	ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_Pawn));
+	ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_PhysicsBody));
+	ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_WorldDynamic));
 
-    if (Enemy || Boss)
-    {
-        // [로그 3] 데미지 함수 호출 직전 확인
-        UE_LOG(LogTemp, Warning, TEXT("[TitanRock] ApplyDamage Called! Damage: %f"), Damage);
+	TArray<AActor*> IgnoreActors;
+	IgnoreActors.Add(this); // 나 자신 제외
 
-        UGameplayStatics::ApplyDamage(
-            OtherActor,
-            Damage,
-            OwnerCharacter->GetInstigatorController(),
-            OwnerCharacter,
-            UDamageType::StaticClass()
-        );
+	UKismetSystemLibrary::SphereOverlapActors(
+		GetWorld(),
+		ExplosionLocation,
+		ExplosionRadius,
+		ObjectTypes,
+		AActor::StaticClass(),
+		IgnoreActors,
+		OverlappedActors
+	);
 
-        Destroy();
-    }
-    else
-    {
-        // [로그 4] 적이 아닌 경우 (Cast 실패)
-        UE_LOG(LogTemp, Warning, TEXT("[TitanRock] Hit something else (Wall/Floor?), Destroying."));
-        Destroy();
-    }
+	// 2. 데미지 및 넉백 처리
+	for (AActor* Victim : OverlappedActors)
+	{
+		if (!Victim || !Victim->IsValidLowLevel()) continue;
+
+		// 아군 확인 ("Player" 태그)
+		bool bIsAlly = Victim->ActorHasTag("Player");
+
+		// 적군에게만 데미지
+		if (!bIsAlly)
+		{
+			UGameplayStatics::ApplyDamage(
+				Victim,
+				Damage,
+				OwnerCharacter ? OwnerCharacter->GetInstigatorController() : nullptr,
+				OwnerCharacter,
+				UDamageType::StaticClass()
+			);
+		}
+
+		// 넉백 (모두 적용)
+		FVector LaunchDir = (Victim->GetActorLocation() - ExplosionLocation).GetSafeNormal();
+		LaunchDir.Z = 0.6f; // 위로 띄우기
+		LaunchDir.Normalize();
+
+		if (ACharacter* VictimChar = Cast<ACharacter>(Victim))
+		{
+			VictimChar->LaunchCharacter(LaunchDir * KnockbackForce, true, true);
+		}
+		else if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(Victim->GetRootComponent()))
+		{
+			if (RootComp->IsSimulatingPhysics())
+			{
+				RootComp->AddImpulse(LaunchDir * KnockbackForce * 100.0f);
+			}
+		}
+	}
+
+	// 3. 파괴
+	Destroy();
 }
