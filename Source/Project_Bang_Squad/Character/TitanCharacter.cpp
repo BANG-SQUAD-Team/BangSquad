@@ -713,7 +713,7 @@ void ATitanCharacter::Server_ThrowRock_Implementation()
 		FVector ThrowDir = ThrowRot.Vector();
 
 		// 위쪽으로 살짝 보정 (포물선)
-		ThrowDir = (ThrowDir + FVector(0, 0, 0.2f)).GetSafeNormal();
+		ThrowDir = (ThrowDir + FVector(0, 0, 0.5f)).GetSafeNormal();
 
 		// 힘 적용 (RockThrowForce 변수 사용)
 		RootComp->AddImpulse(ThrowDir * RockThrowForce * RootComp->GetMass());
