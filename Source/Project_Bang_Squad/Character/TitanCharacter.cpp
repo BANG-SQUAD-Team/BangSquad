@@ -600,38 +600,21 @@ void ATitanCharacter::Server_Skill1_Implementation()
 
 	if (Row)
 	{
+		// 스킬 해금 여부 확인
 		if (!IsSkillUnlocked(Row->RequiredStage)) return;
 
+		// 데미지 정보 갱신 (나중에 노티파이에서 쓸 거임)
 		CurrentSkillDamage = Row->Damage;
+
+		// 쿨타임 설정
 		if (Row->Cooldown > 0.0f) Skill1CooldownTime = Row->Cooldown;
+
+		// ★ 핵심: 이제 몽타주만 재생하면 끝! 
+		// (돌 생성과 던지기는 몽타주 안에 심은 노티파이가 알아서 함)
 		if (Row->SkillMontage) PlayAnimMontage(Row->SkillMontage);
 	}
 
-	if (RockClass)
-	{
-		FName SocketName = TEXT("Rock_Socket");
-
-		FVector SocketLoc = GetMesh()->GetSocketLocation(SocketName);
-		FRotator SocketRot = GetMesh()->GetSocketRotation(SocketName);
-
-		FActorSpawnParameters SpawnParams;
-		SpawnParams.Owner = this;
-		SpawnParams.Instigator = this;
-
-		HeldRock = GetWorld()->SpawnActor<ATitanRock>(RockClass, SocketLoc, SocketRot, SpawnParams);
-
-		if (HeldRock)
-		{
-			HeldRock->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, SocketName);
-			if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(HeldRock->GetRootComponent()))
-			{
-				RootComp->SetSimulatePhysics(false);
-			}
-			HeldRock->InitializeRock(CurrentSkillDamage, this);
-		}
-	}
-
-	GetWorldTimerManager().SetTimer(RockThrowTimerHandle, this, &ATitanCharacter::ThrowRock, 0.8f, false);
+	// 쿨타임 타이머 (이건 유지)
 	bIsSkill1Cooldown = true;
 	GetWorldTimerManager().SetTimer(Skill1CooldownTimerHandle, this, &ATitanCharacter::ResetSkill1Cooldown, Skill1CooldownTime, false);
 }
@@ -652,6 +635,91 @@ void ATitanCharacter::ThrowRock()
 
 		RootComp->AddImpulse(ThrowDir * RockThrowForce * RootComp->GetMass());
 	}
+	HeldRock = nullptr;
+}
+
+// =================================================================
+// [새로 추가] 애님 노티파이 연동 함수 구현
+// =================================================================
+
+// 1. 돌 생성 (노티파이가 호출 -> 서버에게 요청)
+void ATitanCharacter::ExecuteSpawnRock()
+{
+	Server_SpawnRock();
+}
+
+// 2. 돌 생성 (서버 실제 구현)
+void ATitanCharacter::Server_SpawnRock_Implementation()
+{
+	// 이미 들고 있으면 또 만들지 않음
+	if (HeldRock) return;
+
+	if (RockClass)
+	{
+		// 1. 소켓 결정 ("Rock_Socket"이 없으면 오른손 "Hand_R_Socket" 사용)
+		FName SocketName = TEXT("Rock_Socket");
+		if (!GetMesh()->DoesSocketExist(SocketName))
+		{
+			SocketName = TEXT("Hand_R_Socket");
+		}
+
+		FVector SocketLoc = GetMesh()->GetSocketLocation(SocketName);
+		FRotator SocketRot = GetMesh()->GetSocketRotation(SocketName);
+
+		FActorSpawnParameters SpawnParams;
+		SpawnParams.Owner = this;
+		SpawnParams.Instigator = this;
+
+		// 2. 돌 스폰
+		HeldRock = GetWorld()->SpawnActor<ATitanRock>(RockClass, SocketLoc, SocketRot, SpawnParams);
+
+		if (HeldRock)
+		{
+			// 3. 손에 붙이기 (물리 끄기)
+			HeldRock->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, SocketName);
+
+			if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(HeldRock->GetRootComponent()))
+			{
+				RootComp->SetSimulatePhysics(false);
+			}
+			// 데미지 정보 전달
+			HeldRock->InitializeRock(CurrentSkillDamage, this);
+		}
+	}
+}
+
+// 3. 돌 던지기 (노티파이가 호출 -> 서버에게 요청)
+void ATitanCharacter::ExecuteThrowRock()
+{
+	Server_ThrowRock();
+}
+
+// 4. 돌 던지기 (서버 실제 구현)
+void ATitanCharacter::Server_ThrowRock_Implementation()
+{
+	if (!HeldRock) return;
+
+	// 1. 손에서 떼어내기
+	HeldRock->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+
+	// 2. 물리 켜고 던지기
+	if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(HeldRock->GetRootComponent()))
+	{
+		RootComp->SetSimulatePhysics(true);
+		RootComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+
+		// [핵심] 카메라가 보는 방향으로 던지기
+		FRotator ThrowRot = GetControlRotation();
+		FVector ThrowDir = ThrowRot.Vector();
+
+		// 위쪽으로 살짝 보정 (포물선)
+		ThrowDir = (ThrowDir + FVector(0, 0, 0.2f)).GetSafeNormal();
+
+		// 힘 적용 (RockThrowForce 변수 사용)
+		RootComp->AddImpulse(ThrowDir * RockThrowForce * RootComp->GetMass());
+	}
+
+	// 내 손을 떠났으니 변수 비우기
 	HeldRock = nullptr;
 }
 

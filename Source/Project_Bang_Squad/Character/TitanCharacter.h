@@ -38,6 +38,12 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void ExecuteGrab();
 
+	UFUNCTION(BlueprintCallable, Category = "Titan|Skill")
+	void ExecuteSpawnRock();
+
+	UFUNCTION(BlueprintCallable, Category = "Titan|Skill")
+	void ExecuteThrowRock();
+
 protected:
 	// =================================================================
 	// [공격 판정 (Trace/Sweep) 변수]
@@ -113,6 +119,12 @@ protected:
 	void Server_Skill1();
 
 	void ThrowRock();
+
+	UFUNCTION(Server, Reliable)
+	void Server_SpawnRock();
+
+	UFUNCTION(Server, Reliable)
+	void Server_ThrowRock();
 
 	// =================================================================
 	// [네트워크: 스킬 2 (Charge)]
