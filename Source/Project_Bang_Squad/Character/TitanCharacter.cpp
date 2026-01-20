@@ -415,6 +415,95 @@ void ATitanCharacter::OnRep_GrabbedActor()
 	} 
 }
 
+void ATitanCharacter::PerformRadialImpact(FVector Origin, float Radius, float Damage, float RadialForce, AActor* IgnoreTarget)
+{
+	TArray<AActor*> IgnoreActors;
+	IgnoreActors.Add(this); // 시전자(타이탄) 제외
+
+	// [추가] 던져진 녀석(본인)도 폭발 대상에서 제외
+	if (IgnoreTarget)
+	{
+		IgnoreActors.Add(IgnoreTarget);
+	}
+
+	TArray<AActor*> OverlappedActors;
+	TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;
+	ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_Pawn));
+	ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_PhysicsBody));
+	ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_WorldDynamic));
+
+	UKismetSystemLibrary::SphereOverlapActors(
+		GetWorld(),
+		Origin,
+		Radius,
+		ObjectTypes,
+		AActor::StaticClass(),
+		IgnoreActors,
+		OverlappedActors
+	);
+
+	// 디버그용 원 그리기 (테스트 끝나면 주석 처리하세요)
+	// DrawDebugSphere(GetWorld(), Origin, Radius, 12, FColor::Red, false, 2.0f);
+
+	for (AActor* Victim : OverlappedActors)
+	{
+		if (!Victim || !Victim->IsValidLowLevel()) continue;
+
+		// 팀킬 방지 (Player 태그가 있으면 무시)
+		if (Victim->ActorHasTag("Player")) continue;
+
+		// 1. 데미지 적용
+		UGameplayStatics::ApplyDamage(Victim, Damage, GetController(), this, UDamageType::StaticClass());
+
+		// 2. 넉백 방향 계산 (폭발 중심 -> 피해자 방향)
+		FVector LaunchDir = (Victim->GetActorLocation() - Origin).GetSafeNormal();
+		LaunchDir.Z = 0.5f; // 위로 살짝 띄워줌 (0.5 정도가 적당)
+		LaunchDir.Normalize();
+
+		// 3. 물리적 넉백 적용
+		if (ACharacter* VictimChar = Cast<ACharacter>(Victim))
+		{
+			// 캐릭터는 LaunchCharacter 사용
+			VictimChar->LaunchCharacter(LaunchDir * RadialForce, true, true);
+		}
+		else if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(Victim->GetRootComponent()))
+		{
+			// 물체는 AddImpulse 사용
+			if (RootComp->IsSimulatingPhysics())
+			{
+				RootComp->AddImpulse(LaunchDir * RadialForce * 100.0f);
+			}
+		}
+	}
+}
+
+void ATitanCharacter::OnThrownActorHit(AActor* SelfActor, AActor* OtherActor, FVector NormalImpulse, const FHitResult& Hit)
+{
+	if (SelfActor)
+	{
+		SelfActor->OnActorHit.RemoveDynamic(this, &ATitanCharacter::OnThrownActorHit);
+	}
+
+	// [힘 조절 설정]
+	float ImpactRadius = 300.0f;  // 범위: 350 -> 300 (약간 줄임)
+	float KnockbackForce = 800.0f; // 힘: 2000 -> 800 (대폭 줄임)
+	float ImpactDamage = (CurrentSkillDamage > 0.0f) ? CurrentSkillDamage : 30.0f;
+
+	// [중요] 마지막 인자에 SelfActor(던져진 애)를 넣어서 걔는 폭발 안 맞게 함
+	PerformRadialImpact(Hit.ImpactPoint, ImpactRadius, ImpactDamage, KnockbackForce, SelfActor);
+
+	// 던져진 녀석은 폭발에 안 휘말리고, 제자리에서 멈추며 일어남
+	if (ACharacter* ThrownChar = Cast<ACharacter>(SelfActor))
+	{
+		// 멈추는 동작을 확실하게 하기 위해 속도 0으로 초기화
+		if (ThrownChar->GetCharacterMovement())
+		{
+			ThrownChar->GetCharacterMovement()->StopMovementImmediately();
+		}
+		RecoverCharacter(ThrownChar);
+	}
+}
+
 void ATitanCharacter::Multicast_PlayJobMontage_Implementation(FName SectionName) 
 { 
 	ProcessSkill(TEXT("JobAbility"), SectionName); 
@@ -466,11 +555,9 @@ void ATitanCharacter::Server_ThrowTarget_Implementation(FVector ThrowStartLocati
 		ThrowDir.Normalize();
 	}
 
-	// 4. 캐릭터 처리
 	if (ACharacter* Victim = Cast<ACharacter>(GrabbedActor))
 	{
 		SetHeldState(Victim, false);
-
 		Multicast_FixMesh(Victim);
 
 		if (Victim->GetCharacterMovement())
@@ -478,15 +565,18 @@ void ATitanCharacter::Server_ThrowTarget_Implementation(FVector ThrowStartLocati
 			Victim->GetCharacterMovement()->SetMovementMode(MOVE_Falling);
 		}
 
-		// 살짝 위로 띄워서 던짐 (마찰 방지)
 		FVector FinalThrowDir = (ThrowDir + FVector(0.f, 0.f, 0.3f)).GetSafeNormal();
 		Victim->LaunchCharacter(FinalThrowDir * ThrowForce, true, true);
+
+		Victim->OnActorHit.RemoveDynamic(this, &ATitanCharacter::OnThrownActorHit);
+		Victim->OnActorHit.AddDynamic(this, &ATitanCharacter::OnThrownActorHit);
 
 		FTimerHandle RecoveryHandle;
 		FTimerDelegate Delegate;
 		Delegate.BindUFunction(this, TEXT("RecoverCharacter"), Victim);
-		GetWorldTimerManager().SetTimer(RecoveryHandle, Delegate, 1.5f, false);
+		GetWorldTimerManager().SetTimer(RecoveryHandle, Delegate, 2.0f, false); // 시간 조금 넉넉하게 2초로 변경 추천
 	}
+
 	// 5. 사물 처리
 	else if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(GrabbedActor->GetRootComponent()))
 	{

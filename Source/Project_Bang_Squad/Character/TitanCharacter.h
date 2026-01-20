@@ -100,6 +100,12 @@ protected:
 	UFUNCTION(NetMulticast, Unreliable)
 	void Multicast_PlayJobMontage(FName SectionName);
 
+	void PerformRadialImpact(FVector Origin, float Radius, float Damage, float RadialForce, AActor* IgnoreTarget = nullptr);
+
+	// 던져진 대상이 어딘가 부딪혔을 때 호출될 함수 (델리게이트용)
+	UFUNCTION()
+	void OnThrownActorHit(AActor* SelfActor, AActor* OtherActor, FVector NormalImpulse, const FHitResult& Hit);
+
 	// =================================================================
 	// [네트워크: 스킬 1 (Rock Throw)]
 	// =================================================================
