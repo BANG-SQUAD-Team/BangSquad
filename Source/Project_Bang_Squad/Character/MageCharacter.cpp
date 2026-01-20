@@ -197,7 +197,7 @@ void AMageCharacter::CheckInteractableTarget()
 
             // 새 기둥 켜기
             HitPillar->PillarMesh->SetRenderCustomDepth(true);
-            HitPillar->PillarMesh->SetCustomDepthStencilValue(250);
+            HitPillar->PillarMesh->SetCustomDepthStencilValue(251);
             FocusedPillar = HitPillar;
         }
     }
