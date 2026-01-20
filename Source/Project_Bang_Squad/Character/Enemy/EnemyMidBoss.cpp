@@ -104,10 +104,7 @@ float AEnemyMidBoss::TakeDamage(float DamageAmount, FDamageEvent const& DamageEv
 	if (ActualDamage <= 0.0f) return 0.0f;
 	if (HealthComponent && HealthComponent->IsDead()) return 0.0f;
 
-	if (HealthComponent)
-	{
-		HealthComponent->ApplyDamage(ActualDamage);
-	}
+	
 
 	if (GetController())
 	{
