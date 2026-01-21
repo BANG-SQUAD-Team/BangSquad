@@ -244,7 +244,7 @@ void ABaseCharacter::FreezeAnimation()
 
 bool ABaseCharacter::CanAttack() const
 {
-	return !bIsDead && !bIsAttackCoolingDown;
+	return !bIsDead && !bIsAttackCoolingDown && !bIsAttacking;
 }
 
 void ABaseCharacter::StartAttackCooldown()
@@ -436,4 +436,30 @@ void ABaseCharacter::Multicast_SetMaxWalkSpeed_Implementation(float NewSpeed)
 	{
 		GetCharacterMovement()->MaxWalkSpeed = NewSpeed;
 	}
+}
+
+void ABaseCharacter::PlayActionMontage(UAnimMontage* MontageToPlay)
+{
+	if (!MontageToPlay) return;
+	
+	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+	if (AnimInstance)
+	{
+		// A. 상태 잠금
+		bIsAttacking = true;
+		
+		// B. 몽타주 재생
+		AnimInstance->Montage_Play(MontageToPlay);
+		
+		// C. 끝나면 알려라고 델리게이트 등록
+		FOnMontageEnded EndDelegate;
+		EndDelegate.BindUObject(this, &ABaseCharacter::OnAttackMontageEnded);
+		AnimInstance->Montage_SetEndDelegate(EndDelegate, MontageToPlay);
+	}
+}
+
+void ABaseCharacter::OnAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+{
+	// 몽타주가 끝나거나 취소되면 다시 행동 가능 상태로 복구
+	bIsAttacking = false;
 }

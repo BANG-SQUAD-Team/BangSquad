@@ -394,10 +394,12 @@ void AMageCharacter::LockOnPillar(float DeltaTime)
 void AMageCharacter::Attack()
 {
     if (!CanAttack()) return;
-    StartAttackCooldown();
     
     FName SkillName = (CurrentComboIndex == 0) ? TEXT("Attack_A") : TEXT("Attack_B");
+   
     ProcessSkill(SkillName);
+    
+    StartAttackCooldown();
 
     CurrentComboIndex++;
     if (CurrentComboIndex > 1) CurrentComboIndex = 0;
@@ -412,9 +414,12 @@ void AMageCharacter::Skill2() { if (!bIsDead) ProcessSkill(TEXT("Skill2")); }
 
 void AMageCharacter::ProcessSkill(FName SkillRowName)
 {
+    if (!CanAttack()) return;
+    
     // [최적화] 캐시에서 즉시 꺼내오기
     FSkillData** FoundData = SkillDataCache.Find(SkillRowName);
     FSkillData* Data = (FoundData) ? *FoundData : nullptr;
+    
     
     // 쿨타임 체크
     if (SkillTimers.Contains(SkillRowName))
@@ -430,7 +435,7 @@ void AMageCharacter::ProcessSkill(FName SkillRowName)
     {
         if (!IsSkillUnlocked(Data->RequiredStage)) return;
 
-        if (Data->SkillMontage) PlayAnimMontage(Data->SkillMontage);
+        if (Data->SkillMontage) PlayActionMontage(Data->SkillMontage);
 
         if (HasAuthority())
         {
@@ -533,7 +538,7 @@ void AMageCharacter::JobAbility()
     {
         if (TargetMontage)
         {
-            PlayAnimMontage(TargetMontage);      
+            PlayActionMontage(TargetMontage);      
             Server_PlayMontage(TargetMontage);   
         }
         
@@ -556,7 +561,7 @@ void AMageCharacter::JobAbility()
         
         if (TargetMontage)
         {
-            PlayAnimMontage(TargetMontage);      
+            PlayActionMontage(TargetMontage);      
             Server_PlayMontage(TargetMontage);   
         }
         

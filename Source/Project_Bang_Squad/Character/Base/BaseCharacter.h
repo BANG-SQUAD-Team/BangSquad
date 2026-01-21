@@ -190,6 +190,17 @@ protected:
 	// 쿨타임이 끝났을 때 호출될 함수
 	void ResetAttackCooldown();
 	
+	// 현재 공격 모션이 진행중 인지 체크하는 플래그
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat")
+	bool bIsAttacking;
+	
+	// 몽타주가 끝났을 때 호출될 콜백 함수
+	UFUNCTION()
+	void OnAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted);
+	
+	// 공격 몽타주 재생 및 상태 잠금을 전달하는 함수
+	void PlayActionMontage(UAnimMontage* MontageToPlay);
+	
 	virtual void Jump() override;
 	bool bCanJump = true;
 

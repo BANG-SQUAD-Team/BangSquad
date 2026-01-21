@@ -176,14 +176,15 @@ void APaladinCharacter::Attack()
     if (!CanAttack()) return;
     if (bIsGuarding) return; // 방어 중 공격 불가
     
-    StartAttackCooldown();
-    
     // 콤보에 따른 스킬 이름 결정
     FName SkillName;
     if (CurrentComboIndex == 0) SkillName = TEXT("Attack_A");
     else SkillName = TEXT("Attack_B");
     
     ProcessSkill(SkillName);
+    
+    StartAttackCooldown();
+    
     
     // 콤보 카운트 증가 및 리셋 타이머 설정
     CurrentComboIndex++;
@@ -295,6 +296,8 @@ void APaladinCharacter::Skill1()
 
 void APaladinCharacter::ProcessSkill(FName SkillRowName)
 {
+    if (!CanAttack()) return;
+    
     // 캐시에서 데이터 꺼내오기
     FSkillData** FoundData = SkillDataCache.Find(SkillRowName);
     FSkillData* Data = (FoundData) ? *FoundData : nullptr;
@@ -311,7 +314,7 @@ void APaladinCharacter::ProcessSkill(FName SkillRowName)
         if (SkillTimers.Contains(SkillRowName) && GetWorldTimerManager().IsTimerActive(SkillTimers[SkillRowName])) return;
         
         // 몽타주 재생 (Client/Server 공통)
-        if (Data->SkillMontage) PlayAnimMontage(Data->SkillMontage);
+        if (Data->SkillMontage) PlayActionMontage(Data->SkillMontage);
 
         // [서버 로직] 실제 판정 처리
         if (HasAuthority())
@@ -466,7 +469,7 @@ void APaladinCharacter::JobAbility()
     // 1. 애니메이션 즉시 재생
     if (MontageToPlay)
     {
-        PlayAnimMontage(MontageToPlay);
+        PlayActionMontage(MontageToPlay);
         Server_PlayMontage(MontageToPlay);
     }
     

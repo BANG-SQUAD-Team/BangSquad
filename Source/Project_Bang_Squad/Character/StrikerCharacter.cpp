@@ -76,12 +76,10 @@ void AStrikerCharacter::Attack()
             }
         }
     }
-
-    // 로컬에서 쿨타임 시작 (다음 클릭 방지)
-    StartAttackCooldown();
-
     Server_Attack(SkillRowName);
     bIsNextAttackA = !bIsNextAttackA;
+	// 로컬에서 쿨타임 시작 (다음 클릭 방지)
+	StartAttackCooldown();
 }
 
 void AStrikerCharacter::Server_Attack_Implementation(FName SkillName)
@@ -111,8 +109,7 @@ void AStrikerCharacter::Server_Attack_Implementation(FName SkillName)
 			ActionDelay = Row->ActionDelay;
 		}
 	}
-
-	StartAttackCooldown();
+	
 	Multicast_Attack(SkillName);
 
 	// 타이머 초기화
@@ -129,6 +126,7 @@ void AStrikerCharacter::Server_Attack_Implementation(FName SkillName)
 		// 즉시 판정 시작
 		StartMeleeTrace();
 	}
+	StartAttackCooldown();
 }
 
 void AStrikerCharacter::Multicast_Attack_Implementation(FName SkillName)
@@ -241,6 +239,7 @@ void AStrikerCharacter::Server_ApplyAttackForwardForce_Implementation()
 // 스킬 1
 void AStrikerCharacter::Skill1()
 {
+	if (!CanAttack()) return;
 	float CurrentTime = GetWorld()->GetTimeSeconds();
 	if (CurrentTime < Skill1ReadyTime) return;
 	AActor* Target = FindBestAirborneTarget();
@@ -299,6 +298,7 @@ void AStrikerCharacter::Multicast_PlaySkill1FX_Implementation(AActor* Target)
 // ============================================================================
 void AStrikerCharacter::Skill2()
 {
+	if (!CanAttack()) return;
     float CurrentTime = GetWorld()->GetTimeSeconds();
     if (CurrentTime < Skill2ReadyTime) return;
 
@@ -384,6 +384,7 @@ void AStrikerCharacter::Multicast_PlaySlamFX_Implementation()
 // ============================================================================
 void AStrikerCharacter::JobAbility()
 {
+	if (!CanAttack()) return;
     float CurrentTime = GetWorld()->GetTimeSeconds();
     if (CurrentTime < JobAbilityCooldownTime) return;
 
@@ -457,7 +458,7 @@ void AStrikerCharacter::ProcessSkill(FName SkillRowName)
     if (Data && Data->SkillMontage)
     {
         if (!IsSkillUnlocked(Data->RequiredStage)) return;
-        PlayAnimMontage(Data->SkillMontage);
+        PlayActionMontage(Data->SkillMontage);
     }
 }
 
