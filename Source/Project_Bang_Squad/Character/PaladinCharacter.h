@@ -37,6 +37,7 @@ public:
     void Multicast_StopMontage_Implementation(float BlendOutTime);
 
 protected:
+    
     // ====================================================================================
     //  섹션 2: 초기화 및 상태 이벤트 (Initialization & State Events)
     // ====================================================================================
@@ -82,6 +83,8 @@ protected:
     // 데이터 테이블 및 처리 로직
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Data")
     UDataTable* SkillDataTable;
+    
+    TMap<FName, FSkillData*> SkillDataCache;
     
     void ProcessSkill(FName SkillRowName);
 

@@ -15,6 +15,10 @@
 #include "Net/UnrealNetwork.h"
 #include "Player/Mage/MagicBoat.h"
 
+// ====================================================================================
+//  섹션 1: 생성자 및 초기화 (Constructor & Initialization)
+// ====================================================================================
+
 AMageCharacter::AMageCharacter()
 {
     PrimaryActorTick.bCanEverTick = true;
@@ -59,15 +63,13 @@ void AMageCharacter::BeginPlay()
     Super::BeginPlay();
 
     // [강제 적용] 블루프린트 설정 무시하고 코드로 강제 설정
-    // 이 코드가 없으면 BP가 생성자 값을 씹어버립니다.
     if (SpringArm)
     {
-        SpringArm->bUsePawnControlRotation = true; // 마우스 회전 따라가기 (필수)
-        SpringArm->bInheritPitch = true;           // 위아래 회전 허용
-        SpringArm->bInheritYaw = true;             // 좌우 회전 허용
+        SpringArm->bUsePawnControlRotation = true; 
+        SpringArm->bInheritPitch = true;           
+        SpringArm->bInheritYaw = true;             
         SpringArm->bInheritRoll = false;           
         
-        // 기존 암 길이/오프셋 저장
         DefaultArmLength = SpringArm->TargetArmLength;
         DefaultSocketOffset = SpringArm->SocketOffset;
     }
@@ -88,12 +90,49 @@ void AMageCharacter::BeginPlay()
         CameraTimelineComp->AddInterpFloat(nullptr, TimelineProgress);
         CameraTimelineComp->SetTimelineLength(1.0f); 
     }
+    
+    // [최적화] 데이터 테이블 캐싱
+    if (SkillDataTable)
+    {
+        TArray<FName> RowNames = SkillDataTable->GetRowNames();
+        for (const FName& RowName : RowNames)
+        {
+            static const FString ContextString(TEXT("MageSkillCacheContext"));
+            FSkillData* Data = SkillDataTable->FindRow<FSkillData>(RowName, ContextString);
+            if (Data)
+            {
+                SkillDataCache.Add(RowName, Data);
+            }
+        }
+    }
 
     FOnTimelineEvent TimelineFinishedEvent;
     TimelineFinishedEvent.BindDynamic(this, &AMageCharacter::OnCameraTimelineFinished);
     CameraTimelineComp->SetTimelineFinishedFunc(TimelineFinishedEvent);
     CameraTimelineComp->SetLooping(false);
+    
+    // [최적화] 인터랙션 감지 타이머 시작 (0.1초마다)
+    GetWorldTimerManager().SetTimer(InteractionTimerHandle, this, &AMageCharacter::CheckInteractableTarget, 0.1f, true);
 }
+
+void AMageCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
+{
+    Super::SetupPlayerInputComponent(PlayerInputComponent);
+
+    if (UEnhancedInputComponent* EIC = Cast<UEnhancedInputComponent>(PlayerInputComponent))
+    {
+        if (JobAbilityAction)
+        {
+            EIC->BindAction(JobAbilityAction, ETriggerEvent::Started, this, &AMageCharacter::JobAbility);
+            EIC->BindAction(JobAbilityAction, ETriggerEvent::Completed, this, &AMageCharacter::EndJobAbility);
+            EIC->BindAction(JobAbilityAction, ETriggerEvent::Canceled, this, &AMageCharacter::EndJobAbility);
+        }
+    }
+}
+
+// ====================================================================================
+//  섹션 2: 상태 관리 및 틱 (State Management & Tick)
+// ====================================================================================
 
 void AMageCharacter::OnDeath()
 {
@@ -110,22 +149,6 @@ void AMageCharacter::OnDeath()
     StopAnimMontage();
     
     Super::OnDeath();
-}
-
-void AMageCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
-{
-    Super::SetupPlayerInputComponent(PlayerInputComponent);
-
-    if (UEnhancedInputComponent* EIC = Cast<UEnhancedInputComponent>(PlayerInputComponent))
-    {
-        
-        if (JobAbilityAction)
-        {
-            EIC->BindAction(JobAbilityAction, ETriggerEvent::Started, this, &AMageCharacter::JobAbility);
-            EIC->BindAction(JobAbilityAction, ETriggerEvent::Completed, this, &AMageCharacter::EndJobAbility);
-            EIC->BindAction(JobAbilityAction, ETriggerEvent::Canceled, this, &AMageCharacter::EndJobAbility);
-        }
-    }
 }
 
 void AMageCharacter::Tick(float DeltaTime)
@@ -147,16 +170,18 @@ void AMageCharacter::Tick(float DeltaTime)
         }
     }
 
-    CheckInteractableTarget(); 
+    // [최적화] CheckInteractableTarget 제거됨 (타이머가 대체)
 
-    // [수정] 락온만 남기고 마우스 감지 코드는 싹 지움 (Look으로 이사감)
+    // 락온 로직 (타겟이 있을 때만 작동)
     if (bIsPillarMode && IsValid(CurrentTargetPillar) && !CurrentTargetPillar->bIsFallen)
     {
         LockOnPillar(DeltaTime);
-        
-        // [삭제됨] 여기서 MouseX 체크하던 코드 제거
     }
 }
+
+// ====================================================================================
+//  섹션 3: 조작 및 인터랙션 (Control, Camera, Interaction)
+// ====================================================================================
 
 void AMageCharacter::CheckInteractableTarget()
 {
@@ -176,7 +201,6 @@ void AMageCharacter::CheckInteractableTarget()
     APillar* HitPillar = Cast<APillar>(HitActor);
     
     // 2. 인터페이스(Boat 등)인지 확인
-    // Implements는 "이 인터페이스를 가지고 있니?"라고 묻는 것
     bool bIsInterface = (HitActor && HitActor->Implements<UMagicInteractableInterface>());
 
     // A. 일반 기둥
@@ -184,7 +208,7 @@ void AMageCharacter::CheckInteractableTarget()
     {
         if (FocusedPillar != HitPillar)
         {
-            //  인터페이스 끄기 
+            // 이전 하이라이트 끄기
             if (HoveredActor)
             {
                 if (IMagicInteractableInterface* Interface = Cast<IMagicInteractableInterface>(HoveredActor))
@@ -201,18 +225,16 @@ void AMageCharacter::CheckInteractableTarget()
             FocusedPillar = HitPillar;
         }
     }
-    // B. 인터페이스 액터 처리 (신규 로직)
+    // B. 인터페이스 액터 처리
     else if (bIsInterface)
     {
         if (HoveredActor != HitActor)
         {
-            // 이전 하이라이트 끄기
             if (FocusedPillar) 
             {
                 FocusedPillar->PillarMesh->SetRenderCustomDepth(false);
                 FocusedPillar = nullptr;
             }
-            // 이전 인터페이스 끄기
             if (HoveredActor)
             {
                 if (IMagicInteractableInterface* Iface = Cast<IMagicInteractableInterface>(HoveredActor))
@@ -220,7 +242,6 @@ void AMageCharacter::CheckInteractableTarget()
                     Iface->SetMageHighlight(false);
                 }
             }
-            //  새 인터페이스 타겟 켜기 (Cast 사용)
             if (IMagicInteractableInterface* Interface = Cast<IMagicInteractableInterface>(HitActor))
             {
                 Interface->SetMageHighlight(true);
@@ -236,7 +257,6 @@ void AMageCharacter::CheckInteractableTarget()
             FocusedPillar->PillarMesh->SetRenderCustomDepth(false);
             FocusedPillar = nullptr;
         }
-        //  인터페이스 끄기
         if (HoveredActor)
         {
             if (IMagicInteractableInterface* Interface = Cast<IMagicInteractableInterface>(HoveredActor))
@@ -245,158 +265,6 @@ void AMageCharacter::CheckInteractableTarget()
             }
             HoveredActor = nullptr;
         }
-    }
-}
-
-// =========================================================
-//  직업 능력 (우클릭) 시작/종료
-// =========================================================
-void AMageCharacter::JobAbility()
-{
-    if (bIsDead) return;
-    
-    //데이터 테이블에서 'JobAbility' 행 찾기
-    UAnimMontage* TargetMontage = nullptr;
-    static const FString ContextString(TEXT("JobAbilityContext"));
-    
-    if (SkillDataTable)
-    {
-        // JobAbility라는 이름의 행을 찾아서 데이터 가져옴
-        FSkillData* Data = SkillDataTable->FindRow<FSkillData>(FName("JobAbility"), ContextString);
-        if (Data)
-        {
-            TargetMontage = Data->SkillMontage;
-        }
-    }
-    // Case 1: 일반 기둥 모드 진입
-    if (FocusedPillar)
-    {
-        if (TargetMontage)
-        {
-            PlayAnimMontage(TargetMontage);      
-            Server_PlayMontage(TargetMontage);   
-        }
-        
-        bIsPillarMode = true;
-        CurrentTargetPillar = FocusedPillar;
-        
-        if (SpringArm) 
-        {
-            SpringArm->bUsePawnControlRotation = true; 
-            SpringArm->bInheritPitch = true; 
-            SpringArm->bInheritYaw = true;
-            SpringArm->bInheritRoll = true;
-        }
-        if (CameraTimelineComp) CameraTimelineComp->Play();
-    }
-    // Case 2: 인터페이스 액터 (보트 OR 회전기둥)
-    else if (HoveredActor)
-    {
-        // 보트인지 확인 (탑승 조건 검사용)
-        AMagicBoat* TargetBoat = Cast<AMagicBoat>(HoveredActor);
-        
-        // 몽타주 재생
-        if (TargetMontage)
-        {
-            PlayAnimMontage(TargetMontage);      
-            Server_PlayMontage(TargetMontage);   
-        }
-        
-        // 보트라면, 반드시 위에 타 있어야 함!
-        if (TargetBoat)
-        {
-            UPrimitiveComponent* BaseComponent = GetMovementBase();
-            bool bIsRiding = (BaseComponent && BaseComponent->GetOwner() == TargetBoat);
-            
-            // 안 탔으면 능력 발동 취소
-            if (!bIsRiding) return; 
-        }
-
-        
-        // bIsBoatMode를 "인터페이스 조종 모드" 플래그로 사용
-        bIsBoatMode = true;
-        CurrentControlledActor = HoveredActor;
-
-        // 보트 전용 추가 설정
-        if (TargetBoat)
-        {
-            Server_SetBoatRideState(TargetBoat, true);
-            GetCharacterMovement()->bEnablePhysicsInteraction = false;
-
-            if (IsLocallyControlled())
-            {
-                if (Camera) Camera->SetActive(false);
-                if (TopDownCamera) TopDownCamera->SetActive(true);
-            }
-        }
-    }
-}
-
-void AMageCharacter::EndJobAbility()
-{
-    //  끌 때도 어떤 몽타주인지 알아야 하니 데이터 테이블 조회
-    UAnimMontage* TargetMontage = nullptr;
-    static const FString ContextString(TEXT("JobAbilityContext"));
-    
-    if (SkillDataTable)
-    {
-        FSkillData* Data = SkillDataTable->FindRow<FSkillData>(FName("JobAbility"), ContextString);
-        if (Data)
-        {
-            TargetMontage = Data->SkillMontage;
-        }
-    }
-    
-    // 몽타주 정지
-    if (TargetMontage)
-    {
-        StopAnimMontage(TargetMontage);
-        Server_StopMontage(TargetMontage);
-    }
-    
-    // Case 1: 기둥 모드 종료
-    if (bIsPillarMode)
-    {
-        bIsPillarMode = false;
-        CurrentTargetPillar = nullptr;
-        
-        if (CameraTimelineComp) CameraTimelineComp->Reverse();
-    }
-
-    // Case 2: 인터페이스 모드 종료 (보트 + 회전기둥)
-    if (bIsBoatMode)
-    {
-        // 보트였다면 물리 복구 및 하차 처리
-        AMagicBoat* Boat = Cast<AMagicBoat>(CurrentControlledActor);
-        if (Boat)
-        {
-            GetCharacterMovement()->bEnablePhysicsInteraction = true;
-            Server_SetBoatRideState(Boat, false);
-            
-            if (IsLocallyControlled())
-            {
-                if (TopDownCamera) TopDownCamera->SetActive(false);
-                if (Camera) Camera->SetActive(true);
-            }
-        }
-
-        // 입력 중단 신호 보내기 (Zero Vector) -> 보트는 멈추고, 회전기둥은 멈춤
-        if (CurrentControlledActor)
-        {
-            Server_InteractActor(CurrentControlledActor, FVector::ZeroVector);
-        }
-        
-        bIsBoatMode = false;
-        CurrentControlledActor = nullptr;
-    }
-    
-    // 공통 복구
-    if (SpringArm)
-    {
-        SpringArm->bUsePawnControlRotation = true;
-        SpringArm->bInheritPitch = true; 
-        SpringArm->bInheritYaw = true;
-        SpringArm->bInheritRoll = true;
     }
 }
 
@@ -425,10 +293,9 @@ void AMageCharacter::Look(const FInputActionValue& Value)
         // B. 그 외 (회전 기둥 등): 마우스 Y 움직임을 전달
         else
         {
-            // 감도 조절 (너무 미세한 움직임 무시)
+            // 감도 조절
             if (FMath::Abs(LookInput.Y) > 0.1f)
             {
-                // PillarRotate는 Y값이 0.4 이상일 때 반응
                 MoveDir = FVector(0.f, LookInput.Y, 0.f); 
             }
         }
@@ -458,205 +325,6 @@ void AMageCharacter::Look(const FInputActionValue& Value)
     }
 }
 
-// =========================================================
-//  공격 및 스킬 로직 (기존 유지)
-// =========================================================
-void AMageCharacter::Attack()
-{
-    if (!CanAttack()) return;
-    StartAttackCooldown();
-    
-    FName SkillName = (CurrentComboIndex == 0) ? TEXT("Attack_A") : TEXT("Attack_B");
-    ProcessSkill(SkillName);
-
-    CurrentComboIndex++;
-    if (CurrentComboIndex > 1) CurrentComboIndex = 0;
-
-    GetWorldTimerManager().ClearTimer(ComboResetTimer);
-    GetWorldTimerManager().SetTimer(ComboResetTimer, this, &AMageCharacter::ResetCombo, 1.2f, false);
-}
-
-void AMageCharacter::ResetCombo() { CurrentComboIndex = 0; }
-void AMageCharacter::Skill1() { if (!bIsDead) ProcessSkill(TEXT("Skill1")); }
-void AMageCharacter::Skill2() { if (!bIsDead) ProcessSkill(TEXT("Skill2")); }
-
-void AMageCharacter::ProcessSkill(FName SkillRowName)
-{
-    if (!SkillDataTable) return;
-    
-    // 데이터 테이블에서 정보 가져오기
-    static const FString ContextString(TEXT("SkillContext"));
-    FSkillData* Data = SkillDataTable->FindRow<FSkillData>(SkillRowName, ContextString);
-    
-    if (SkillTimers.Contains(SkillRowName))
-    {
-        // 타이머가 아직 활성화 상태라면? -> 쿨타임 중이라는 뜻
-        if (GetWorldTimerManager().IsTimerActive(SkillTimers[SkillRowName]))
-        {
-            // (옵션) 로그 출력: "아직 쿨타임입니다!"
-             GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, FString::Printf(TEXT("%s Cooldown!"), *SkillRowName.ToString()));
-            return; 
-        }
-    }
-
-   
-    
-    if (Data)
-    {
-        if (!IsSkillUnlocked(Data->RequiredStage)) return;
-
-        if (Data->SkillMontage) PlayAnimMontage(Data->SkillMontage);
-
-        if (HasAuthority())
-        {
-            if (Data->SkillMontage) Server_PlayMontage(Data->SkillMontage);
-
-            if (Data->ProjectileClass)
-            {
-                FTimerDelegate TimerDel;
-                TimerDel.BindUObject(this, &AMageCharacter::SpawnDelayedProjectile, Data->ProjectileClass.Get());
-                
-                if (Data->ActionDelay > 0.0f)
-                    GetWorldTimerManager().SetTimer(ProjectileTimerHandle, TimerDel, Data->ActionDelay, false);
-                else
-                    SpawnDelayedProjectile(Data->ProjectileClass);
-            }
-        }
-        else
-        {
-            Server_ProcessSkill(SkillRowName);
-        }
-        
-        // ====================================================
-        // 3. [쿨타임 등록] 스킬을 썼으니 이제 타이머를 돌리자!
-        // ====================================================
-        if (Data->Cooldown > 0.0f)
-        {
-            // TMap에서 타이머 핸들을 찾거나, 없으면 새로 만듦
-            FTimerHandle& Handle = SkillTimers.FindOrAdd(SkillRowName);
-            
-            // 데이터 테이블에 적힌 시간(Data->Cooldown)만큼 타이머 작동
-            // false: 반복하지 않음 (한 번 돌고 끝)
-            GetWorldTimerManager().SetTimer(Handle, Data->Cooldown, false);
-        }
-    }
-}
-
-// =========================================================
-//  RPC 구현부
-// =========================================================
-void AMageCharacter::Server_ProcessSkill_Implementation(FName SkillRowName)
-{
-    ProcessSkill(SkillRowName);
-}
-
-void AMageCharacter::SpawnDelayedProjectile(UClass* ProjectileClass)
-{
-    if (!HasAuthority() || !ProjectileClass) return;
-
-    FVector SpawnLoc;
-    FName SocketName = TEXT("Weapon_Root_R"); 
-
-    if (GetMesh() && GetMesh()->DoesSocketExist(SocketName))
-        SpawnLoc = GetMesh()->GetSocketLocation(SocketName);
-    else
-        SpawnLoc = GetActorLocation() + (GetActorForwardVector() * 100.f);
-
-    // 회전 값 계산 : 화면 중앙 에임
-    FRotator SpawnRot = GetActorRotation();
-    
-    // 플레이어 컨트롤러를 가져와서 화면 중앙 계산
-    if (APlayerController* PC = Cast<APlayerController>(GetController()))
-    {
-        // 카메라 위치와 방향 가져오기
-        FVector CamLoc;
-        FRotator CamRot;
-        PC->GetPlayerViewPoint(CamLoc, CamRot);
-        
-        // 화면 중앙으로 가상의 레이저 (LineTrace) 발사 
-        FVector TraceStart = CamLoc;
-        FVector TraceEnd = CamLoc + (CamRot.Vector() * 5000.0f);
-        
-        FHitResult HitResult;
-        FCollisionQueryParams Params;
-        Params.AddIgnoredActor(this);
-        
-        bool bHit = GetWorld()->LineTraceSingleByChannel(
-            HitResult,
-            TraceStart,
-            TraceEnd,
-            ECC_Visibility,
-            Params
-            );
-        
-        // 목표점 결정
-        FVector TargetPoint = bHit ? HitResult.ImpactPoint : TraceEnd;
-        
-        // SpawnLoc에서 TargetPoint를 바라보는 회전값 구하기
-        SpawnRot = UKismetMathLibrary::FindLookAtRotation(SpawnLoc, TargetPoint);
-    }
-    
-    // 투사체 생성
-    FActorSpawnParameters SpawnParams;
-    SpawnParams.Owner = this;
-    SpawnParams.Instigator = GetInstigator();
-    
-    GetWorld()->SpawnActor<AActor>(ProjectileClass,SpawnLoc,SpawnRot,SpawnParams);
-}
-
-void AMageCharacter::Server_PlayMontage_Implementation(UAnimMontage* MontageToPlay)
-{
-    Multicast_PlayMontage(MontageToPlay);
-}
-
-void AMageCharacter::Multicast_PlayMontage_Implementation(UAnimMontage* MontageToPlay)
-{
-    if (MontageToPlay && !IsLocallyControlled())
-    {
-        PlayAnimMontage(MontageToPlay);
-    }
-}
-
-void AMageCharacter::Server_StopMontage_Implementation(UAnimMontage* MontageToStop)
-{
-    Multicast_StopMontage(MontageToStop);
-}
-
-void AMageCharacter::Multicast_StopMontage_Implementation(UAnimMontage* MontageToStop)
-{
-    // 내 화면(LocallyControlled)에서는 이미 껐을 테니, 
-    // "내가 아닌 다른 사람 화면"에서만 끄도록 함
-    if (MontageToStop && !IsLocallyControlled())
-    {
-        StopAnimMontage(MontageToStop);
-    }
-}
-
-void AMageCharacter::Server_InteractActor_Implementation(AActor* TargetActor, FVector Direction)
-{
-    //  Cast를 이용해서 안전하게 호출
-    if (TargetActor)
-    {
-        // 인터페이스로 형변환 시도
-        IMagicInteractableInterface* Interface = Cast<IMagicInteractableInterface>(TargetActor);
-        
-        // 형변환 성공하면(인터페이스가 있으면) 함수 실행
-        if (Interface)
-        {
-            Interface->ProcessMageInput(Direction);
-        }
-    }
-}
-
-// [유지] 기둥 파괴
-void AMageCharacter::Server_TriggerPillarFall_Implementation(APillar* TargetPillar)
-{
-    if (TargetPillar) TargetPillar->TriggerFall();
-}
-
-// =========================================================
-//  타임라인 & 락온 (기존 유지)
-// =========================================================
 void AMageCharacter::CameraTimelineProgress(float Alpha)
 {
     if (!SpringArm) return;
@@ -694,11 +362,322 @@ void AMageCharacter::LockOnPillar(float DeltaTime)
     }
 }
 
+// ====================================================================================
+//  섹션 4: 전투 및 스킬 시스템 (Combat & Skills)
+// ====================================================================================
+
+void AMageCharacter::Attack()
+{
+    if (!CanAttack()) return;
+    StartAttackCooldown();
+    
+    FName SkillName = (CurrentComboIndex == 0) ? TEXT("Attack_A") : TEXT("Attack_B");
+    ProcessSkill(SkillName);
+
+    CurrentComboIndex++;
+    if (CurrentComboIndex > 1) CurrentComboIndex = 0;
+
+    GetWorldTimerManager().ClearTimer(ComboResetTimer);
+    GetWorldTimerManager().SetTimer(ComboResetTimer, this, &AMageCharacter::ResetCombo, 1.2f, false);
+}
+
+void AMageCharacter::ResetCombo() { CurrentComboIndex = 0; }
+void AMageCharacter::Skill1() { if (!bIsDead) ProcessSkill(TEXT("Skill1")); }
+void AMageCharacter::Skill2() { if (!bIsDead) ProcessSkill(TEXT("Skill2")); }
+
+void AMageCharacter::ProcessSkill(FName SkillRowName)
+{
+    // [최적화] 캐시에서 즉시 꺼내오기
+    FSkillData** FoundData = SkillDataCache.Find(SkillRowName);
+    FSkillData* Data = (FoundData) ? *FoundData : nullptr;
+    
+    // 쿨타임 체크
+    if (SkillTimers.Contains(SkillRowName))
+    {
+        if (GetWorldTimerManager().IsTimerActive(SkillTimers[SkillRowName]))
+        {
+             GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, FString::Printf(TEXT("%s Cooldown!"), *SkillRowName.ToString()));
+            return; 
+        }
+    }
+
+    if (Data)
+    {
+        if (!IsSkillUnlocked(Data->RequiredStage)) return;
+
+        if (Data->SkillMontage) PlayAnimMontage(Data->SkillMontage);
+
+        if (HasAuthority())
+        {
+            if (Data->SkillMontage) Server_PlayMontage(Data->SkillMontage);
+
+            if (Data->ProjectileClass)
+            {
+                float SkillDamage = Data->Damage;
+                FTimerDelegate TimerDel;
+                TimerDel.BindUObject(this, &AMageCharacter::SpawnDelayedProjectile, Data->ProjectileClass.Get(), SkillDamage);
+                
+                if (Data->ActionDelay > 0.0f)
+                    GetWorldTimerManager().SetTimer(ProjectileTimerHandle, TimerDel, Data->ActionDelay, false);
+                else
+                    SpawnDelayedProjectile(Data->ProjectileClass, SkillDamage);
+            }
+        }
+        else
+        {
+            Server_ProcessSkill(SkillRowName);
+        }
+        
+        // 쿨타임 등록
+        if (Data->Cooldown > 0.0f)
+        {
+            FTimerHandle& Handle = SkillTimers.FindOrAdd(SkillRowName);
+            GetWorldTimerManager().SetTimer(Handle, Data->Cooldown, false);
+        }
+    }
+}
+
+void AMageCharacter::SpawnDelayedProjectile(UClass* ProjectileClass, float DamageAmount)
+{
+    if (!HasAuthority() || !ProjectileClass) return;
+
+    FVector SpawnLoc;
+    FName SocketName = TEXT("Weapon_Root_R"); 
+
+    if (GetMesh() && GetMesh()->DoesSocketExist(SocketName))
+        SpawnLoc = GetMesh()->GetSocketLocation(SocketName);
+    else
+        SpawnLoc = GetActorLocation() + (GetActorForwardVector() * 100.f);
+
+    FRotator SpawnRot = GetActorRotation();
+    
+    // 화면 중앙 에임 계산
+    if (APlayerController* PC = Cast<APlayerController>(GetController()))
+    {
+        FVector CamLoc;
+        FRotator CamRot;
+        PC->GetPlayerViewPoint(CamLoc, CamRot);
+        
+        FVector TraceStart = CamLoc;
+        FVector TraceEnd = CamLoc + (CamRot.Vector() * 5000.0f);
+        
+        FHitResult HitResult;
+        FCollisionQueryParams Params;
+        Params.AddIgnoredActor(this);
+        
+        bool bHit = GetWorld()->LineTraceSingleByChannel(HitResult, TraceStart, TraceEnd, ECC_Visibility, Params);
+        FVector TargetPoint = bHit ? HitResult.ImpactPoint : TraceEnd;
+        
+        SpawnRot = UKismetMathLibrary::FindLookAtRotation(SpawnLoc, TargetPoint);
+    }
+    
+    // 투사체 생성 및 데미지 전달
+    FActorSpawnParameters SpawnParams;
+    SpawnParams.Owner = this;
+    SpawnParams.Instigator = GetInstigator();
+    
+    AActor* SpawnedActor = GetWorld()->SpawnActor<AActor>(ProjectileClass,SpawnLoc,SpawnRot,SpawnParams);
+    
+    if (AMageProjectile* MyProjectile = Cast<AMageProjectile>(SpawnedActor))
+    {
+        MyProjectile->Damage = DamageAmount; 
+    }
+}
+
+// ====================================================================================
+//  섹션 5: 직업 능력 (Job Ability - Telekinesis/Boat)
+// ====================================================================================
+
+void AMageCharacter::JobAbility()
+{
+    if (bIsDead) return;
+    
+    UAnimMontage* TargetMontage = nullptr;
+    
+    // [최적화] 캐시에서 조회
+    FSkillData** FoundData = SkillDataCache.Find(FName("JobAbility"));
+    FSkillData* Data = (FoundData) ? *FoundData : nullptr;
+    
+    if (Data)
+    {
+        TargetMontage = Data->SkillMontage;
+    }
+    
+    // Case 1: 일반 기둥 모드 진입
+    if (FocusedPillar)
+    {
+        if (TargetMontage)
+        {
+            PlayAnimMontage(TargetMontage);      
+            Server_PlayMontage(TargetMontage);   
+        }
+        
+        bIsPillarMode = true;
+        CurrentTargetPillar = FocusedPillar;
+        
+        if (SpringArm) 
+        {
+            SpringArm->bUsePawnControlRotation = true; 
+            SpringArm->bInheritPitch = true; 
+            SpringArm->bInheritYaw = true;
+            SpringArm->bInheritRoll = true;
+        }
+        if (CameraTimelineComp) CameraTimelineComp->Play();
+    }
+    // Case 2: 인터페이스 액터 (보트 OR 회전기둥)
+    else if (HoveredActor)
+    {
+        AMagicBoat* TargetBoat = Cast<AMagicBoat>(HoveredActor);
+        
+        if (TargetMontage)
+        {
+            PlayAnimMontage(TargetMontage);      
+            Server_PlayMontage(TargetMontage);   
+        }
+        
+        // 보트 탑승 체크
+        if (TargetBoat)
+        {
+            UPrimitiveComponent* BaseComponent = GetMovementBase();
+            bool bIsRiding = (BaseComponent && BaseComponent->GetOwner() == TargetBoat);
+            if (!bIsRiding) return; 
+        }
+
+        bIsBoatMode = true;
+        CurrentControlledActor = HoveredActor;
+
+        if (TargetBoat)
+        {
+            Server_SetBoatRideState(TargetBoat, true);
+            GetCharacterMovement()->bEnablePhysicsInteraction = false;
+
+            if (IsLocallyControlled())
+            {
+                if (Camera) Camera->SetActive(false);
+                if (TopDownCamera) TopDownCamera->SetActive(true);
+            }
+        }
+    }
+}
+
+void AMageCharacter::EndJobAbility()
+{
+    UAnimMontage* TargetMontage = nullptr;
+   
+    // [최적화] 캐시에서 조회
+    FSkillData** FoundData = SkillDataCache.Find(FName("JobAbility"));
+    FSkillData* Data = (FoundData) ? *FoundData : nullptr;
+    
+    if (Data)
+    {
+        TargetMontage = Data->SkillMontage;
+    }
+    
+    if (TargetMontage)
+    {
+        StopAnimMontage(TargetMontage);
+        Server_StopMontage(TargetMontage);
+    }
+    
+    // Case 1: 기둥 모드 종료
+    if (bIsPillarMode)
+    {
+        bIsPillarMode = false;
+        CurrentTargetPillar = nullptr;
+        if (CameraTimelineComp) CameraTimelineComp->Reverse();
+    }
+
+    // Case 2: 인터페이스 모드 종료
+    if (bIsBoatMode)
+    {
+        AMagicBoat* Boat = Cast<AMagicBoat>(CurrentControlledActor);
+        if (Boat)
+        {
+            GetCharacterMovement()->bEnablePhysicsInteraction = true;
+            Server_SetBoatRideState(Boat, false);
+            
+            if (IsLocallyControlled())
+            {
+                if (TopDownCamera) TopDownCamera->SetActive(false);
+                if (Camera) Camera->SetActive(true);
+            }
+        }
+
+        if (CurrentControlledActor)
+        {
+            Server_InteractActor(CurrentControlledActor, FVector::ZeroVector);
+        }
+        
+        bIsBoatMode = false;
+        CurrentControlledActor = nullptr;
+    }
+    
+    // 공통 복구
+    if (SpringArm)
+    {
+        SpringArm->bUsePawnControlRotation = true;
+        SpringArm->bInheritPitch = true; 
+        SpringArm->bInheritYaw = true;
+        SpringArm->bInheritRoll = true;
+    }
+}
+
+// ====================================================================================
+//  섹션 7: 네트워크 및 유틸리티 (Network RPCs & Utils)
+// ====================================================================================
+
+void AMageCharacter::Server_ProcessSkill_Implementation(FName SkillRowName)
+{
+    ProcessSkill(SkillRowName);
+}
+
+void AMageCharacter::Server_PlayMontage_Implementation(UAnimMontage* MontageToPlay)
+{
+    Multicast_PlayMontage(MontageToPlay);
+}
+
+void AMageCharacter::Multicast_PlayMontage_Implementation(UAnimMontage* MontageToPlay)
+{
+    if (MontageToPlay && !IsLocallyControlled())
+    {
+        PlayAnimMontage(MontageToPlay);
+    }
+}
+
+void AMageCharacter::Server_StopMontage_Implementation(UAnimMontage* MontageToStop)
+{
+    Multicast_StopMontage(MontageToStop);
+}
+
+void AMageCharacter::Multicast_StopMontage_Implementation(UAnimMontage* MontageToStop)
+{
+    if (MontageToStop && !IsLocallyControlled())
+    {
+        StopAnimMontage(MontageToStop);
+    }
+}
+
+void AMageCharacter::Server_InteractActor_Implementation(AActor* TargetActor, FVector Direction)
+{
+    if (TargetActor)
+    {
+        IMagicInteractableInterface* Interface = Cast<IMagicInteractableInterface>(TargetActor);
+        if (Interface)
+        {
+            Interface->ProcessMageInput(Direction);
+        }
+    }
+}
+
+void AMageCharacter::Server_TriggerPillarFall_Implementation(APillar* TargetPillar)
+{
+    if (TargetPillar) TargetPillar->TriggerFall();
+}
+
 void AMageCharacter::Server_SetBoatRideState_Implementation(AMagicBoat* Boat, bool bRiding)
 {
     if (Boat)
     {
-        // 서버에 있는 보트의 상태를 변경! -> 이제 Tick이 돌아감
         Boat->SetRideState(bRiding);
     }
 }

@@ -93,6 +93,26 @@ void APaladinCharacter::BeginPlay()
     
     // 시작 시 방패 비활성화 (확실하게 끄기)
     SetShieldActive(false);
+    
+    // 🔥 [추가] 데이터 테이블 캐싱 (시작할 때 한 번만 수행)
+    if (SkillDataTable)
+    {
+        // 1. 테이블에 있는 모든 행(Row)의 이름을 가져옴
+        TArray<FName> RowNames = SkillDataTable->GetRowNames();
+
+        for (const FName& RowName : RowNames)
+        {
+            // 2. 이름으로 데이터 찾기
+            static const FString ContextString(TEXT("SkillDataCacheContext"));
+            FSkillData* Data = SkillDataTable->FindRow<FSkillData>(RowName, ContextString);
+
+            // 3. 찾았으면 내 주머니(Map)에 저장
+            if (Data)
+            {
+                SkillDataCache.Add(RowName, Data);
+            }
+        }
+    }
 }
 
 void APaladinCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -275,9 +295,9 @@ void APaladinCharacter::Skill1()
 
 void APaladinCharacter::ProcessSkill(FName SkillRowName)
 {
-    if (!SkillDataTable) return;
-    static const FString ContextString(TEXT("PaladinSkillContext"));
-    FSkillData* Data = SkillDataTable->FindRow<FSkillData>(SkillRowName, ContextString);
+    // 캐시에서 데이터 꺼내오기
+    FSkillData** FoundData = SkillDataCache.Find(SkillRowName);
+    FSkillData* Data = (FoundData) ? *FoundData : nullptr;
     
     if (Data)
     {
@@ -434,15 +454,13 @@ void APaladinCharacter::JobAbility()
     UAnimMontage* MontageToPlay = nullptr;
     float ActivationDelay = 0.0f;
 
-    if (SkillDataTable)
+    // 캐시에서 조회
+    FSkillData** FoundData = SkillDataCache.Find(FName("JobAbility"));
+    FSkillData* Data = (FoundData) ? *FoundData : nullptr;
+    if (Data)
     {
-        static const FString ContextString(TEXT("PaladinGuardContext"));
-        FSkillData* Data = SkillDataTable->FindRow<FSkillData>(FName("JobAbility"), ContextString);
-        if (Data)
-        {
-            MontageToPlay = Data->SkillMontage;
-            ActivationDelay = Data->ActionDelay;
-        }
+        MontageToPlay = Data->SkillMontage;
+        ActivationDelay = Data->ActionDelay;
     }
     
     // 1. 애니메이션 즉시 재생
@@ -553,17 +571,18 @@ void APaladinCharacter::OnShieldBroken()
     
     Server_SetGuard(false); // 강제 해제
     
-    UE_LOG(LogTemp, Warning, TEXT("Shield Broken!!"));
-    
     GetWorldTimerManager().ClearTimer(ShieldRegenTimer);
     
     // 데이터 테이블에서 쿨타임 가져오기
     float BrokenCooldown = 5.0f;
-    if (SkillDataTable)
+    
+    // 캐시에서 조회
+    FSkillData** FoundData = SkillDataCache.Find(FName("JobAbility"));
+    FSkillData* Data = (FoundData) ? *FoundData : nullptr;
+    
+    if (Data && Data->Cooldown > 0.0f)
     {
-        static const FString ContextString(TEXT("PaladinShieldBreak"));
-        FSkillData* Data = SkillDataTable->FindRow<FSkillData>(FName("JobAbility"), ContextString);
-        if (Data && Data->Cooldown > 0.0f) BrokenCooldown = Data->Cooldown;
+        BrokenCooldown = Data->Cooldown;
     }
     
     // 수리 대기 타이머 시작
