@@ -188,6 +188,31 @@ void AMageCharacter::CheckInteractableTarget()
     // 조종 중엔 타겟 변경 금지
     if (bIsPillarMode || bIsBoatMode) return;
 
+    if (GetAttachParentActor() != nullptr)
+    {
+        // 켜져 있던 기둥 아웃라인 끄기
+        if (FocusedPillar)
+        {
+            if (FocusedPillar->PillarMesh)
+            {
+                FocusedPillar->PillarMesh->SetRenderCustomDepth(false);
+            }
+            FocusedPillar = nullptr;
+        }
+
+        // 켜져 있던 인터페이스(보트 등) 아웃라인 끄기
+        if (HoveredActor)
+        {
+            if (IMagicInteractableInterface* Interface = Cast<IMagicInteractableInterface>(HoveredActor))
+            {
+                Interface->SetMageHighlight(false);
+            }
+            HoveredActor = nullptr;
+        }
+
+        return; // 여기서 함수 종료 (LineTrace 실행 안 함)
+    }
+
     FHitResult HitResult;
     FVector Start = Camera->GetComponentLocation();
     FVector End = Start + (Camera->GetForwardVector() * TraceDistance);
