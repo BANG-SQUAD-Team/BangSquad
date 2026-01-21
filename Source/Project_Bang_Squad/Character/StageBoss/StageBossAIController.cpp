@@ -6,6 +6,9 @@
 #include "NavigationSystem.h"
 #include "GameFramework/Character.h"
 #include "Project_Bang_Squad/Character/Component/HealthComponent.h"
+#include "DrawDebugHelpers.h"
+#include "Components/CapsuleComponent.h" // 캡슐 컴포넌트 헤더 필요
+
 
 AStageBossAIController::AStageBossAIController()
 {
@@ -16,15 +19,12 @@ void AStageBossAIController::OnPossess(APawn* InPawn)
 {
     Super::OnPossess(InPawn);
     OwnerBoss = Cast<AStage1Boss>(InPawn);
-
-    // 초기화 시 Idle로 시작
     SetState(EBossAIState::Idle);
 }
 
 void AStageBossAIController::OnUnPossess()
 {
     Super::OnUnPossess();
-    // 포커스 해제 안 하면 다음 스폰된 폰이 이상한 곳을 볼 수 있음
     ClearFocus(EAIFocusPriority::Gameplay);
 }
 
@@ -32,25 +32,21 @@ void AStageBossAIController::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
 
-    // 1. 보스 유효성 검사
     if (!IsValid(OwnerBoss)) return;
 
-    // 2. 보스 사망 체크 (HealthComponent 활용)
     UHealthComponent* HealthComp = OwnerBoss->FindComponentByClass<UHealthComponent>();
     if (HealthComp && HealthComp->IsDead())
     {
         StopMovement();
         ClearFocus(EAIFocusPriority::Gameplay);
-        return; // AI 정지
+        return;
     }
 
-    // 3. 타겟 유효성 검사 (타겟이 로그아웃하거나 죽었으면 재탐색)
     if (CurrentState != EBossAIState::Idle && !IsTargetValid())
     {
         SetState(EBossAIState::SwitchTarget);
     }
 
-    // 4. 상태 머신 실행
     switch (CurrentState)
     {
     case EBossAIState::Idle:        HandleIdle(DeltaTime); break;
@@ -58,9 +54,7 @@ void AStageBossAIController::Tick(float DeltaTime)
     case EBossAIState::MeleeAttack: HandleMeleeAttack(DeltaTime); break;
     case EBossAIState::Retreat:     HandleRetreat(DeltaTime); break;
     case EBossAIState::RangeAttack: HandleRangeAttack(DeltaTime); break;
-    case EBossAIState::SwitchTarget:
-        // 틱에서 호출할 필요 없이 SetState에서 처리하고 바로 전환
-        break;
+    case EBossAIState::SwitchTarget: break;
     }
 }
 
@@ -68,149 +62,151 @@ void AStageBossAIController::SetState(EBossAIState NewState)
 {
     CurrentState = NewState;
     StateTimer = 0.0f;
-    AttackCooldownTimer = 0.0f; // 상태 변경 시 쿨타임 초기화 (필요시 조정)
+    AttackCooldownTimer = 0.0f;
 
-    // [OOP] 상태 패턴: 진입(Enter) 로직
+    // --- [State Entry Logic] ---
     switch (CurrentState)
     {
     case EBossAIState::Chase:
-        // 추적 시작 시 타겟을 바라보게 함
         if (TargetActor) SetFocus(TargetActor);
         break;
 
     case EBossAIState::Retreat:
     {
-        // [중요] 후퇴할 때는 타겟을 바라보면 안 됨 (문워크 방지) -> Focus 해제
+        // [핵심 변경] 플레이어를 보지 마라 (어리버리 방지)
         ClearFocus(EAIFocusPriority::Gameplay);
-        StopMovement(); // 기존 이동 명령 취소
+        StopMovement();
 
-        FVector Dest = GetRetreatLocation();
-        MoveToLocation(Dest, -1.0f, true, true, true, true, 0, true);
+        // 현재 보고 있는 방향의 '정반대'로 달린다.
+        FVector RetreatDest = GetStraightRetreatLocation();
 
-        UE_LOG(LogTemp, Log, TEXT("[BossAI] Retreating to: %s"), *Dest.ToString());
+        // 이동 명령 (가속/회전 고려하여 넉넉한 수용 반경 설정)
+        MoveToLocation(RetreatDest, 50.0f, true, true, true, true, 0, true);
+
+        UE_LOG(LogTemp, Warning, TEXT("[BossAI] Straight Retreat Started!"));
     }
     break;
 
     case EBossAIState::RangeAttack:
-        // 원거리 공격 시 다시 타겟 조준
+        // [핵심] 이동이 끝났으니 다시 플레이어를 쳐다봐라 (뒤돌기)
+        StopMovement();
+        if (TargetActor)
+        {
+            SetFocus(TargetActor);
+            // 즉시 회전하도록 강제하고 싶다면 아래 코드 추가 가능
+            // FVector Dir = TargetActor->GetActorLocation() - OwnerBoss->GetActorLocation();
+            // Dir.Z = 0.0f;
+            // OwnerBoss->SetActorRotation(Dir.Rotation());
+        }
+
         CurrentAttackCount = 0;
-        AttackCooldownTimer = 0.5f; // 진입 후 0.5초 뒤 첫 발사
-        if (TargetActor) SetFocus(TargetActor);
-        StopMovement(); // 이동 정지
+        AttackCooldownTimer = 1.0f; // 돌아서는 시간 고려하여 1초 뒤 발사
         break;
 
     case EBossAIState::MeleeAttack:
-        CurrentAttackCount = 0;
-        AttackCooldownTimer = 0.0f; // 즉시 공격
         StopMovement();
         if (TargetActor) SetFocus(TargetActor);
+        CurrentAttackCount = 0;
+        AttackCooldownTimer = 0.0f;
         break;
 
     case EBossAIState::SwitchTarget:
     {
-        // 타겟 재설정 로직
         TArray<AActor*> Candidates;
         UGameplayStatics::GetAllActorsOfClass(GetWorld(), ACharacter::StaticClass(), Candidates);
 
         TArray<AActor*> ValidTargets;
         for (AActor* Actor : Candidates)
         {
-            // 나 자신 제외, 죽은 애들 제외 로직 추가 가능
-            if (Actor != OwnerBoss)
-            {
-                ValidTargets.Add(Actor);
-            }
+            if (Actor != OwnerBoss && Actor != TargetActor) ValidTargets.Add(Actor);
         }
 
         if (ValidTargets.Num() > 0)
         {
-            // 완전 랜덤 선택
-            int32 RandIdx = FMath::RandRange(0, ValidTargets.Num() - 1);
-            TargetActor = ValidTargets[RandIdx];
-            UE_LOG(LogTemp, Warning, TEXT("[BossAI] Target Switched to: %s"), *TargetActor->GetName());
+            TargetActor = ValidTargets[FMath::RandRange(0, ValidTargets.Num() - 1)];
         }
 
-        // 타겟 변경 후 바로 추격으로 전환
+        // 타겟 변경 후 바로 추격
         SetState(EBossAIState::Chase);
     }
     break;
     }
 }
 
+// --- [State Handlers] ---
+
 void AStageBossAIController::HandleIdle(float DeltaTime)
 {
-    // 가장 가까운 플레이어 탐색
     TargetActor = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
-    if (IsTargetValid())
-    {
-        SetState(EBossAIState::Chase);
-    }
+    if (IsTargetValid()) SetState(EBossAIState::Chase);
 }
 
+// ============================================================================
+// [수정 1] 추적 로직: 높이(Z) 무시하고 수평 거리만 계산
+// ============================================================================
 void AStageBossAIController::HandleChase(float DeltaTime)
 {
     if (!IsTargetValid()) return;
 
-    // 거리 계산 (Capsule끼리의 거리 아님, Actor 중심점 거리)
-    float Dist = OwnerBoss->GetDistanceTo(TargetActor);
+    // [변경 전] 3D 거리 계산 (키 차이 때문에 멀다고 착각함)
+    // float Dist = OwnerBoss->GetDistanceTo(TargetActor);
 
-    // [수정 포인트 1] 공격 범위(300)보다 안쪽이면 공격 상태로 전환
-    if (Dist <= AttackTriggerRange)
+    // [변경 후] 2D 수평 거리 계산 (높이 무시)
+    FVector BossLoc = OwnerBoss->GetActorLocation();
+    FVector TargetLoc = TargetActor->GetActorLocation();
+
+    // Z축을 0으로 만들어 수평 거리만 남김
+    float Dist2D = FVector::DistXY(BossLoc, TargetLoc);
+
+    // 디버깅: 실제 인식하는 거리 확인 (로그로 확인해보세요)
+    // UE_LOG(LogTemp, Warning, TEXT("Dist2D: %.2f / Trigger: %.2f"), Dist2D, AttackTriggerRange);
+
+    // 공격 사거리 내 진입 시
+    if (Dist2D <= AttackTriggerRange)
     {
+        StopMovement(); // 확실하게 멈춤
         SetState(EBossAIState::MeleeAttack);
         return;
     }
 
-    // [수정 포인트 2] 이동 명령
-    // MoveToActor는 내부적으로 경로 최적화를 하므로 매 틱 호출해도 괜찮으나,
-    // 성능을 위해 EPathFollowingRequestResult를 체크하거나 타이머를 쓸 수 있음.
-    // 여기서는 "멈추는 거리(200)"를 공격 범위(300)보다 확실히 작게 줘서, 
-    // 도착하면 무조건 공격 범위 안에 있게 만듭니다.
+    // 계속 추적 (바짝 붙도록)
     MoveToActor(TargetActor, MoveStopRange);
 }
 
 void AStageBossAIController::HandleMeleeAttack(float DeltaTime)
 {
-    // 쿨타임 체크
     if (AttackCooldownTimer > 0.0f)
     {
         AttackCooldownTimer -= DeltaTime;
         return;
     }
 
-    // 공격 실행 (서버에서 실행 -> Boss.cpp의 Multicast로 전파됨)
     OwnerBoss->DoAttack_Swing();
     CurrentAttackCount++;
 
-    // 콤보 체크
     if (CurrentAttackCount >= MaxComboCount)
     {
-        // 공격 후딜레이(1.0f)를 준 뒤 후퇴 상태로 전환
-        // 람다 캡처 시 this 안전성 주의 (타이머 핸들 관리 필요하지만 약식으로)
+        // 3타 후 후퇴로 전환 (딜레이 1.2초)
         FTimerHandle Handle;
         GetWorldTimerManager().SetTimer(Handle, [this]()
             {
                 if (IsValid(this)) SetState(EBossAIState::Retreat);
             }, 1.2f, false);
 
-        // 대기 중 중복 실행 방지
         AttackCooldownTimer = 999.0f;
     }
     else
     {
-        // 다음 공격까지 대기
         AttackCooldownTimer = AttackInterval;
     }
 }
 
 void AStageBossAIController::HandleRetreat(float DeltaTime)
 {
+    // 여기선 그냥 시간만 잰다 (이동은 SetState에서 이미 실행됨)
     StateTimer += DeltaTime;
 
-    // [수정 포인트 3] 후퇴 중에는 Focus를 끄고 이동만 집중
-    // MoveToLocation이 이미 실행 중이므로 여기선 시간만 잽니다.
-
-    // 2초 지나면 원거리 공격 패턴으로
+    // 2초 동안 뒤로 달리고 나서 원거리 공격으로 전환
     if (StateTimer >= RetreatDuration)
     {
         SetState(EBossAIState::RangeAttack);
@@ -219,7 +215,8 @@ void AStageBossAIController::HandleRetreat(float DeltaTime)
 
 void AStageBossAIController::HandleRangeAttack(float DeltaTime)
 {
-    // 원거리 공격은 타겟을 계속 바라봐야 함 (이미 SetState에서 SetFocus 함)
+    // 타겟 바라보기 유지
+    if (TargetActor) SetFocus(TargetActor);
 
     if (AttackCooldownTimer > 0.0f)
     {
@@ -227,18 +224,17 @@ void AStageBossAIController::HandleRangeAttack(float DeltaTime)
         return;
     }
 
-    // 발사
     OwnerBoss->DoAttack_Slash();
     CurrentAttackCount++;
 
     if (CurrentAttackCount >= MaxComboCount)
     {
-        // 3발 다 쏘면 타겟 변경
+        // 3발 쏘고 타겟 변경 (딜레이 1.5초)
         FTimerHandle Handle;
         GetWorldTimerManager().SetTimer(Handle, [this]()
             {
                 if (IsValid(this)) SetState(EBossAIState::SwitchTarget);
-            }, 1.5f, false); // 마지막 발사 후 1.5초 대기
+            }, 1.5f, false);
 
         AttackCooldownTimer = 999.0f;
     }
@@ -248,46 +244,77 @@ void AStageBossAIController::HandleRangeAttack(float DeltaTime)
     }
 }
 
-// --- Helper Functions ---
+// --- [Helper Functions] ---
 
-bool AStageBossAIController::IsTargetValid() const
+// ============================================================================
+// [수정 2] 후퇴 로직: 벽이 있으면 벽 앞까지만 도망감 (스마트 후퇴)
+// ============================================================================
+FVector AStageBossAIController::GetStraightRetreatLocation() const
 {
-    if (!TargetActor || !IsValid(TargetActor)) return false;
-
-    // (옵션) 타겟이 죽었는지 체크
-    /*
-    auto* TargetHC = TargetActor->FindComponentByClass<UHealthComponent>();
-    if (TargetHC && TargetHC->IsDead()) return false;
-    */
-
-    return true;
-}
-
-FVector AStageBossAIController::GetRetreatLocation() const
-{
-    if (!TargetActor || !OwnerBoss) return FVector::ZeroVector;
-
-    // 플레이어 -> 보스 방향 벡터 (도망갈 방향)
-    FVector Direction = (OwnerBoss->GetActorLocation() - TargetActor->GetActorLocation()).GetSafeNormal();
-
-    // Z축 영향 제거 (평면 이동)
-    Direction.Z = 0.0f;
-    if (Direction.IsNearlyZero()) Direction = -OwnerBoss->GetActorForwardVector(); // 겹쳐있으면 뒤로
+    if (!OwnerBoss) return FVector::ZeroVector;
 
     FVector Origin = OwnerBoss->GetActorLocation();
-    FVector DesiredLoc = Origin + (Direction * RetreatDistance);
+    FVector BackwardDir = -OwnerBoss->GetActorForwardVector(); // 등 뒤 방향
 
-    // 네비게이션 시스템 위로 투영 (갈 수 있는 길인지 확인)
+    // 1. 뒤쪽에 벽이 있는지 레이저를 쏴서 확인 (충돌 체크)
+    FHitResult HitResult;
+    FCollisionQueryParams Params;
+    Params.AddIgnoredActor(OwnerBoss); // 나는 무시
+
+    // RetreatDistance만큼 뒤로 쏴봄
+    bool bHit = GetWorld()->LineTraceSingleByChannel(
+        HitResult,
+        Origin,
+        Origin + (BackwardDir * RetreatDistance),
+        ECC_WorldStatic, // 벽(Static)만 체크
+        Params
+    );
+
+    FVector FinalDest;
+
+    if (bHit)
+    {
+        // 벽에 부딪혔다면? -> 벽에서 보스 덩치만큼 떨어진 곳까지만 이동
+        float CapsuleRadius = OwnerBoss->GetCapsuleComponent()->GetScaledCapsuleRadius();
+        float SafeBuffer = CapsuleRadius + 100.0f; // 덩치 + 여유공간
+
+        // (벽 위치)에서 (앞으로 살짝) 이동
+        FinalDest = HitResult.Location + (HitResult.Normal * SafeBuffer);
+
+        // 디버그: 벽 감지됨
+        if (bShowDebugLines)
+        {
+            DrawDebugLine(GetWorld(), Origin, HitResult.Location, FColor::Red, false, 2.0f, 0, 3.0f);
+            DrawDebugSphere(GetWorld(), FinalDest, 30.0f, 12, FColor::Orange, false, 2.0f);
+        }
+        UE_LOG(LogTemp, Warning, TEXT("[BossAI] Wall Detected behind! Shortening retreat distance."));
+    }
+    else
+    {
+        // 벽이 없으면 원래대로 최대 거리 이동
+        FinalDest = Origin + (BackwardDir * RetreatDistance);
+
+        if (bShowDebugLines)
+        {
+            DrawDebugLine(GetWorld(), Origin, FinalDest, FColor::Green, false, 2.0f, 0, 3.0f);
+        }
+    }
+
+    // 2. 네비게이션 위에 투영 (최종 갈 수 있는 땅인지 확인)
     FNavLocation NavLoc;
     UNavigationSystemV1* NavSys = UNavigationSystemV1::GetCurrent(GetWorld());
 
-    if (NavSys && NavSys->ProjectPointToNavigation(DesiredLoc, NavLoc))
+    // Extent(검색 범위)를 넉넉하게(Z축 500) 줘서 위아래 층도 인식 가능하게 함
+    if (NavSys && NavSys->ProjectPointToNavigation(FinalDest, NavLoc, FVector(500, 500, 500)))
     {
         return NavLoc.Location;
     }
 
-    // 만약 뒤가 막혔다면? (벽 등) -> 그냥 제자리거나 약간 옆으로 (여기선 간단히 Origin 반환 or 벽 슬라이딩)
-    // 개선안: EQS를 써야 가장 좋지만, 코드 상으로는 45도씩 꺾어서 재검사 하는 로직 추가 가능.
-    // 일단은 갈 수 있는 최대한으로 투영 시도
-    return DesiredLoc;
+    // 갈 곳이 정 없다면 현재 위치 반환 (이동 실패)
+    UE_LOG(LogTemp, Error, TEXT("[BossAI] Retreat Path Blocked (NavMesh not found)!"));
+    return Origin;
+}
+bool AStageBossAIController::IsTargetValid() const
+{
+    return (TargetActor && IsValid(TargetActor));
 }

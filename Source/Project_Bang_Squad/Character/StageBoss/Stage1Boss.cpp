@@ -14,7 +14,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Components/CapsuleComponent.h"
 #include "TimerManager.h"
-
+#include "Project_Bang_Squad/Character/MonsterBase/EnemyCharacterBase.h" // 팀킬 확인용
 // ============================================================================
 // [Constructor & BeginPlay]
 // ============================================================================
@@ -35,34 +35,73 @@ void AStage1Boss::BeginPlay()
         UE_LOG(LogTemp, Error, TEXT("[AStage1Boss] BossData is MISSING! Please assign DA_StageBoss in Blueprint."));
     }
 
-    // 시작 시 기믹 페이즈(무적)로 시작
+   
     if (HasAuthority())
     {
-        SetPhase(EBossPhase::Gimmick);
+        // 기믹(무적)으로 시작
+         SetPhase(EBossPhase::Gimmick); 
+
+        // [TEST] 데미지 확인용: 1페이즈(전투 상태)로 강제 시작
+       // SetPhase(EBossPhase::Phase1);
+
+        UE_LOG(LogTemp, Warning, TEXT("[TEST] Stage1Boss: Force Started in Phase 1 for Damage Test"));
     }
 }
-
 // ============================================================================
 // [Phase & Damage Logic]
 // ============================================================================
 
 float AStage1Boss::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
-    // 1. 부모 로직 실행 (데미지 적용 및 무적 체크)
+    // 1. [서버 권한] 데미지 계산은 오직 서버에서만
+    if (!HasAuthority()) return 0.0f;
+
+    // 2. [팀킬 방지] 몬스터끼리는 데미지 무효화
+    AActor* Attacker = DamageCauser;
+    if (EventInstigator && EventInstigator->GetPawn())
+    {
+        Attacker = EventInstigator->GetPawn();
+    }
+    else if (DamageCauser && DamageCauser->GetOwner()) // 투사체인 경우
+    {
+        Attacker = DamageCauser->GetOwner();
+    }
+
+    if (Attacker)
+    {
+        // 자기 자신이거나, 같은 몬스터(EnemyCharacterBase 상속)라면 무시
+        if (Attacker == this) return 0.0f;
+        if (Attacker->IsA(AEnemyCharacterBase::StaticClass()))
+        {
+            // UE_LOG(LogTemp, Log, TEXT("Friendly Fire prevented on Boss."));
+            return 0.0f;
+        }
+    }
+
+    // 3. 부모 로직 실행 (기본 처리)
     float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
 
-    if (!HasAuthority()) return ActualDamage;
-
-    // 2. HealthComponent 가져오기
+    // 4. [HealthComponent 연동] 명시적 처리
+    // (만약 부모 클래스인 StageBossBase가 HealthComponent 처리를 안 한다면 여기서 필수)
     UHealthComponent* HC = FindComponentByClass<UHealthComponent>();
-    if (!HC) return ActualDamage;
+    if (HC && !HC->IsDead())
+    {
+        // 이미 부모나 내부 로직에서 깎였는지 확인 후 적용
+        // 여기서는 안전하게 ApplyDamage를 호출하여 델리게이트를 발동시킴
+        // 주의: 중복 차감을 막기 위해 HC 내부 로직 확인 필요하나, 
+        // 보통은 여기서 ApplyDamage를 호출하는 것이 정석입니다.
+        HC->ApplyDamage(ActualDamage);
+    }
+    else
+    {
+        return 0.0f; // 체력 컴포넌트 없거나 죽었으면 데미지 무효
+    }
 
-    // 3. 체력 체크 (페이즈 2 진입)
-    if (HC->MaxHealth > 0.0f)
+    // 5. [페이즈 전환 체크]
+    // 체력이 깎인 "후"의 상태를 검사
+    if (HC && HC->MaxHealth > 0.0f)
     {
         float HpRatio = HC->GetHealth() / HC->MaxHealth;
-
-        // [DataDriven] 데이터 에셋의 비율값 사용 (기본값 0.5)
         float Threshold = BossData ? BossData->GimmickThresholdRatio : 0.5f;
 
         if (HpRatio <= Threshold && !bPhase2Started && CurrentPhase == EBossPhase::Phase1)
@@ -73,7 +112,6 @@ float AStage1Boss::TakeDamage(float DamageAmount, FDamageEvent const& DamageEven
 
     return ActualDamage;
 }
-
 void AStage1Boss::EnterPhase2()
 {
     if (!HasAuthority()) return;
@@ -229,21 +267,40 @@ void AStage1Boss::Multicast_PlayAttackMontage_Implementation(UAnimMontage* Monta
     }
 }
 
+// [기존 유지하되 주석 추가]
 void AStage1Boss::AnimNotify_SpawnSlash()
 {
-    // [DataDriven] 데이터 에셋에 정의된 투사체 클래스 사용
-    if (!HasAuthority() || !BossData || !BossData->SlashProjectileClass) return;
+    // [서버 권한 필수] 투사체는 서버에서 생성 후 리플리케이트됨
+    if (!HasAuthority()) return;
 
-    FVector SpawnLocation = GetActorLocation() + GetActorForwardVector() * 100.0f;
-    FRotator SpawnRotation = GetActorRotation();
+    // 데이터 에셋 체크
+    if (!BossData || !BossData->SlashProjectileClass)
+    {
+        UE_LOG(LogTemp, Error, TEXT("BossData or SlashProjectileClass is NULL!"));
+        return;
+    }
+
+    // 위치 계산: 보스 정면 1.5m 앞
+    FVector SpawnLocation = GetActorLocation() + GetActorForwardVector() * 150.0f;
+    FRotator SpawnRotation = GetActorRotation(); // 보스가 보는 방향
 
     FActorSpawnParameters SpawnParams;
     SpawnParams.Owner = this;
-    SpawnParams.Instigator = this;
+    SpawnParams.Instigator = this; // 데미지 판정 시 주인이 됨
 
-    GetWorld()->SpawnActor<ASlashProjectile>(BossData->SlashProjectileClass, SpawnLocation, SpawnRotation, SpawnParams);
+    ASlashProjectile* Projectile = GetWorld()->SpawnActor<ASlashProjectile>(
+        BossData->SlashProjectileClass,
+        SpawnLocation,
+        SpawnRotation,
+        SpawnParams
+    );
+
+    if (Projectile)
+    {
+        // 필요 시 투사체 초기 설정 (예: 타겟 설정 등)
+        // UE_LOG(LogTemp, Log, TEXT("Boss Slash Projectile Spawned!"));
+    }
 }
-
 void AStage1Boss::AnimNotify_CheckMeleeHit()
 {
     if (!HasAuthority()) return;
