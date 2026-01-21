@@ -71,20 +71,56 @@ float ABaseCharacter::TakeDamage(float DamageAmount, struct FDamageEvent const& 
 {
 	// 1. 서버가 아니면 무시 (해킹 방지 및 동기화 주체 확인)
 	if (!HasAuthority()) return 0.0f;
-
 	// 2. 이미 죽었으면 무시
 	if (HealthComp && HealthComp->IsDead()) return 0.0f;
-
 	// 3. 실제 데미지 적용
 	float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
-    
 	// 체력 감소 (HealthComp가 알아서 처리하도록 위임)
 	if (HealthComp)
 	{
 		HealthComp->ApplyDamage(ActualDamage);
 	}
 
+	// 맞았으니 회복 중단 & 대기 타이머 리셋
+	if (ActualDamage > 0.0f)
+	{
+		// 1. 진행 중이던 회복 틱 정지
+		GetWorldTimerManager().ClearTimer(RegenTickTimer);
+		// 2. 대기 타이머 재설정 
+		GetWorldTimerManager().SetTimer(RegenDelayTimer, this, &ABaseCharacter::StartHealthRegen, RegenDelay, false);
+	}
 	return ActualDamage;
+}
+
+void ABaseCharacter::StartHealthRegen()
+{
+	// 이미 죽었거나 체력이 꽉 차있으면 실행 X
+	if (bIsDead) return;
+	if (HealthComp && HealthComp->IsFullHealth()) return;
+	
+	// 일정 간격마다 HealthRegenTick 함수 반복 실행
+	GetWorldTimerManager().SetTimer(RegenTickTimer, this, &ABaseCharacter::HealthRegenTick, RegenTickInterval, true);
+	
+}
+
+void ABaseCharacter::HealthRegenTick()
+{
+	if (bIsDead || !HealthComp)
+	{
+		GetWorldTimerManager().ClearTimer(RegenTickTimer);
+		return;
+	}
+	
+	// 만약 이미 풀피라면? -> 타이머 끄기
+	if (HealthComp->IsFullHealth())
+	{
+		GetWorldTimerManager().ClearTimer(RegenTickTimer);
+		return;
+	}
+	
+	// 실제 회복 (초당 회복량 * 간격)
+	float HealAmount = RegenRate * RegenTickInterval;
+	HealthComp->ApplyHeal(HealAmount);
 }
 
 void ABaseCharacter::OnDeath()
@@ -127,6 +163,10 @@ void ABaseCharacter::OnDeath()
 				2.0f, false);
 		}
 	}
+	
+	// 5. 죽었으니 회복 관련 모든 타이머 종료
+	GetWorldTimerManager().ClearTimer(RegenDelayTimer);
+	GetWorldTimerManager().ClearTimer(RegenTickTimer);
 	
 }
 

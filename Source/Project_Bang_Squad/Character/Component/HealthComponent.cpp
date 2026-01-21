@@ -87,3 +87,31 @@ void UHealthComponent::OnRep_CurrentHealth()
         OnDead.Broadcast();
     }
 }
+
+// =========================================================
+// 체력 재생 지원 함수들
+// =========================================================
+
+bool UHealthComponent::IsFullHealth() const
+{
+    return CurrentHealth >= MaxHealth - KINDA_SMALL_NUMBER;
+}
+
+void UHealthComponent::ApplyHeal (float HealAmount)
+{
+    // 1. 서버 권한 체크
+    if (!GetOwner() || !GetOwner()->HasAuthority()) return;
+    
+    // 2. 죽은 상태거나 회복량이 없으면 무시
+    if (IsDead() || HealAmount <= 0.0f) return;
+    
+    // 3. 이미 꽉 차있으면 무시
+    if (IsFullHealth()) return;
+    
+    // 4. 체력 증가 (최대 체력 넘지 않게)
+    CurrentHealth = FMath::Clamp(CurrentHealth + HealAmount, 0.0f, MaxHealth);
+    
+    // 5. 서버 UI 갱신을 위해 델리게이트 방송
+    OnHealthChanged.Broadcast(CurrentHealth, MaxHealth);
+    
+}

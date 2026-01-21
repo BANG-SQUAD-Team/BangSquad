@@ -89,6 +89,31 @@ public:
 protected:
 	virtual void BeginPlay() override;
 	
+	// =========================================================
+	//  체력 자동 재생 (Health Regen)
+	// =========================================================
+	// 마지막으로 데미지를 입은 후, 회복이 시작되기까지 대기 시간 (초)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Health")
+	float RegenDelay = 2.0f;
+	
+	// 초당 회복량
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Health")
+	float RegenRate = 5.0f;
+	
+	// 1초에 몇번 회복할 것인가?
+	float RegenTickInterval = 0.5f;
+	
+	// 내부 타이머 핸들
+	FTimerHandle RegenDelayTimer;
+	FTimerHandle RegenTickTimer;
+	
+	// 회복 시작 함수 (Delay 끝난 후 호출)
+	void StartHealthRegen();
+	
+	// 실제 회복 함수 (Tick마다 호출)
+	void HealthRegenTick();
+	
+	
 	// HealthComponent의 OnDead 신호를 받을 함수
 	UFUNCTION()
 	virtual void OnDeath();

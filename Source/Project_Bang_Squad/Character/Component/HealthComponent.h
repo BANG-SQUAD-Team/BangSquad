@@ -54,4 +54,12 @@ public:
 
 	//  BaseCharacter의 TakeDamage에서 직접 호출할 함수
 	void ApplyDamage(float DamageAmount);
+	
+	// 체력이 꽉 찼는지 확인
+	UFUNCTION(BlueprintCallable, Category = "Health")
+	bool IsFullHealth() const;
+	
+	// 체력 회복 함수 (서버 전용)
+	UFUNCTION(BlueprintCallable, Category = "Health")
+	void ApplyHeal(float HealAmount);
 };
