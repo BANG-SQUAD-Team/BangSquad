@@ -11,7 +11,7 @@ enum class EBossAIState : uint8
     Idle,           // 대기
     Chase,          // 추적
     MeleeAttack,    // 근접 공격 (3회)
-    Retreat,        // 후퇴 (플레이어 반대 방향)
+    Retreat,        // 후퇴 (직선 도주)
     RangeAttack,    // 원거리 공격 (3회)
     SwitchTarget    // 타겟 변경
 };
@@ -40,7 +40,9 @@ protected:
     void HandleRangeAttack(float DeltaTime);
 
     bool IsTargetValid() const;
-    FVector GetRetreatLocation() const;
+
+    // [NEW] 등 뒤로 직선 후퇴 좌표 계산
+    FVector GetStraightRetreatLocation() const;
 
     UPROPERTY()
     TObjectPtr<class AStage1Boss> OwnerBoss;
@@ -52,25 +54,27 @@ protected:
     float StateTimer = 0.0f;
     float AttackCooldownTimer = 0.0f;
 
-    // ==============================================================================
-    // [설정] 이제 에디터(블루프린트)에서 이 값들을 마음대로 조절하세요!
-    // ==============================================================================
 public:
+    // --- [Config] 에디터에서 조정 가능 ---
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss AI|Config|Movement")
-    float AttackTriggerRange = 500.0f; // 공격 시작 거리 (캡슐이 커졌으니 넉넉하게)
+    float AttackTriggerRange = 500.0f; // 공격 사거리
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss AI|Config|Movement")
-    float MoveStopRange = 10.0f;       // 이동 멈춤 거리 (바짝 붙게)
+    float MoveStopRange = 10.0f;       // 바짝 붙기
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss AI|Config|Retreat")
-    float RetreatDuration = 2.0f;      // 후퇴 시간
+    float RetreatDuration = 2.0f;      // 2초간 이동
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss AI|Config|Retreat")
-    float RetreatDistance = 800.0f;    // 후퇴 거리
+    float RetreatDistance = 1000.0f;   // 뒤로 빠질 거리 (넉넉하게)
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss AI|Config|Combat")
-    int32 MaxComboCount = 3;           // 3회 공격
+    int32 MaxComboCount = 3;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss AI|Config|Combat")
-    float AttackInterval = 1.5f;       // 공격 간 딜레이 (초)
+    float AttackInterval = 1.5f;
+
+    // 디버그 라인 표시 여부
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss AI|Debug")
+    bool bShowDebugLines = true;
 };

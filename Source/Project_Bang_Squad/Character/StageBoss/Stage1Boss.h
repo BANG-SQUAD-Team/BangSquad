@@ -94,11 +94,11 @@ public:
     UFUNCTION(Server, Reliable, BlueprintCallable)
     void Server_SubmitQTEInput(APlayerController* PlayerController);
 
-    // --- [AnimNotify Hooks] ---
-protected:
     // 애니메이션 노티파이에서 호출: 실제 투사체 발사
     UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Boss|Combat")
     void AnimNotify_SpawnSlash();
+    // --- [AnimNotify Hooks] ---
+protected:
 
     // 애니메이션 노티파이에서 호출: 근접 공격 판정
     UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Boss|Combat")
