@@ -267,10 +267,13 @@ void APaladinCharacter::PerformMeleeTrace()
         {
             AActor* HitActor = Hit.GetActor();
             // 중복 피격 방지 (한 번 휘두를 때 한 번만 맞도록)
-            if (HitActor && HitActor != this && !SwingDamagedActors.Contains(HitActor))
+            if (HitActor && HitActor->IsA(ACharacter::StaticClass()) &&
+                HitActor != this && !SwingDamagedActors.Contains(HitActor))
             {
                 UGameplayStatics::ApplyDamage(HitActor, CurrentSkillDamage, GetController(), this, UDamageType::StaticClass());
                 SwingDamagedActors.Add(HitActor);
+                
+                Client_TriggerHitStop();
             }
         }
     }
@@ -282,6 +285,34 @@ void APaladinCharacter::StopMeleeTrace()
 {
     GetWorldTimerManager().ClearTimer(HitLoopTimerHandle);
     SwingDamagedActors.Empty();
+}
+
+void APaladinCharacter::Client_TriggerHitStop_Implementation()
+{
+    // 여기서 시간을 멈추면 나에게만 보임
+    
+    // 1. 나 자신이 로컬 플레이어인지 확인
+    if (!IsLocallyControlled()) return;
+    // 2. 시간 조작 (Hit Stop)
+    CustomTimeDilation = HitStopTimeDilation;
+    // 3. 복구 타이머 설정
+    GetWorldTimerManager().ClearTimer(HitStopTimer);
+    GetWorldTimerManager().SetTimer(HitStopTimer, this, &APaladinCharacter::RestoreTimeDilation, HitStopDuration, false);
+    
+    // 여기서 카메라 흔들림을 넣어야 나만 화면이 흔들림
+    if (APlayerController* PC = Cast<APlayerController>(GetController()))
+    {
+        if (HitShakeClass)
+        {
+            PC->ClientStartCameraShake(HitShakeClass);
+        }
+    }
+}
+
+void APaladinCharacter::RestoreTimeDilation()
+{
+    // 시간을 원래 속도로 복구
+    CustomTimeDilation = 1.0f;
 }
 
 // ====================================================================================
@@ -316,18 +347,18 @@ void APaladinCharacter::ProcessSkill(FName SkillRowName)
         // 몽타주 재생 (Client/Server 공통)
         if (Data->SkillMontage) PlayActionMontage(Data->SkillMontage);
 
+        // 쿨타임 타이머 등록
+        if (Data->Cooldown > 0.0f)
+        {
+            FTimerHandle& Handle = SkillTimers.FindOrAdd(SkillRowName);
+            GetWorldTimerManager().SetTimer(Handle, Data->Cooldown, false);
+        }
+        
         // [서버 로직] 실제 판정 처리
         if (HasAuthority())
         {
             if (Data->SkillMontage) Server_PlayMontage(Data->SkillMontage);
             
-            // 쿨타임 타이머 등록
-            if (Data->Cooldown > 0.0f)
-            {
-                FTimerHandle& Handle = SkillTimers.FindOrAdd(SkillRowName);
-                GetWorldTimerManager().SetTimer(Handle, Data->Cooldown, false);
-            }
-
             // ----------------------------------------------------
             // Case A: 스킬1 분쇄 (점프 공격)
             // ----------------------------------------------------
@@ -351,6 +382,12 @@ void APaladinCharacter::ProcessSkill(FName SkillRowName)
 
                 // 2. 캐릭터 발사
                 FVector LaunchDir = (GetActorForwardVector() * 800.0f) + (FVector::UpVector * RequiredLaunchZ);
+                //무조건 날아가게 하기
+                if (GetCharacterMovement())
+                {
+                    GetCharacterMovement()->SetMovementMode(MOVE_Falling);
+                }
+                // 그 후에 발사
                 LaunchCharacter(LaunchDir, true, true);
             
                 // [핵심] 타이머 호출 시, 현재 데미지 값을 고정(Capture)해서 전달

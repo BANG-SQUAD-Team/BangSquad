@@ -75,6 +75,25 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
     float HitDuration = 0.25f; 
 
+    // [네트워크] 서버가 클라이언트에게 "타격감 연출해!"라고 명령하는 함수
+    UFUNCTION(Client, Reliable)
+    void Client_TriggerHitStop();
+    void Client_TriggerHitStop_Implementation(); // 언리얼이 자동으로 생성하는 구현부
+    
+    // [역경직] 시간을 원래대로 복구하는 함수
+    void RestoreTimeDilation();
+    // [역경직] 시간 복구용 타이머 핸들
+    FTimerHandle HitStopTimer;
+    // [역경직] 멈추는 시간
+    UPROPERTY(EditAnywhere, Category = "Combat|Feel")
+    float HitStopDuration = 0.1f;
+    // [역경직] 얼마나 느려질지
+    UPROPERTY(EditAnywhere, Category = "Combat|Feel")
+    float HitStopTimeDilation = 0.01f;
+    // 에디터에서 카메라 흔들림 블루프린트를 넣을 변수
+    UPROPERTY(EditAnywhere, Category = "Combat|Feel")
+    TSubclassOf<class UCameraShakeBase> HitShakeClass;
+    
     // ====================================================================================
     //  섹션 4: 스킬 시스템 (Skill System - Smash)
     // ====================================================================================
