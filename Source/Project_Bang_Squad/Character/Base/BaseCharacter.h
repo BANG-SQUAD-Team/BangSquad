@@ -113,7 +113,6 @@ protected:
 	// 실제 회복 함수 (Tick마다 호출)
 	void HealthRegenTick();
 	
-	
 	// HealthComponent의 OnDead 신호를 받을 함수
 	UFUNCTION()
 	virtual void OnDeath();
@@ -175,6 +174,9 @@ protected:
 
 	bool IsSkillUnlocked(int32 RequiredStage);
 
+	// 플레이어 캐릭터의 속도를 저장할 변수
+	float CachedWalkSpeed = 0.0f;
+	
 	// 공격 쿨타임 중인지 확인
 	bool bIsAttackCoolingDown = false;
 	

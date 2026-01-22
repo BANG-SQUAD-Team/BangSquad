@@ -62,6 +62,30 @@ void ABaseCharacter::BeginPlay()
 	{
 		HealthComp->OnDead.AddDynamic(this, &ABaseCharacter::OnDeath);
 	}
+	
+	if (UWorld* World = GetWorld())
+	{
+		FString MapName = World->GetMapName();
+		MapName.RemoveFromStart(World->StreamingLevelsPrefix);
+		
+		// 맵 이름이 "Stage1_Demo여도 "Stage1"이 포함되어 있으니 가능!
+		if (MapName.Contains(TEXT("Stage1")))
+		{
+			UnlockedStageLevel = 1;
+		}
+		else if (MapName.Contains(TEXT("Stage2")))
+		{
+			UnlockedStageLevel = 2;
+		}
+		else if (MapName.Contains(TEXT("Stage3")))
+		{
+			UnlockedStageLevel = 3;
+		}
+		else
+		{
+			UnlockedStageLevel = 3;
+		}
+	}
 }
 
 
@@ -286,7 +310,7 @@ void ABaseCharacter::Landed(const FHitResult& Hit)
 {
 	Super::Landed(Hit);
 
-	if (bWasThrownByTitan)
+	if (HasAuthority() && bWasThrownByTitan)
 	{
 		// 1. 상태 복구
 		bWasThrownByTitan = false;
@@ -414,21 +438,45 @@ void ABaseCharacter::ApplySlowDebuff(bool bActive, float Ratio)
 	UCharacterMovementComponent* MoveComp = GetCharacterMovement();
 	if (!MoveComp) return;
 
-	// 내 원래 속도를 '설계도(Default Object)'에서 가져옴
-	// 이렇게 하면 캐릭터마다(전사, 메이지 등) 기본 속도가 달라도 정확히 복구됨
-	float OriginalSpeed = 550.0f; // 비상용 기본값
-	if (ACharacter* DefaultChar = GetClass()->GetDefaultObject<ACharacter>())
+	float TargetSpeed = 0.0f;
+	
+	if (bActive)
 	{
-		if (UCharacterMovementComponent* DefMove = DefaultChar->GetCharacterMovement())
+		// [장판 입장]
+		// 현재 속도를 백업 (중복 적용 방지)
+		if (CachedWalkSpeed <= 0.0f)
 		{
-			OriginalSpeed = DefMove->MaxWalkSpeed;
+			CachedWalkSpeed = MoveComp->MaxWalkSpeed;
 		}
+		// 비율만큼 감속
+		TargetSpeed = CachedWalkSpeed * Ratio;
 	}
-
-	// 목표 속도 계산
-	float TargetSpeed = bActive ? (OriginalSpeed * Ratio) : OriginalSpeed;
-
-	// 방송!
+	else
+	{
+		// 장판 퇴장 - 복구 로직
+		if (CachedWalkSpeed > 0.0f)
+		{
+			// 1순위: 들어오기 직전 속도로 복구
+			TargetSpeed = CachedWalkSpeed;
+		}
+		else
+		{
+			// 2순위 (비상용)
+			float ClassDefaultSpeed = 550.0f; // 기본값(혹시 실패시)
+			// 현재 내 클래스의 원본 세팅값을 가져옴
+			if (ACharacter* DefaultChar = GetClass()->GetDefaultObject<ACharacter>())
+			{
+				if (UCharacterMovementComponent* DefMove = Cast<UCharacterMovementComponent>(DefaultChar->GetCharacterMovement()))
+				{
+					ClassDefaultSpeed = DefMove->MaxWalkSpeed;
+				}
+			}
+			TargetSpeed = ClassDefaultSpeed;
+		}
+		// 복구했으니 캐시 초기화
+		CachedWalkSpeed = 0.0f;
+	}
+	// 서버와 클라이언트 모두 속도 변경
 	Multicast_SetMaxWalkSpeed(TargetSpeed);
 }
 

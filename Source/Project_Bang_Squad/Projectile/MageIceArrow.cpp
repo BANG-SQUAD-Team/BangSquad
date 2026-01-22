@@ -13,6 +13,27 @@ AMageIceArrow::AMageIceArrow()
 	ProjectileMovement->InitialSpeed = 3000.f;
 }
 
+void AMageIceArrow::Multicast_SpawnIceVFX_Implementation(FVector Location, FRotator Rotation)
+{
+	if (HitImpactVFX)
+	{
+		UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+			GetWorld(),
+			HitImpactVFX,
+			Location,
+			Rotation
+			);
+	}
+	
+	// [가짜 죽음 처리]
+	// 부모 클래스의 MeshComp를 숨김
+	if (MeshComp) MeshComp->SetVisibility(false);
+	if (NiagaraComp) NiagaraComp->SetVisibility(false);
+	if (ProjectileMovement) ProjectileMovement->StopMovementImmediately();
+	
+}
+
+
 // 적을 맞췄을 때
 void AMageIceArrow::OnOverlap(UPrimitiveComponent* OverlappedComponent,
 	AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
@@ -32,16 +53,8 @@ void AMageIceArrow::OnOverlap(UPrimitiveComponent* OverlappedComponent,
 			// 1. 데미지 주기
 			UGameplayStatics::ApplyDamage(OtherActor, Damage, GetInstigatorController(), this, UDamageType::StaticClass());
 			
-			// 나이아가라 이펙트 재생
-			if (HitImpactVFX)
-			{
-				UNiagaraFunctionLibrary::SpawnSystemAtLocation(
-					GetWorld(),
-					HitImpactVFX,
-					OtherActor->GetActorLocation(),
-					FRotator::ZeroRotator
-					);
-			}
+			Multicast_SpawnIceVFX(OtherActor->GetActorLocation(),
+				FRotator::ZeroRotator);
 			
 			// 2. 바닥 찾기 로직
 			FVector EnemyLocation = OtherActor->GetActorLocation();
@@ -68,8 +81,8 @@ void AMageIceArrow::OnOverlap(UPrimitiveComponent* OverlappedComponent,
 			// 장판 소환 (바닥에 딱 붙으면 텍스처 깨질 수 있으니 Z축 살짝 올림)
 			SpawnIcePad(SpawnLoc + FVector(0.0f, 0.0f, 2.0f));
 			
-			// 화살 삭제
-			Destroy();
+			
+			SetLifeSpan(0.1f);
 			
 			
 			
@@ -86,20 +99,11 @@ void AMageIceArrow::NotifyHit(UPrimitiveComponent* MyComp, AActor* Other, UPrimi
 		
 		if (Other && (Other != this) && (Other != GetOwner()) && !bIsAlly)
 		{
-			// 나이아가라 이펙트 재생
-			if (HitImpactVFX)
-			{
-				UNiagaraFunctionLibrary::SpawnSystemAtLocation(
-					GetWorld(),
-					HitImpactVFX,
-					HitLocation,
-					HitNormal.Rotation()
-					);
-			}
-			
+			Multicast_SpawnIceVFX(HitLocation, HitNormal.Rotation());
 			// 벽에서 살짝 띄워서(Normal 방향) 소환
 			SpawnIcePad(HitLocation + (HitNormal * 5.0f)); 
-			Destroy();
+			
+			SetLifeSpan(0.1f);
 		}
 	}
 }
@@ -111,3 +115,4 @@ void AMageIceArrow::SpawnIcePad(FVector SpawnLocation)
 		GetWorld()->SpawnActor<AActor>(IcePadClass, SpawnLocation, FRotator::ZeroRotator);
 	}
 }
+

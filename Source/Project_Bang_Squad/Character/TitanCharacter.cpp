@@ -19,6 +19,8 @@ ATitanCharacter::ATitanCharacter()
 	PrimaryActorTick.bCanEverTick = true;
 	bReplicates = true;
 
+	GetCharacterMovement()->MaxWalkSpeed = 495.f;
+	
 	ThrowSpawnPoint = CreateDefaultSubobject<UArrowComponent>(TEXT("ThrowSpawnPoint"));
 
 	if (Camera)

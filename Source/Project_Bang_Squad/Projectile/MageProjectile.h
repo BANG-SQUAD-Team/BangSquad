@@ -39,7 +39,12 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	UNiagaraComponent* NiagaraComp;
-    
+	
+
+	// 모든 클라이언트에서 이펙트를 재생하라고 명령하는 함수
+	UFUNCTION(NetMulticast, Unreliable)
+	void Multicast_SpawnHitVFX(FVector Location, FRotator Rotation);
+	
 	/** 투사체의 이동을 제어하는 컴포넌트 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	UProjectileMovementComponent* ProjectileMovement;

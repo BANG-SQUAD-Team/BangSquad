@@ -88,19 +88,9 @@ void AMageProjectile::OnOverlap(UPrimitiveComponent* OverlappedComponent, AActor
             // 데미지 전달
             UGameplayStatics::ApplyDamage(OtherActor, Damage, GetInstigatorController(), this, UDamageType::StaticClass());
             
-            // 맞았을 때 나이아가라 이펙트
-            if (FireImpactVFX)
-            {
-                UNiagaraFunctionLibrary::SpawnSystemAtLocation(
-                    GetWorld(),
-                    FireImpactVFX,
-                    GetActorLocation(), // 투사체 현재 위치에서 터짐
-                    FRotator::ZeroRotator
-                );
-            }
+            Multicast_SpawnHitVFX(GetActorLocation(), FRotator::ZeroRotator);
             
-            // 데미지 주고 즉시 삭제
-            Destroy();
+            SetLifeSpan(0.1f);
         }
     }
 }
@@ -121,22 +111,32 @@ void AMageProjectile::NotifyHit(UPrimitiveComponent* MyComp, AActor* Other, UPri
             UGameplayStatics::ApplyDamage(Other,Damage, GetInstigatorController(),
                 this, UDamageType::StaticClass());
             
-            //나이아가라 이펙트
-            if (FireImpactVFX)
-            {
-                
-                UNiagaraFunctionLibrary::SpawnSystemAtLocation(
-                    GetWorld(),
-                    FireImpactVFX,
-                    HitLocation, // 정확히 부딪힌 지점
-                    HitNormal.Rotation() 
-                );
-            }
+            Multicast_SpawnHitVFX(HitLocation, HitNormal.Rotation());
             
-            // (옵션) 여기서 벽에 부딪히는 이펙트(Sparks)를 스폰하면 좋습니다.
-            // UGameplayStatics::SpawnEmitterAtLocation(...)
-            
-            Destroy();
+            SetLifeSpan(0.1f);
         }
     }
+}
+
+void AMageProjectile::Multicast_SpawnHitVFX_Implementation(FVector Location, FRotator Rotation)
+{
+    // 이 코드는 서버와 클라이언트 모두에서 실행됩니다!
+    if (FireImpactVFX) // 변수명이 FireImpactVFX 인지 확인하세요!
+    {
+        UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+            GetWorld(),
+            FireImpactVFX,
+            Location,
+            Rotation
+        );
+    }
+    // 2. 즉시 삭제하지 말고, 안 보이게만 숨김 (가짜 죽음)
+    if (MeshComp) MeshComp->SetVisibility(false);
+    if (NiagaraComp) NiagaraComp->SetVisibility(false);
+    
+    // 3. 충돌 끄기 (더 이상 안 맞게)
+    if (SphereComp) SphereComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+    // 4. 이동 멈추기
+    if (ProjectileMovement) ProjectileMovement->StopMovementImmediately();
 }

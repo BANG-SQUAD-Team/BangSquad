@@ -30,6 +30,7 @@ APaladinCharacter::APaladinCharacter()
     bUseControllerRotationPitch = false;
     bUseControllerRotationRoll = false;
     
+    GetCharacterMovement()->MaxWalkSpeed = 550.f;
     GetCharacterMovement()->bOrientRotationToMovement = false;
     GetCharacterMovement()->RotationRate = FRotator(0.0f, 720.0f, 0.0f);
     
