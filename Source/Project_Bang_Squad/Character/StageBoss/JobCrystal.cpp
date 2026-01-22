@@ -1,7 +1,8 @@
 // Source/Project_Bang_Squad/Character/StageBoss/JobCrystal.cpp
 #include "JobCrystal.h"
 #include "StageBossBase.h"
-
+#include "Kismet/GameplayStatics.h"    // [필수] GetActorOfClass 사용
+#include "Stage1Boss.h"                // [필수] 보스 클래스 인식을 위해 헤더 변경
 // [중요] 캐스팅을 위해 모든 캐릭터 헤더 포함
 #include "Project_Bang_Squad/Character/TitanCharacter.h"
 #include "Project_Bang_Squad/Character/StrikerCharacter.h"
@@ -84,4 +85,21 @@ float AJobCrystal::TakeDamage(float DamageAmount, FDamageEvent const& DamageEven
     }
 
     return DamageAmount;
+}
+
+void AJobCrystal::BeginPlay()
+{
+    Super::BeginPlay();
+
+    // 만약 보스가 연결 안 되어 있다면? (맵에 직접 배치한 경우)
+    if (TargetBoss == nullptr && HasAuthority())
+    {
+        // 월드에 있는 'AStage1Boss'를 찾아서 내 보스로 임명한다.
+        AActor* FoundBoss = UGameplayStatics::GetActorOfClass(GetWorld(), AStage1Boss::StaticClass());
+        if (FoundBoss)
+        {
+            TargetBoss = Cast<AStage1Boss>(FoundBoss);
+            UE_LOG(LogTemp, Warning, TEXT("JobCrystal: Auto-connected to Boss manually!"));
+        }
+    }
 }

@@ -3,7 +3,8 @@
 
 #include "CoreMinimal.h"
 #include "StageBossBase.h"
-#include "Project_Bang_Squad/Character/MonsterBase/EnemyBossData.h" // [NEW] 데이터 에셋 헤더 추가
+#include "Project_Bang_Squad/Character/MonsterBase/EnemyBossData.h" // 데이터 에셋
+#include "Project_Bang_Squad/Core/BSGameInstance.h" // [필수] EJobType 사용을 위해 포함
 #include "Stage1Boss.generated.h"
 
 // 전방 선언
@@ -32,17 +33,18 @@ protected:
 
     // --- [Data Asset Config] ---
 public:
-    // [NEW] 보스 공용 데이터 (공격 모션, 투사체, 기믹 발동 비율 등)
-    // 기획자가 여기서 데이터 에셋(DA_Stage1Boss)을 할당합니다.
+    // 보스 공용 데이터 (공격 모션, 투사체 등)
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Boss|Data")
     TObjectPtr<UEnemyBossData> BossData;
 
     // --- [Stage Specific Config: 1스테이지 전용 기믹] ---
-    // 아래 항목들은 모든 보스 공통이 아니라, 1스테이지 보스만의 특수 기믹이므로 여기에 남겨둡니다.
 public:
+    // [변경] 기존 단일 클래스 대신, 직업별로 다른 BP를 지정할 수 있는 Map 사용
+    // 에디터 사용법: '+' 눌러서 Key(직업) - Value(BP) 쌍을 4개 등록하세요.
     UPROPERTY(EditDefaultsOnly, Category = "Boss|Gimmick")
-    TSubclassOf<AJobCrystal> CrystalClass;
+    TMap<EJobType, TSubclassOf<AJobCrystal>> JobCrystalClasses;
 
+    // 수정이 소환될 위치 (에디터 뷰포트에서 위젯으로 조정)
     UPROPERTY(EditAnywhere, Category = "Boss|Gimmick", meta = (MakeEditWidget = true))
     TArray<FVector> CrystalSpawnPoints;
 
@@ -53,7 +55,6 @@ public:
     FVector WallSpawnLocation;
 
     // --- [Combat Config: 전투 수치] ---
-    // (참고: 데미지 등도 나중에는 BaseData로 옮기는 것이 좋으나, 우선 여기에 둡니다)
     UPROPERTY(EditAnywhere, Category = "Boss|Combat")
     float MeleeAttackRadius = 400.0f;
 
@@ -75,7 +76,7 @@ protected:
     // 데미지 체크 (페이즈 2 진입용)
     virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser) override;
 
-    // 사망 처리 (승리 로직)
+    // 사망 처리
     virtual void OnDeathStarted() override;
 
     // --- [AI Command Interface] ---
@@ -94,13 +95,11 @@ public:
     UFUNCTION(Server, Reliable, BlueprintCallable)
     void Server_SubmitQTEInput(APlayerController* PlayerController);
 
-    // 애니메이션 노티파이에서 호출: 실제 투사체 발사
+    // 애니메이션 노티파이: 투사체 발사
     UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Boss|Combat")
     void AnimNotify_SpawnSlash();
-    // --- [AnimNotify Hooks] ---
-protected:
 
-    // 애니메이션 노티파이에서 호출: 근접 공격 판정
+    // 애니메이션 노티파이: 근접 공격 판정
     UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Boss|Combat")
     void AnimNotify_CheckMeleeHit();
 
@@ -114,7 +113,7 @@ private:
     void SpawnCrystals();
     void SpawnDeathWall();
 
-    // [Refactor] 이제 몽타주를 직접 인자로 받습니다.
+    // 몽타주 재생 멀티캐스트
     UFUNCTION(NetMulticast, Unreliable)
     void Multicast_PlayAttackMontage(UAnimMontage* MontageToPlay, FName SectionName = NAME_None);
 

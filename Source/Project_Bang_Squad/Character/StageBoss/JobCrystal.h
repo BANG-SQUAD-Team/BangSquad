@@ -27,6 +27,9 @@ public:
     virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser) override;
 
 protected:
+    // [NEW] 게임 시작 시 스스로 보스를 찾기 위해 오버라이드
+    virtual void BeginPlay() override;
+
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
     UStaticMeshComponent* MeshComp;
 
