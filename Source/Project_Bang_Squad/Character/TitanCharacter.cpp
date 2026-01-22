@@ -12,8 +12,7 @@
 #include "Net/UnrealNetwork.h"
 #include "Project_Bang_Squad/Character/Enemy/EnemyNormal.h"
 #include "Project_Bang_Squad/Character/Player/Titan/TitanRock.h"
-
-// [주의] BoxComponent 관련 헤더 및 코드는 삭제됨 (팔라딘 방식 Trace 사용)
+#include "Project_Bang_Squad/Character/Player/Titan/TitanThrowableActor.h"
 
 ATitanCharacter::ATitanCharacter()
 {
@@ -377,42 +376,92 @@ void ATitanCharacter::ExecuteGrab() { if (GEngine) GEngine->AddOnScreenDebugMess
 void ATitanCharacter::Server_TryGrab_Implementation(AActor* TargetToGrab)
 {
 	if (!TargetToGrab || bIsGrabbing) return;
+
 	float DistSq = FVector::DistSquared(GetActorLocation(), TargetToGrab->GetActorLocation());
 	if (DistSq > 1000.f * 1000.f) return;
+
 	GrabbedActor = TargetToGrab;
 	bIsGrabbing = true;
+
+	// [수정] 사물일 경우: 물리와 충돌을 모두 꺼야 손에 정확히 붙습니다.
+	if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(GrabbedActor->GetRootComponent()))
+	{
+		RootComp->SetSimulatePhysics(false);
+		RootComp->SetCollisionProfileName(TEXT("NoCollision")); // ★ 이거 필수
+	}
+
 	GrabbedActor->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, TEXT("Hand_R_Socket"));
-	if (ACharacter* Victim = Cast<ACharacter>(GrabbedActor)) { SetHeldState(Victim, true); }
-	else if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(GrabbedActor->GetRootComponent())) { RootComp->SetSimulatePhysics(false); }
+
+	// 캐릭터인 경우 추가 처리
+	if (ACharacter* Victim = Cast<ACharacter>(GrabbedActor))
+	{
+		SetHeldState(Victim, true);
+	}
+
 	Multicast_PlayJobMontage(TEXT("Grab"));
 	GetWorldTimerManager().SetTimer(GrabTimerHandle, this, &ATitanCharacter::AutoThrowTimeout, GrabMaxDuration, false);
 }
-void ATitanCharacter::AutoThrowTimeout() 
+
+void ATitanCharacter::AutoThrowTimeout()
 { 
 	FVector Forward = GetActorForwardVector(); 
 	FVector ThrowOrigin = GetActorLocation() + FVector(0.f, 0.f, 60.f) + (Forward * 200.0f);
 	Server_ThrowTarget(ThrowOrigin); 
 }
 
-void ATitanCharacter::OnRep_GrabbedActor() 
-{ 
-	if (GrabbedActor) 
-	{ 
-		bIsGrabbing = true; 
-		if (ACharacter* Victim = Cast<ACharacter>(GrabbedActor)) 
-		{ 
-			SetHeldState(Victim, true); 
-		} 
-		else if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(GrabbedActor->GetRootComponent())) 
-		{ 
-			RootComp->SetSimulatePhysics(false); 
-		} 
-		GrabbedActor->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, TEXT("Hand_R_Socket")); 
-	} 
-	else 
-	{ 
-		bIsGrabbing = false; 
-	} 
+void ATitanCharacter::OnRep_GrabbedActor()
+{
+	if (GrabbedActor)
+	{
+		// [잡았을 때 로직: 기존 코드 유지]
+		bIsGrabbing = true;
+
+		if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(GrabbedActor->GetRootComponent()))
+		{
+			RootComp->SetSimulatePhysics(false);
+			RootComp->SetCollisionProfileName(TEXT("NoCollision"));
+		}
+
+		GrabbedActor->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, TEXT("Hand_R_Socket"));
+
+		if (ACharacter* Victim = Cast<ACharacter>(GrabbedActor))
+		{
+			SetHeldState(Victim, true);
+		}
+	}
+	else
+	{
+		// [놓았을 때 로직: 여기가 비어있어서 문제였습니다]
+		bIsGrabbing = false;
+
+		// 이미 GrabbedActor는 null이므로, '손(Hand_R_Socket)'에 붙어있는 녀석을 직접 찾아서 떼어냅니다.
+		TArray<AActor*> AttachedActors;
+		GetAttachedActors(AttachedActors);
+
+		for (AActor* Child : AttachedActors)
+		{
+			// 내 손(Hand_R_Socket)에 붙어있는 액터인지 확인
+			if (Child && Child->GetRootComponent() && Child->GetRootComponent()->GetAttachSocketName() == TEXT("Hand_R_Socket"))
+			{
+				// 1. 강제 분리 (Detach)
+				Child->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+
+				// 2. 물리 및 충돌 복구 (클라이언트에서도 물리 켜기)
+				if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(Child->GetRootComponent()))
+				{
+					RootComp->SetCollisionProfileName(TEXT("PhysicsActor"));
+					RootComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+					RootComp->SetSimulatePhysics(true);
+				}
+
+				// (캐릭터인 경우 추가 처리)
+				if (ACharacter* Victim = Cast<ACharacter>(Child))
+				{
+					SetHeldState(Victim, false);
+				}
+			}
+		}
+	}
 }
 
 void ATitanCharacter::PerformRadialImpact(FVector Origin, float Radius, float Damage, float RadialForce, AActor* IgnoreTarget)
@@ -479,6 +528,8 @@ void ATitanCharacter::PerformRadialImpact(FVector Origin, float Radius, float Da
 
 void ATitanCharacter::OnThrownActorHit(AActor* SelfActor, AActor* OtherActor, FVector NormalImpulse, const FHitResult& Hit)
 {
+	if (OtherActor == this) return;
+
 	if (SelfActor)
 	{
 		SelfActor->OnActorHit.RemoveDynamic(this, &ATitanCharacter::OnThrownActorHit);
@@ -524,24 +575,17 @@ void ATitanCharacter::Server_ThrowTarget_Implementation(FVector ThrowStartLocati
 
 	Multicast_PlayJobMontage(TEXT("Throw"));
 
-	// 1. 붙어있던 대상 떼어내기
+	// 1. 손에서 떼어내기
 	GrabbedActor->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
 
-	// 2. [수정] 위치 보정 (땅 꺼짐/깜빡임 방지)
+	// 2. 위치 보정 (안전하게 캐릭터 앞쪽으로 이동)
 	FVector SafeThrowLocation = ThrowStartLocation;
-
-	float MyZ = GetActorLocation().Z;
-
-	float MinZ = MyZ + GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 20.0f;
-
-	if (SafeThrowLocation.Z < MinZ)
-	{
-		SafeThrowLocation.Z = MinZ;
-	}
-
-	// 던지는 사람(나)과 겹치지 않게 앞으로 조금 더 밈
 	FVector ForwardOffset = GetActorForwardVector() * 100.0f;
 	SafeThrowLocation += ForwardOffset;
+
+	// 땅 밑으로 꺼지지 않게 최소 높이 보정
+	float MinZ = GetActorLocation().Z + 20.0f;
+	if (SafeThrowLocation.Z < MinZ) SafeThrowLocation.Z = MinZ;
 
 	GrabbedActor->SetActorLocation(SafeThrowLocation, false, nullptr, ETeleportType::TeleportPhysics);
 
@@ -549,13 +593,15 @@ void ATitanCharacter::Server_ThrowTarget_Implementation(FVector ThrowStartLocati
 	FRotator ThrowRotation = GetControlRotation();
 	FVector ThrowDir = ThrowRotation.Vector();
 
-	// 땅으로 꽂히는 각도 제한
 	if (ThrowDir.Z < -0.1f)
 	{
 		ThrowDir.Z = -0.1f;
 		ThrowDir.Normalize();
 	}
 
+	// =========================================================
+	// [A] 캐릭터를 던질 때
+	// =========================================================
 	if (ACharacter* Victim = Cast<ACharacter>(GrabbedActor))
 	{
 		SetHeldState(Victim, false);
@@ -569,20 +615,52 @@ void ATitanCharacter::Server_ThrowTarget_Implementation(FVector ThrowStartLocati
 		FVector FinalThrowDir = (ThrowDir + FVector(0.f, 0.f, 0.3f)).GetSafeNormal();
 		Victim->LaunchCharacter(FinalThrowDir * ThrowForce, true, true);
 
+		// 충돌 시 폭발 이벤트 연결
 		Victim->OnActorHit.RemoveDynamic(this, &ATitanCharacter::OnThrownActorHit);
 		Victim->OnActorHit.AddDynamic(this, &ATitanCharacter::OnThrownActorHit);
 
 		FTimerHandle RecoveryHandle;
 		FTimerDelegate Delegate;
 		Delegate.BindUFunction(this, TEXT("RecoverCharacter"), Victim);
-		GetWorldTimerManager().SetTimer(RecoveryHandle, Delegate, 2.0f, false); // 시간 조금 넉넉하게 2초로 변경 추천
+		GetWorldTimerManager().SetTimer(RecoveryHandle, Delegate, 2.0f, false);
 	}
-
-	// 5. 사물 처리
+	// =========================================================
+	// [B] 사물(BP_ExplosiveBarrel 등)을 던질 때 [수정됨]
+	// =========================================================
 	else if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(GrabbedActor->GetRootComponent()))
 	{
+		// 1. [핵심] 위치 동기화 강제 켜기 
+		// (이게 꺼져 있으면 서버에선 날아갔는데 내 눈엔 공중에 멈춰 보임)
+		GrabbedActor->SetReplicateMovement(true);
+
+		// 2. 물리/충돌 켜기 (순서 중요: 콜리전 켜고 -> 물리를 켜야 함)
+		RootComp->SetCollisionProfileName(TEXT("PhysicsActor"));
+		RootComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 		RootComp->SetSimulatePhysics(true);
-		RootComp->AddImpulse(ThrowDir * ThrowForce * 50.f);
+		RootComp->SetEnableGravity(true); // 중력 켜기
+		RootComp->WakeAllRigidBodies();   // "일어나! 날아가야지!" (물리 깨우기)
+
+		if (GetCapsuleComponent())
+		{
+			// 타이탄이 사물을 무시
+			GetCapsuleComponent()->IgnoreComponentWhenMoving(RootComp, true);
+			// 사물이 타이탄을 무시
+			RootComp->IgnoreComponentWhenMoving(GetCapsuleComponent(), true);
+		}
+
+		// 3. [핵심] 무게 무시하고 날려버리기 (VelChange: true)
+		// 돌 던지기처럼 팍! 하고 날아가게 만듭니다. (무게가 100kg든 1kg든 똑같이 날아감)
+		RootComp->AddImpulse(ThrowDir * ThrowForce * 2.0f, NAME_None, true);
+
+		// 4. 충돌 시 폭발 이벤트 연결
+		GrabbedActor->OnActorHit.RemoveDynamic(this, &ATitanCharacter::OnThrownActorHit);
+		GrabbedActor->OnActorHit.AddDynamic(this, &ATitanCharacter::OnThrownActorHit);
+
+		// 5. 커스텀 액터 이벤트 호출
+		if (ATitanThrowableActor* Throwable = Cast<ATitanThrowableActor>(GrabbedActor))
+		{
+			Throwable->OnThrown(ThrowDir);
+		}
 	}
 
 	GrabbedActor = nullptr;
@@ -857,7 +935,11 @@ void ATitanCharacter::UpdateHoverHighlight()
 	if (bHit && HitResult.GetActor())
 	{
 		AActor* HitActor = HitResult.GetActor();
-		if (Cast<ACharacter>(HitActor) && !HitActor->ActorHasTag("Boss") && !HitActor->ActorHasTag("MidBoss"))
+
+		bool bIsTargetChar = (Cast<ACharacter>(HitActor) != nullptr);
+		bool bIsThrowable = (Cast<ATitanThrowableActor>(HitActor) != nullptr);
+
+		if ((bIsTargetChar || bIsThrowable) && !HitActor->ActorHasTag("Boss") && !HitActor->ActorHasTag("MidBoss"))
 		{
 			NewTarget = HitActor;
 		}

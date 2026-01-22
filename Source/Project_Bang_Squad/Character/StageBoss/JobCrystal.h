@@ -1,8 +1,9 @@
+// Source/Project_Bang_Squad/Character/StageBoss/JobCrystal.h
 #pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
-#include "Project_Bang_Squad/Core/BSGameInstance.h" // EJobType 있음
+#include "Project_Bang_Squad/Core/BSGameInstance.h"
 #include "JobCrystal.generated.h"
 
 class AStageBossBase;
@@ -29,8 +30,9 @@ protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
     UStaticMeshComponent* MeshComp;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float MaxHealth = 100.0f;
+    // [수정] 평타 2대에 파괴되도록 하기 위해 기본값을 2.0으로 설정합니다. (1대당 1씩 차감 예정)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gimmick")
+    float MaxHealth = 2.0f;
 
     float CurrentHealth;
 };
