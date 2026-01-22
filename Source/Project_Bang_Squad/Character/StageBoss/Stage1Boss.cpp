@@ -501,3 +501,63 @@ void AStage1Boss::Multicast_PlaySpellMontage_Implementation()
         GetMesh()->GetAnimInstance()->Montage_Play(SpellMontage);
     }
 }
+// [1] 패턴 시작: 몽타주만 재생 (서버)
+// 수정: 지역 변수 선언을 제거하고 멤버 변수 BossData를 직접 사용
+void AStage1Boss::StartSpikePattern()
+{
+    // [권한 분리]
+    if (!HasAuthority()) return;
+
+    // 오류 수정: UEnemyBossData* BossData 선언 제거.
+    // 클래스 멤버 변수 BossData를 바로 사용합니다.
+    if (BossData && BossData->SpellMontage)
+    {
+        // 몽타주 재생 (Multicast로 자동 복제됨)
+        PlayAnimMontage(BossData->SpellMontage);
+    }
+}
+// [2] 실제 스폰: AnimNotify가 호출 (서버)
+// 수정: 기존 TrySpawnSpikeAtRandomPlayer의 로직을 여기로 이식
+void AStage1Boss::ExecuteSpikeSpell()
+{
+    // [권한 분리] 스폰은 오직 서버만!
+    if (!HasAuthority()) return;
+
+    // 1. 생존해 있는 플레이어 캐릭터 찾기
+    TArray<AActor*> FoundPlayers;
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), ACharacter::StaticClass(), FoundPlayers);
+
+    TArray<AActor*> ValidPlayers;
+    for (AActor* Actor : FoundPlayers)
+    {
+        // 보스 자신 제외, 죽은 플레이어 제외 등 조건 체크
+        if (Actor != this && !Actor->IsHidden())
+        {
+            ValidPlayers.Add(Actor);
+        }
+    }
+
+    if (ValidPlayers.Num() == 0) return;
+
+    // 2. 랜덤 타겟 선정
+    int32 RandomIndex = FMath::RandRange(0, ValidPlayers.Num() - 1);
+    AActor* TargetPlayer = ValidPlayers[RandomIndex];
+
+    // 3. 함정 스폰
+    if (TargetPlayer && SpikeTrapClass)
+    {
+        // 플레이어 발밑 좌표 계산 (바닥 Z값 보정 필요 시 수정, 예: -90)
+        FVector SpawnLocation = TargetPlayer->GetActorLocation();
+        SpawnLocation.Z -= 90.0f;
+        FRotator SpawnRotation = FRotator::ZeroRotator;
+
+        FActorSpawnParameters SpawnParams;
+        SpawnParams.Owner = this;
+        SpawnParams.Instigator = this; // 데미지 처리를 위해 Instigator 설정
+
+        // Replicated 액터이므로 서버에서 스폰하면 클라에도 자동 생성됨
+        GetWorld()->SpawnActor<ABossSpikeTrap>(SpikeTrapClass, SpawnLocation, SpawnRotation, SpawnParams);
+
+        UE_LOG(LogTemp, Log, TEXT("Trap Spawned at %s by AnimNotify!"), *TargetPlayer->GetName());
+    }
+}

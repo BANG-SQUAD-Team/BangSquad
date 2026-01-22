@@ -104,6 +104,14 @@ public:
     // 애니메이션 노티파이: 근접 공격 판정
     UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Boss|Combat")
     void AnimNotify_CheckMeleeHit();
+    
+    // AIController에서 호출하는 함수
+    UFUNCTION(BlueprintCallable, Category = "Boss Pattern")
+    void StartSpikePattern();
+
+    // AnimNotify에서 호출하는 함수
+    UFUNCTION(BlueprintCallable, Category = "Boss Pattern")
+    void ExecuteSpikeSpell();
 
     // --- [Phase Logic] ---
 protected:
@@ -145,4 +153,5 @@ protected:
     // 몽타주 재생 (멀티캐스트)
     UFUNCTION(NetMulticast, Reliable)
     void Multicast_PlaySpellMontage();
+
 };
