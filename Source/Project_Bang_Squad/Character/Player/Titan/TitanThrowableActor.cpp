@@ -46,3 +46,8 @@ void ATitanThrowableActor::BeginPlay()
 		MeshComp->SetMassOverrideInKg(NAME_None, 50.0f);
 	}
 }
+
+void ATitanThrowableActor::OnThrown_Implementation(FVector Direction)
+{
+
+}
