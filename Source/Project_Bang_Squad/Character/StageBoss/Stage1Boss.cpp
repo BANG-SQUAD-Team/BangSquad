@@ -15,7 +15,8 @@
 #include "Components/CapsuleComponent.h"
 #include "TimerManager.h"
 #include "Project_Bang_Squad/Character/MonsterBase/EnemyCharacterBase.h"
-
+#include "Engine/TargetPoint.h" // TargetPoint 사용을 위해 포함
+#include "BossSpikeTrap.h"
 // ============================================================================
 // [Constructor & BeginPlay]
 // ============================================================================
@@ -168,9 +169,17 @@ void AStage1Boss::OnPhaseChanged(EBossPhase NewPhase)
 
 void AStage1Boss::SpawnCrystals()
 {
+    // [Multiplayer Principle] 스폰은 오직 서버에서만
     if (!HasAuthority()) return;
 
-    // 소환할 직업 순서 (SpawnPoints 순서와 매칭됨)
+    // [Safety] 스폰 포인트 설정 여부 확인
+    if (CrystalSpawnPoints.Num() == 0)
+    {
+        UE_LOG(LogTemp, Error, TEXT("[Stage1Boss] No Crystal Spawn Points assigned! Please check the Level Instance properties."));
+        return;
+    }
+
+    // 소환할 직업 순서 (Titan -> Striker -> Mage -> Paladin)
     TArray<EJobType> JobOrder = { EJobType::Titan, EJobType::Striker, EJobType::Mage, EJobType::Paladin };
     RemainingGimmickCount = 0;
 
@@ -190,12 +199,25 @@ void AStage1Boss::SpawnCrystals()
         TSubclassOf<AJobCrystal> TargetClass = JobCrystalClasses[CurrentJob];
         if (!TargetClass) continue;
 
-        // 위치 계산 (보스 기준 로컬 좌표 -> 월드 좌표)
-        FVector SpawnLoc = GetActorTransform().TransformPosition(CrystalSpawnPoints[i]);
+        // [Refactored Logic] 레벨에 배치된 TargetPoint의 절대 좌표(World Location) 사용
+        ATargetPoint* SpawnPoint = CrystalSpawnPoints[i];
+
+        // TargetPoint가 유효하지 않으면 스킵 (삭제되었거나 null인 경우)
+        if (!IsValid(SpawnPoint))
+        {
+            UE_LOG(LogTemp, Warning, TEXT("[Stage1Boss] Spawn Point index %d is Invalid!"), i);
+            continue;
+        }
+
+        // 보스의 회전값과 관계없이 고정된 월드 좌표 사용
+        FVector SpawnLoc = SpawnPoint->GetActorLocation();
+        // 회전값은 0으로 초기화하거나, 필요하다면 SpawnPoint->GetActorRotation() 사용
         FRotator SpawnRot = FRotator::ZeroRotator;
 
         FActorSpawnParameters Params;
         Params.Owner = this;
+        Params.Instigator = this; // AI 인식 등을 위해 Instigator 설정
+        Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
 
         // 찾은 BP로 소환
         AJobCrystal* NewCrystal = GetWorld()->SpawnActor<AJobCrystal>(TargetClass, SpawnLoc, SpawnRot, Params);
@@ -204,10 +226,12 @@ void AStage1Boss::SpawnCrystals()
             NewCrystal->TargetBoss = this;
             NewCrystal->RequiredJobType = CurrentJob; // 직업 정보 주입
             RemainingGimmickCount++;
+
+            UE_LOG(LogTemp, Log, TEXT("[Server] Spawned Crystal(%s) at %s"), *NewCrystal->GetName(), *SpawnLoc.ToString());
         }
     }
 
-    UE_LOG(LogTemp, Log, TEXT("Stage1Boss: Spawned %d Crystals."), RemainingGimmickCount);
+    UE_LOG(LogTemp, Log, TEXT("Stage1Boss: Successfully Spawned %d Crystals."), RemainingGimmickCount);
 }
 
 void AStage1Boss::OnGimmickResolved(int32 GimmickID)
@@ -408,11 +432,72 @@ void AStage1Boss::SpawnDeathWall()
 
     FActorSpawnParameters Params;
     Params.Owner = this;
-    FRotator SpawnRot = GetActorRotation();
+    FRotator SpawnRot = GetActorRotation(); // 필요 시 이것도 고정 로테이션으로 변경 고려
 
-    ADeathWall* NewWall = GetWorld()->SpawnActor<ADeathWall>(DeathWallClass, WallSpawnLocation, SpawnRot, Params);
+    // 현재는 기존 FVector WallSpawnLocation(상대 좌표 widget)을 그대로 사용 중.
+    // 만약 이것도 고정하고 싶다면 TargetPoint로 교체 필요.
+    // 여기서는 보스의 위치 기준으로 WallSpawnLocation 오프셋을 적용하여 소환.
+    FVector SpawnLoc = GetActorTransform().TransformPosition(WallSpawnLocation);
+
+    ADeathWall* NewWall = GetWorld()->SpawnActor<ADeathWall>(DeathWallClass, SpawnLoc, SpawnRot, Params);
     if (NewWall)
     {
         NewWall->ActivateWall();
+    }
+}
+
+void AStage1Boss::TrySpawnSpikeAtRandomPlayer()
+{
+    // [권한 분리]: 패턴 판단과 스폰은 서버에서만
+    if (!HasAuthority()) return;
+
+    // 1. 몽타주 재생 (모든 클라이언트에 보임)
+    if (SpellMontage)
+    {
+        Multicast_PlaySpellMontage();
+    }
+
+    // 2. 생존해 있는 플레이어 캐릭터 찾기
+    TArray<AActor*> FoundPlayers;
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), ACharacter::StaticClass(), FoundPlayers);
+
+    // 플레이어 태그나 특정 클래스로 필터링이 필요할 수 있음
+    TArray<AActor*> ValidPlayers;
+    for (AActor* Actor : FoundPlayers)
+    {
+        // 보스 자신 제외, 죽은 플레이어 제외 등 조건 체크
+        if (Actor != this && !Actor->IsHidden())
+        {
+            ValidPlayers.Add(Actor);
+        }
+    }
+
+    if (ValidPlayers.Num() == 0) return;
+
+    // 3. 랜덤 타겟 선정
+    int32 RandomIndex = FMath::RandRange(0, ValidPlayers.Num() - 1);
+    AActor* TargetPlayer = ValidPlayers[RandomIndex];
+
+    if (TargetPlayer && SpikeTrapClass)
+    {
+        // 4. 플레이어 발밑 좌표 계산 (바닥 Z값 보정 필요 시 수정)
+        FVector SpawnLocation = TargetPlayer->GetActorLocation();
+        SpawnLocation.Z -= 90.0f; // 캡슐 절반 높이만큼 내려서 바닥에 붙임 (조정 필요)
+        FRotator SpawnRotation = FRotator::ZeroRotator;
+
+        FActorSpawnParameters SpawnParams;
+        SpawnParams.Owner = this;
+        SpawnParams.Instigator = this; // 데미지 처리를 위해 Instigator 설정
+
+        // 5. 함정 스폰 (Replicated 액터이므로 클라에도 자동 생성됨)
+        GetWorld()->SpawnActor<ABossSpikeTrap>(SpikeTrapClass, SpawnLocation, SpawnRotation, SpawnParams);
+    }
+}
+
+void AStage1Boss::Multicast_PlaySpellMontage_Implementation()
+{
+    if (GetMesh() && GetMesh()->GetAnimInstance() && SpellMontage)
+    {
+        GetMesh()->GetAnimInstance()->Montage_Play(SpellMontage);
     }
 }

@@ -3,8 +3,9 @@
 
 #include "CoreMinimal.h"
 #include "StageBossBase.h"
-#include "Project_Bang_Squad/Character/MonsterBase/EnemyBossData.h" // 데이터 에셋
-#include "Project_Bang_Squad/Core/BSGameInstance.h" // [필수] EJobType 사용을 위해 포함
+#include "Project_Bang_Squad/Character/MonsterBase/EnemyBossData.h"
+#include "Project_Bang_Squad/Core/BSGameInstance.h"
+#include "Engine/TargetPoint.h" // [New] 고정 위치 스폰을 위해 추가
 #include "Stage1Boss.generated.h"
 
 // 전방 선언
@@ -39,18 +40,19 @@ public:
 
     // --- [Stage Specific Config: 1스테이지 전용 기믹] ---
 public:
-    // [변경] 기존 단일 클래스 대신, 직업별로 다른 BP를 지정할 수 있는 Map 사용
-    // 에디터 사용법: '+' 눌러서 Key(직업) - Value(BP) 쌍을 4개 등록하세요.
+    // 직업별로 소환될 크리스탈 블루프린트 매핑
     UPROPERTY(EditDefaultsOnly, Category = "Boss|Gimmick")
     TMap<EJobType, TSubclassOf<AJobCrystal>> JobCrystalClasses;
 
-    // 수정이 소환될 위치 (에디터 뷰포트에서 위젯으로 조정)
-    UPROPERTY(EditAnywhere, Category = "Boss|Gimmick", meta = (MakeEditWidget = true))
-    TArray<FVector> CrystalSpawnPoints;
+    // [Refactored] 기존 위젯(상대 좌표) 대신 레벨에 배치된 타겟 포인트(절대 좌표) 사용
+    // EditInstanceOnly: 블루프린트 원본이 아닌, 레벨에 배치된 인스턴스에서만 설정 가능
+    UPROPERTY(EditInstanceOnly, Category = "Boss|Gimmick")
+    TArray<TObjectPtr<ATargetPoint>> CrystalSpawnPoints;
 
     UPROPERTY(EditDefaultsOnly, Category = "Boss|Gimmick")
     TSubclassOf<ADeathWall> DeathWallClass;
 
+    // 죽음의 벽 생성 위치 (필요 시 이것도 TargetPoint로 변경 권장, 현재는 기존 유지)
     UPROPERTY(EditAnywhere, Category = "Boss|Gimmick", meta = (MakeEditWidget = true))
     FVector WallSpawnLocation;
 
@@ -110,6 +112,7 @@ protected:
 
     // --- [Internal Logic] ---
 private:
+    // [Refactored] 고정 위치 스폰 함수
     void SpawnCrystals();
     void SpawnDeathWall();
 
@@ -126,4 +129,20 @@ private:
 
     TMap<APlayerController*, FPlayerQTEStatus> QTEProgressMap;
     FTimerHandle QTETimerHandle;
+
+public:
+    // 이 함수를 Behavior Tree Task에서 호출하거나 내부 로직에서 호출
+    UFUNCTION(BlueprintCallable, Category = "Boss Pattern")
+    void TrySpawnSpikeAtRandomPlayer();
+
+protected:
+    UPROPERTY(EditAnywhere, Category = "Boss Pattern")
+    TSubclassOf<class ABossSpikeTrap> SpikeTrapClass;
+
+    UPROPERTY(EditAnywhere, Category = "Boss Pattern")
+    TObjectPtr<UAnimMontage> SpellMontage;
+
+    // 몽타주 재생 (멀티캐스트)
+    UFUNCTION(NetMulticast, Reliable)
+    void Multicast_PlaySpellMontage();
 };
