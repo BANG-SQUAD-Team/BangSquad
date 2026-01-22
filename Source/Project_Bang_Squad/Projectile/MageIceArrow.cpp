@@ -78,12 +78,18 @@ void AMageIceArrow::OnOverlap(UPrimitiveComponent* OverlappedComponent,
 			// 땅을 찾았으면 땅 위치, 못 찾았으면 그냥 적 위치
 			FVector SpawnLoc = bHitGround ? GroundHit.ImpactPoint : EnemyLocation;
 			
-			// 장판 소환 (바닥에 딱 붙으면 텍스처 깨질 수 있으니 Z축 살짝 올림)
-			SpawnIcePad(SpawnLoc + FVector(0.0f, 0.0f, 2.0f));
+			// 바닥의 각도에 맞춰 회전값 계산
+			// 바닥이면 Normal
+			// 경사로라면 경사에 맞춰서 생성
+			FRotator SpawnRot = bHitGround ? FRotationMatrix::MakeFromZ(GroundHit.ImpactNormal).Rotator() : FRotator::ZeroRotator;
 			
+			// 살짝 띄우기
+			FVector FinalLoc = SpawnLoc + (SpawnRot.Vector() * 2.0f);
+			
+			// 장판 소환 (바닥에 딱 붙으면 텍스처 깨질 수 있으니 Z축 살짝 올림)
+			SpawnIcePad(FinalLoc, SpawnRot);
 			
 			SetLifeSpan(0.1f);
-			
 			
 			
 		}
@@ -100,19 +106,21 @@ void AMageIceArrow::NotifyHit(UPrimitiveComponent* MyComp, AActor* Other, UPrimi
 		if (Other && (Other != this) && (Other != GetOwner()) && !bIsAlly)
 		{
 			Multicast_SpawnIceVFX(HitLocation, HitNormal.Rotation());
+			
+			FRotator WallRot = FRotationMatrix::MakeFromZ(HitNormal).Rotator();
 			// 벽에서 살짝 띄워서(Normal 방향) 소환
-			SpawnIcePad(HitLocation + (HitNormal * 5.0f)); 
+			SpawnIcePad(HitLocation + (HitNormal * 5.0f), WallRot); 
 			
 			SetLifeSpan(0.1f);
 		}
 	}
 }
 // [공통 함수] 장판 소환 로직
-void AMageIceArrow::SpawnIcePad(FVector SpawnLocation)
+void AMageIceArrow::SpawnIcePad(FVector SpawnLocation, FRotator SpawnRotation)
 {
 	if (IcePadClass)
 	{
-		GetWorld()->SpawnActor<AActor>(IcePadClass, SpawnLocation, FRotator::ZeroRotator);
+		GetWorld()->SpawnActor<AActor>(IcePadClass, SpawnLocation, SpawnRotation);
 	}
 }
 

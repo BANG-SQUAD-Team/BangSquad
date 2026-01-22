@@ -43,5 +43,5 @@ protected:
 	
 private:
 	// 중복 코드를 줄이기 위한 내부 함수
-	void SpawnIcePad(FVector SpawnLocation);
+	void SpawnIcePad(FVector SpawnLocation, FRotator SpawnRotation);
 };
