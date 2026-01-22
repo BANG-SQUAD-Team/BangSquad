@@ -14,6 +14,9 @@
 
 ABaseCharacter::ABaseCharacter()
 {
+	// 플레이어 태그 등록
+	Tags.Add(TEXT("Player"));
+	
 	HealthComp = CreateDefaultSubobject<UHealthComponent>(TEXT("HealthComp"));
 	PrimaryActorTick.bCanEverTick = true;
 

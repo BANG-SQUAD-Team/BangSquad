@@ -72,14 +72,18 @@ void AMageProjectile::OnOverlap(UPrimitiveComponent* OverlappedComponent, AActor
     if (!OtherActor || OtherActor == this) return;
     if (GetOwner() && OtherActor == GetOwner()) return; // 주인 무시
 
+    if (OtherActor->ActorHasTag(TEXT("Player")))
+    {
+        return;
+    }
+    
     if (HasAuthority())
     {
         // Pawn(몬스터)인지 확인 (벽은 여기서 처리 안 함)
-        if (OtherActor->IsA(APawn::StaticClass())) 
+        if (OtherActor) 
         {
             // 데미지 전달
             UGameplayStatics::ApplyDamage(OtherActor, Damage, GetInstigatorController(), this, UDamageType::StaticClass());
-            
             // 데미지 주고 즉시 삭제
             Destroy();
         }
@@ -93,9 +97,15 @@ void AMageProjectile::NotifyHit(UPrimitiveComponent* MyComp, AActor* Other, UPri
 
     if (HasAuthority())
     {
+        bool bIsAlly = Other && Other->ActorHasTag(TEXT("Player"));
+        
         // 주인이나 나 자신이 아니면 파괴 (벽에 부딪힘)
-        if (Other && (Other != this) && (Other != GetOwner()))
+        if (Other && (Other != this) && (Other != GetOwner()) && !bIsAlly)
         {
+            // 부딪힌 대상에게도 데미지를 줘야함
+            UGameplayStatics::ApplyDamage(Other,Damage, GetInstigatorController(),
+                this, UDamageType::StaticClass());
+            
             // (옵션) 여기서 벽에 부딪히는 이펙트(Sparks)를 스폰하면 좋습니다.
             // UGameplayStatics::SpawnEmitterAtLocation(...)
             

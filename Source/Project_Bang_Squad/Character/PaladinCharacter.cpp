@@ -266,6 +266,13 @@ void APaladinCharacter::PerformMeleeTrace()
         for (const FHitResult& Hit : HitResults)
         {
             AActor* HitActor = Hit.GetActor();
+            
+            // 아군(Player)이면 무시하고 넘어감
+            if (HitActor && HitActor->ActorHasTag(TEXT("Player")))
+            {
+                continue;
+            }
+            
             // 중복 피격 방지 (한 번 휘두를 때 한 번만 맞도록)
             if (HitActor && HitActor->IsA(ACharacter::StaticClass()) &&
                 HitActor != this && !SwingDamagedActors.Contains(HitActor))
@@ -471,6 +478,12 @@ void APaladinCharacter::PerformSmashDamage(float SmashingDamage)
         for (const FHitResult& Hit : HitResults)
         {
             AActor* Victim = Hit.GetActor();
+            
+            if (Victim && Victim->ActorHasTag(TEXT("Player")))
+            {
+                continue;
+            }
+            
             // 중복되지 않은 대상에게만 데미지 적용
             if (Victim && !HitActors.Contains(Victim) && Victim != this)
             {

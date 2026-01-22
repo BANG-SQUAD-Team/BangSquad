@@ -351,6 +351,7 @@ void AStrikerCharacter::Server_Skill2Impact_Implementation()
     {
         ACharacter* TargetChar = Cast<ACharacter>(Actor);
         if (!TargetChar || TargetChar == this) continue;
+    	
 
         bool bIsNormal = Actor->IsA(AEnemyNormal::StaticClass());
         bool bIsBaseChar = Actor->IsA(ABaseCharacter::StaticClass());

@@ -19,6 +19,11 @@ void AMageIceArrow::OnOverlap(UPrimitiveComponent* OverlappedComponent,
 {
 	if (!OtherActor || OtherActor == this || OtherActor == GetOwner()) return;
 
+	if (OtherActor->ActorHasTag(TEXT("Player")))
+	{
+		return;
+	}
+	
 	if (HasAuthority())
 	{
 		if (OtherActor->IsA(APawn::StaticClass()))
@@ -66,6 +71,8 @@ void AMageIceArrow::NotifyHit(UPrimitiveComponent* MyComp, AActor* Other, UPrimi
 {
 	if (HasAuthority())
 	{
+		bool bIsAlly = Other && Other->ActorHasTag(TEXT("Player"));
+		
 		if (Other && (Other != this) && (Other != GetOwner()))
 		{
 			// 벽에서 살짝 띄워서(Normal 방향) 소환

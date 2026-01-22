@@ -498,12 +498,13 @@ void ATitanCharacter::PerformRadialImpact(FVector Origin, float Radius, float Da
 	{
 		if (!Victim || !Victim->IsValidLowLevel()) continue;
 
-		// 팀킬 방지 (Player 태그가 있으면 무시)
-		if (Victim->ActorHasTag("Player")) continue;
+		
 
 		// 1. 데미지 적용
-		UGameplayStatics::ApplyDamage(Victim, Damage, GetController(), this, UDamageType::StaticClass());
-
+		if (!Victim->ActorHasTag("Player"))
+		{
+			UGameplayStatics::ApplyDamage(Victim, Damage, GetController(), this, UDamageType::StaticClass());
+		}
 		// 2. 넉백 방향 계산 (폭발 중심 -> 피해자 방향)
 		FVector LaunchDir = (Victim->GetActorLocation() - Origin).GetSafeNormal();
 		LaunchDir.Z = 0.5f; // 위로 살짝 띄워줌 (0.5 정도가 적당)
@@ -847,14 +848,16 @@ void ATitanCharacter::OnChargeOverlap(UPrimitiveComponent* OverlappedComp, AActo
 
 	if (ACharacter* VictimChar = Cast<ACharacter>(OtherActor))
 	{
-		if (VictimChar->ActorHasTag("Player")) return;
+		
 
 		GetCapsuleComponent()->IgnoreActorWhenMoving(VictimChar, true);
 		VictimChar->GetCapsuleComponent()->IgnoreActorWhenMoving(this, true);
 		HitVictims.Add(VictimChar);
 
-		UGameplayStatics::ApplyDamage(OtherActor, CurrentSkillDamage, GetController(), this, UDamageType::StaticClass());
-
+		if (!VictimChar->ActorHasTag("Player"))
+		{
+			UGameplayStatics::ApplyDamage(OtherActor, CurrentSkillDamage, GetController(), this, UDamageType::StaticClass());
+		}
 		FVector KnockbackDir = GetActorForwardVector();
 		FVector LaunchForce = (KnockbackDir * 500.f) + FVector(0, 0, 1000.f);
 		VictimChar->LaunchCharacter(LaunchForce, true, true);
