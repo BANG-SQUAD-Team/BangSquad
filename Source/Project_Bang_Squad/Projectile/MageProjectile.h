@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "NiagaraComponent.h"
 #include "MageProjectile.generated.h"
 
 class USphereComponent;
@@ -21,6 +22,9 @@ public:
 	/** 캐릭터(Mage)가 생성할 때 전달해 줄 데미지 값*/
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Damage")
 	float Damage = 10.0f; 
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "VFX")
+	UNiagaraSystem* FireImpactVFX;
 
 protected:
 	virtual void BeginPlay() override;
@@ -33,9 +37,8 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	UStaticMeshComponent* MeshComp;
 
-	/** 투사체 이펙트 (파티클) - 마법 효과용 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-	UParticleSystemComponent* ParticleComp;
+	UNiagaraComponent* NiagaraComp;
     
 	/** 투사체의 이동을 제어하는 컴포넌트 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")

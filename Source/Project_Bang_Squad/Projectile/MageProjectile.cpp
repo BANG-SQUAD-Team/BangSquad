@@ -3,6 +3,8 @@
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "NiagaraFunctionLibrary.h" 
+#include "NiagaraComponent.h"
 #include "Net/UnrealNetwork.h"
 #include "Particles/ParticleSystemComponent.h"
 
@@ -32,9 +34,10 @@ AMageProjectile::AMageProjectile()
     MeshComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     MeshComp->SetCollisionResponseToAllChannels(ECR_Ignore);
 
-    // 3. 파티클
-    ParticleComp = CreateDefaultSubobject<UParticleSystemComponent>(TEXT("ParticleComp"));
-    ParticleComp->SetupAttachment(RootComponent);
+    // 3. 나이아가라
+    NiagaraComp = CreateDefaultSubobject<UNiagaraComponent>(TEXT("NiagaraComp"));
+    NiagaraComp->SetupAttachment(RootComponent);
+  
 
     // 4. 이동 설정
     ProjectileMovement = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("ProjectileMovement"));
@@ -84,6 +87,18 @@ void AMageProjectile::OnOverlap(UPrimitiveComponent* OverlappedComponent, AActor
         {
             // 데미지 전달
             UGameplayStatics::ApplyDamage(OtherActor, Damage, GetInstigatorController(), this, UDamageType::StaticClass());
+            
+            // 맞았을 때 나이아가라 이펙트
+            if (FireImpactVFX)
+            {
+                UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+                    GetWorld(),
+                    FireImpactVFX,
+                    GetActorLocation(), // 투사체 현재 위치에서 터짐
+                    FRotator::ZeroRotator
+                );
+            }
+            
             // 데미지 주고 즉시 삭제
             Destroy();
         }
@@ -105,6 +120,18 @@ void AMageProjectile::NotifyHit(UPrimitiveComponent* MyComp, AActor* Other, UPri
             // 부딪힌 대상에게도 데미지를 줘야함
             UGameplayStatics::ApplyDamage(Other,Damage, GetInstigatorController(),
                 this, UDamageType::StaticClass());
+            
+            //나이아가라 이펙트
+            if (FireImpactVFX)
+            {
+                
+                UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+                    GetWorld(),
+                    FireImpactVFX,
+                    HitLocation, // 정확히 부딪힌 지점
+                    HitNormal.Rotation() 
+                );
+            }
             
             // (옵션) 여기서 벽에 부딪히는 이펙트(Sparks)를 스폰하면 좋습니다.
             // UGameplayStatics::SpawnEmitterAtLocation(...)

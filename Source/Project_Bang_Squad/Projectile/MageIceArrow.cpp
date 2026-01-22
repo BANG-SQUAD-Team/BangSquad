@@ -5,6 +5,7 @@
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Components/BoxComponent.h"
+#include "NiagaraFunctionLibrary.h"
 #include "Engine/World.h"
 
 AMageIceArrow::AMageIceArrow()
@@ -31,6 +32,16 @@ void AMageIceArrow::OnOverlap(UPrimitiveComponent* OverlappedComponent,
 			// 1. 데미지 주기
 			UGameplayStatics::ApplyDamage(OtherActor, Damage, GetInstigatorController(), this, UDamageType::StaticClass());
 			
+			// 나이아가라 이펙트 재생
+			if (HitImpactVFX)
+			{
+				UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+					GetWorld(),
+					HitImpactVFX,
+					OtherActor->GetActorLocation(),
+					FRotator::ZeroRotator
+					);
+			}
 			
 			// 2. 바닥 찾기 로직
 			FVector EnemyLocation = OtherActor->GetActorLocation();
@@ -73,8 +84,19 @@ void AMageIceArrow::NotifyHit(UPrimitiveComponent* MyComp, AActor* Other, UPrimi
 	{
 		bool bIsAlly = Other && Other->ActorHasTag(TEXT("Player"));
 		
-		if (Other && (Other != this) && (Other != GetOwner()))
+		if (Other && (Other != this) && (Other != GetOwner()) && !bIsAlly)
 		{
+			// 나이아가라 이펙트 재생
+			if (HitImpactVFX)
+			{
+				UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+					GetWorld(),
+					HitImpactVFX,
+					HitLocation,
+					HitNormal.Rotation()
+					);
+			}
+			
 			// 벽에서 살짝 띄워서(Normal 방향) 소환
 			SpawnIcePad(HitLocation + (HitNormal * 5.0f)); 
 			Destroy();

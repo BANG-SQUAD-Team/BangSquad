@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Project_Bang_Squad/Character/Base/BaseCharacter.h"
+#include "NiagaraSystem.h"
 #include "PaladinCharacter.generated.h"
 
 UCLASS()
@@ -98,7 +99,15 @@ protected:
     //  섹션 4: 스킬 시스템 (Skill System - Smash)
     // ====================================================================================
     virtual void Skill1() override; // 분쇄
-
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "VFX")
+    UNiagaraSystem* SmashImpactVFX;
+    
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "VFX")
+    FVector SmashVFXScale;
+    
+    UFUNCTION(NetMulticast, Unreliable)
+    void Multicast_PlaySmashVFX(FVector Location);
+    
     // 데이터 테이블 및 처리 로직
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Data")
     UDataTable* SkillDataTable;
@@ -191,7 +200,5 @@ private:
     UPROPERTY()
     TMap<FName, FTimerHandle> SkillTimers;
     
-    // VFX (나중에 사용)
-    UPROPERTY(EditDefaultsOnly, Category = "VFX")
-    UParticleSystem* SmashImpactVFX;
+    
 };

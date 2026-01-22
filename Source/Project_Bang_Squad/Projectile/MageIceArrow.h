@@ -9,6 +9,8 @@
 /**
  * 
  */
+class UNiagaraSystem;
+
 UCLASS()
 class PROJECT_BANG_SQUAD_API AMageIceArrow : public AMageProjectile
 {
@@ -18,6 +20,9 @@ public:
 	AMageIceArrow();
 	
 protected:
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "VFX")
+	UNiagaraSystem* HitImpactVFX;
 	
 	// 터질 때 소환할 장판 클래스 (BP_IcePad)
 	UPROPERTY(EditDefaultsOnly, Category = "Skill")

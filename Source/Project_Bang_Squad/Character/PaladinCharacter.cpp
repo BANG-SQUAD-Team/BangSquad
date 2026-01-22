@@ -10,6 +10,7 @@
 #include "Particles/ParticleSystem.h"
 #include "Engine/DamageEvents.h"
 #include "DrawDebugHelpers.h" 
+#include "NiagaraFunctionLibrary.h"
 #include "Components/CapsuleComponent.h"
 
 // ====================================================================================
@@ -60,6 +61,9 @@ APaladinCharacter::APaladinCharacter()
     ShieldBarWidgetComp->SetWidgetSpace(EWidgetSpace::World);
     ShieldBarWidgetComp->SetDrawSize(FVector2D(100.0f, 15.0f));
     ShieldBarWidgetComp->SetVisibility(false);
+    
+    // 🔥 나이아가라 이펙트 크기 기본값 설정 (1.0배)
+    SmashVFXScale = FVector(1.0f, 1.0f, 1.0f);
 }
 
 void APaladinCharacter::BeginPlay()
@@ -274,8 +278,7 @@ void APaladinCharacter::PerformMeleeTrace()
             }
             
             // 중복 피격 방지 (한 번 휘두를 때 한 번만 맞도록)
-            if (HitActor && HitActor->IsA(ACharacter::StaticClass()) &&
-                HitActor != this && !SwingDamagedActors.Contains(HitActor))
+            if (HitActor && HitActor != this && !SwingDamagedActors.Contains(HitActor))
             {
                 UGameplayStatics::ApplyDamage(HitActor, CurrentSkillDamage, GetController(), this, UDamageType::StaticClass());
                 SwingDamagedActors.Add(HitActor);
@@ -459,6 +462,7 @@ void APaladinCharacter::PerformSmashDamage(float SmashingDamage)
    
     // 3. 광역 데미지 로직
     FVector ImpactLocation = GetActorLocation(); 
+    Multicast_PlaySmashVFX(ImpactLocation);
     float AttackRadius = 350.0f;
     DrawDebugSphere(GetWorld(), ImpactLocation, AttackRadius, 12, FColor::Red, false, 3.0f);
     
@@ -494,6 +498,26 @@ void APaladinCharacter::PerformSmashDamage(float SmashingDamage)
         }
     }
 }
+
+void APaladinCharacter::Multicast_PlaySmashVFX_Implementation(FVector Location)
+{
+    if (SmashImpactVFX)
+    {
+        // 캐릭터 발밑(Z축 0)에서 터지게 조정
+        FVector SpawnLocation = Location;
+        SpawnLocation.Z -= GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+
+        UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+            GetWorld(), 
+            SmashImpactVFX, 
+            SpawnLocation, 
+            FRotator::ZeroRotator,
+            SmashVFXScale,
+            true,true, ENCPoolMethod::None, true
+        );
+    }
+}
+
 
 // ====================================================================================
 //  섹션 5: 방어 시스템 (Job Ability - Shield Logic)
