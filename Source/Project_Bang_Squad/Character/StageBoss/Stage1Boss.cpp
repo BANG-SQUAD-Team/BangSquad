@@ -7,7 +7,7 @@
 #include "Project_Bang_Squad/Core/BSGameInstance.h"
 #include "Project_Bang_Squad/Game/Stage/StageGameMode.h"
 #include "Project_Bang_Squad/Character/Component/HealthComponent.h"
-#include "DrawDebugHelpers.h" // 필수 헤더
+#include "DrawDebugHelpers.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/Character.h"
@@ -15,36 +15,40 @@
 #include "Components/CapsuleComponent.h"
 #include "TimerManager.h"
 #include "Project_Bang_Squad/Character/MonsterBase/EnemyCharacterBase.h"
-#include "Engine/TargetPoint.h" // TargetPoint 사용을 위해 포함
+#include "Engine/TargetPoint.h"
 #include "BossSpikeTrap.h"
+#include "AIController.h"
+#include "Navigation/PathFollowingComponent.h"
+#include "BrainComponent.h"
+#include "Net/UnrealNetwork.h"
+
 // ============================================================================
 // [Constructor & BeginPlay]
 // ============================================================================
 
 AStage1Boss::AStage1Boss()
 {
-    // 필요 시 캡슐 크기 조정
-    // GetCapsuleComponent()->SetCapsuleSize(60.f, 120.f);
 }
 
 void AStage1Boss::BeginPlay()
 {
     Super::BeginPlay();
 
-    // [Check] 데이터 에셋 연결 확인
     if (HasAuthority() && !BossData)
     {
-        UE_LOG(LogTemp, Error, TEXT("[AStage1Boss] BossData is MISSING! Please assign DA_StageBoss in Blueprint."));
+        UE_LOG(LogTemp, Error, TEXT("[AStage1Boss] BossData is MISSING!"));
     }
 
     if (HasAuthority())
     {
-        // [정상 로직] 시작 시 기믹 페이즈(무적)로 진입
         SetPhase(EBossPhase::Gimmick);
 
-        // [TEST용] 데미지 로직만 빠르게 확인할 때는 아래 주석을 풀고 위를 주석 처리하세요.
-        // SetPhase(EBossPhase::Phase1); 
-        // UE_LOG(LogTemp, Warning, TEXT("[TEST] Stage1Boss: Force Started in Phase 1 (Combat)"));
+        UHealthComponent* HC = FindComponentByClass<UHealthComponent>();
+        if (HC)
+        {
+            // 체력 변경 이벤트 바인딩
+            HC->OnHealthChanged.AddDynamic(this, &AStage1Boss::OnHealthChanged);
+        }
     }
 }
 
@@ -54,19 +58,19 @@ void AStage1Boss::BeginPlay()
 
 float AStage1Boss::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
-    // 1. [서버 권한]
     if (!HasAuthority()) return 0.0f;
 
-    // 2. [팀킬 방지]
+    // ★ [State Lock] 데스 월 패턴 중에는 완전 무적 상태 유지
+    // 패턴 중에 피격 몽타주가 재생되면 스킬이 끊기므로 데미지를 0으로 처리
+    if (bIsDeathWallSequenceActive)
+    {
+        return 0.0f;
+    }
+
+    // 팀킬 방지 로직
     AActor* Attacker = DamageCauser;
-    if (EventInstigator && EventInstigator->GetPawn())
-    {
-        Attacker = EventInstigator->GetPawn();
-    }
-    else if (DamageCauser && DamageCauser->GetOwner())
-    {
-        Attacker = DamageCauser->GetOwner();
-    }
+    if (EventInstigator && EventInstigator->GetPawn()) Attacker = EventInstigator->GetPawn();
+    else if (DamageCauser && DamageCauser->GetOwner()) Attacker = DamageCauser->GetOwner();
 
     if (Attacker)
     {
@@ -74,13 +78,9 @@ float AStage1Boss::TakeDamage(float DamageAmount, FDamageEvent const& DamageEven
         if (Attacker->IsA(AEnemyCharacterBase::StaticClass())) return 0.0f;
     }
 
-    // 3. 부모 로직 (무적 상태면 여기서 0 리턴됨)
     float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
-
-    // [최적화] 데미지가 없으면 이후 로직 생략
     if (ActualDamage <= 0.0f) return 0.0f;
 
-    // 4. [HealthComponent 적용]
     UHealthComponent* HC = FindComponentByClass<UHealthComponent>();
     if (HC && !HC->IsDead())
     {
@@ -91,7 +91,6 @@ float AStage1Boss::TakeDamage(float DamageAmount, FDamageEvent const& DamageEven
         return 0.0f;
     }
 
-    // 5. [페이즈 전환 체크] (체력 절반 이하 시 2페이즈)
     if (HC && HC->MaxHealth > 0.0f)
     {
         float HpRatio = HC->GetHealth() / HC->MaxHealth;
@@ -111,24 +110,18 @@ void AStage1Boss::EnterPhase2()
     if (!HasAuthority()) return;
 
     bPhase2Started = true;
-
-    // 1. 페이즈 전환 (2페이즈)
     SetPhase(EBossPhase::Phase2);
-
-    // 2. 수정 재소환 및 무적 활성화 (플레이어가 다시 깨야 함)
     bIsInvincible = true;
     SpawnCrystals();
 
-    // 3. 죽음의 벽 소환
-    SpawnDeathWall();
+    // [참고] SpawnDeathWall()은 여기서 호출하지 않음 (70% 시퀀스에서 이미 처리됨)
 
-    UE_LOG(LogTemp, Warning, TEXT("=== ENTERING PHASE 2: Crystals Respawned & Death Wall Activated! ==="));
+    UE_LOG(LogTemp, Warning, TEXT("=== ENTERING PHASE 2 ==="));
 }
 
 void AStage1Boss::OnDeathStarted()
 {
     Super::OnDeathStarted();
-
     if (!HasAuthority()) return;
 
     if (BossData && BossData->DeathMontage)
@@ -136,9 +129,7 @@ void AStage1Boss::OnDeathStarted()
         Multicast_PlayAttackMontage(BossData->DeathMontage);
     }
 
-    UE_LOG(LogTemp, Warning, TEXT("=== BOSS DEFEATED! STAGE CLEAR! ==="));
-
-    // 벽 정지
+    // 모든 벽 정지
     TArray<AActor*> Walls;
     UGameplayStatics::GetAllActorsOfClass(GetWorld(), ADeathWall::StaticClass(), Walls);
     for (AActor* Wall : Walls)
@@ -148,14 +139,13 @@ void AStage1Boss::OnDeathStarted()
 }
 
 // ============================================================================
-// [Gimmick Logic: Crystal]
+// [Gimmick: Crystals]
 // ============================================================================
 
 void AStage1Boss::OnPhaseChanged(EBossPhase NewPhase)
 {
     Super::OnPhaseChanged(NewPhase);
 
-    // 시작 페이즈(Gimmick)가 되면 수정 소환
     if (NewPhase == EBossPhase::Gimmick)
     {
         bIsInvincible = true;
@@ -169,78 +159,47 @@ void AStage1Boss::OnPhaseChanged(EBossPhase NewPhase)
 
 void AStage1Boss::SpawnCrystals()
 {
-    // [Multiplayer Principle] 스폰은 오직 서버에서만
     if (!HasAuthority()) return;
+    if (CrystalSpawnPoints.Num() == 0) return;
 
-    // [Safety] 스폰 포인트 설정 여부 확인
-    if (CrystalSpawnPoints.Num() == 0)
-    {
-        UE_LOG(LogTemp, Error, TEXT("[Stage1Boss] No Crystal Spawn Points assigned! Please check the Level Instance properties."));
-        return;
-    }
-
-    // 소환할 직업 순서 (Titan -> Striker -> Mage -> Paladin)
     TArray<EJobType> JobOrder = { EJobType::Titan, EJobType::Striker, EJobType::Mage, EJobType::Paladin };
     RemainingGimmickCount = 0;
 
     for (int32 i = 0; i < CrystalSpawnPoints.Num(); ++i)
     {
         if (i >= JobOrder.Num()) break;
+        EJobType CurrentJob = JobOrder[i];
 
-        EJobType CurrentJob = JobOrder[i]; // 이번 자리에 소환할 직업
-
-        // [중요] TMap에서 해당 직업에 맞는 블루프린트를 찾음
-        if (!JobCrystalClasses.Contains(CurrentJob))
-        {
-            UE_LOG(LogTemp, Error, TEXT("[Stage1Boss] Missing Crystal BP for Job: %d. Check Blueprint Settings!"), (int32)CurrentJob);
-            continue;
-        }
-
+        if (!JobCrystalClasses.Contains(CurrentJob)) continue;
         TSubclassOf<AJobCrystal> TargetClass = JobCrystalClasses[CurrentJob];
         if (!TargetClass) continue;
 
-        // [Refactored Logic] 레벨에 배치된 TargetPoint의 절대 좌표(World Location) 사용
         ATargetPoint* SpawnPoint = CrystalSpawnPoints[i];
+        if (!IsValid(SpawnPoint)) continue;
 
-        // TargetPoint가 유효하지 않으면 스킵 (삭제되었거나 null인 경우)
-        if (!IsValid(SpawnPoint))
-        {
-            UE_LOG(LogTemp, Warning, TEXT("[Stage1Boss] Spawn Point index %d is Invalid!"), i);
-            continue;
-        }
-
-        // 보스의 회전값과 관계없이 고정된 월드 좌표 사용
         FVector SpawnLoc = SpawnPoint->GetActorLocation();
-        // 회전값은 0으로 초기화하거나, 필요하다면 SpawnPoint->GetActorRotation() 사용
         FRotator SpawnRot = FRotator::ZeroRotator;
 
         FActorSpawnParameters Params;
         Params.Owner = this;
-        Params.Instigator = this; // AI 인식 등을 위해 Instigator 설정
+        Params.Instigator = this;
         Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
 
-        // 찾은 BP로 소환
         AJobCrystal* NewCrystal = GetWorld()->SpawnActor<AJobCrystal>(TargetClass, SpawnLoc, SpawnRot, Params);
         if (NewCrystal)
         {
             NewCrystal->TargetBoss = this;
-            NewCrystal->RequiredJobType = CurrentJob; // 직업 정보 주입
+            NewCrystal->RequiredJobType = CurrentJob;
             RemainingGimmickCount++;
-
-            UE_LOG(LogTemp, Log, TEXT("[Server] Spawned Crystal(%s) at %s"), *NewCrystal->GetName(), *SpawnLoc.ToString());
         }
     }
-
-    UE_LOG(LogTemp, Log, TEXT("Stage1Boss: Successfully Spawned %d Crystals."), RemainingGimmickCount);
 }
 
 void AStage1Boss::OnGimmickResolved(int32 GimmickID)
 {
     if (!HasAuthority()) return;
-
     RemainingGimmickCount--;
 
-    // 모든 수정 파괴 시 무적 해제
     if (RemainingGimmickCount <= 0)
     {
         if (bPhase2Started)
@@ -250,53 +209,41 @@ void AStage1Boss::OnGimmickResolved(int32 GimmickID)
         }
         else
         {
-            SetPhase(EBossPhase::Phase1); // -> 무적 해제 (OnPhaseChanged 호출됨)
+            SetPhase(EBossPhase::Phase1);
         }
-        UE_LOG(LogTemp, Warning, TEXT("Stage1Boss: All Crystals Destroyed! Invincibility OFF!"));
     }
 }
 
 // ============================================================================
-// [Combat Logic]
+// [Combat]
 // ============================================================================
 
 void AStage1Boss::DoAttack_Slash()
 {
     if (!HasAuthority()) return;
-
     if (BossData && BossData->SlashAttackMontage)
-    {
         Multicast_PlayAttackMontage(BossData->SlashAttackMontage, FName("Slash"));
-    }
 }
 
 void AStage1Boss::DoAttack_Swing()
 {
     if (!HasAuthority()) return;
-
     if (BossData && BossData->AttackMontages.Num() > 0)
-    {
         Multicast_PlayAttackMontage(BossData->AttackMontages[0]);
-    }
 }
 
 void AStage1Boss::Multicast_PlayAttackMontage_Implementation(UAnimMontage* MontageToPlay, FName SectionName)
 {
-    if (MontageToPlay)
-    {
-        PlayAnimMontage(MontageToPlay, 1.0f, SectionName);
-    }
+    if (MontageToPlay) PlayAnimMontage(MontageToPlay, 1.0f, SectionName);
 }
 
 void AStage1Boss::AnimNotify_SpawnSlash()
 {
     if (!HasAuthority()) return;
-
     if (!BossData || !BossData->SlashProjectileClass) return;
 
     FVector SpawnLocation = GetActorLocation() + GetActorForwardVector() * 150.0f;
     FRotator SpawnRotation = GetActorRotation();
-
     FActorSpawnParameters SpawnParams;
     SpawnParams.Owner = this;
     SpawnParams.Instigator = this;
@@ -307,22 +254,15 @@ void AStage1Boss::AnimNotify_SpawnSlash()
 void AStage1Boss::AnimNotify_CheckMeleeHit()
 {
     if (!HasAuthority()) return;
-
     FVector TraceStart = GetActorLocation();
-    float Radius = MeleeAttackRadius;
 
     TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;
     ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_Pawn));
-
     TArray<AActor*> ActorsToIgnore;
     ActorsToIgnore.Add(this);
-
     TArray<AActor*> OutActors;
 
-    bool bHit = UKismetSystemLibrary::SphereOverlapActors(
-        GetWorld(), TraceStart, Radius, ObjectTypes, nullptr, ActorsToIgnore, OutActors
-    );
-
+    bool bHit = UKismetSystemLibrary::SphereOverlapActors(GetWorld(), TraceStart, MeleeAttackRadius, ObjectTypes, nullptr, ActorsToIgnore, OutActors);
     for (AActor* HitActor : OutActors)
     {
         if (HitActor && HitActor != this)
@@ -333,24 +273,18 @@ void AStage1Boss::AnimNotify_CheckMeleeHit()
 }
 
 // ============================================================================
-// [QTE Logic]
+// [QTE]
 // ============================================================================
 
 void AStage1Boss::StartSpearQTE()
 {
     if (!HasAuthority()) return;
-
     QTEProgressMap.Empty();
 
     for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
     {
         if (APlayerController* PC = It->Get())
-        {
-            if (PC->GetPawn())
-            {
-                QTEProgressMap.Add(PC, FPlayerQTEStatus());
-            }
-        }
+            if (PC->GetPawn()) QTEProgressMap.Add(PC, FPlayerQTEStatus());
     }
 
     if (QTEProgressMap.Num() == 0) return;
@@ -366,21 +300,15 @@ void AStage1Boss::Server_SubmitQTEInput_Implementation(APlayerController* Player
 
     FPlayerQTEStatus& Status = QTEProgressMap[PlayerController];
     Status.PressCount++;
-
-    if (Status.PressCount > QTEGoalCount)
-    {
-        Status.bFailed = true;
-    }
+    if (Status.PressCount > QTEGoalCount) Status.bFailed = true;
 }
 
 void AStage1Boss::EndSpearQTE()
 {
     if (!HasAuthority()) return;
-
     Multicast_SetQTEWidget(false);
 
     bool bAllSuccess = true;
-
     for (auto& Pair : QTEProgressMap)
     {
         if (Pair.Value.PressCount != QTEGoalCount || Pair.Value.bFailed)
@@ -419,10 +347,8 @@ void AStage1Boss::Multicast_SetQTEWidget_Implementation(bool bVisible)
 {
     if (APlayerController* PC = UGameplayStatics::GetPlayerController(GetWorld(), 0))
     {
-        if (bVisible)
-            GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, TEXT("[UI] PRESS SPACE 10 TIMES!!!"));
-        else
-            GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Green, TEXT("[UI] QTE END"));
+        if (bVisible) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, TEXT("[UI] QTE!"));
+        else GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Green, TEXT("[UI] QTE END"));
     }
 }
 
@@ -432,11 +358,9 @@ void AStage1Boss::SpawnDeathWall()
 
     FActorSpawnParameters Params;
     Params.Owner = this;
-    FRotator SpawnRot = GetActorRotation(); // 필요 시 이것도 고정 로테이션으로 변경 고려
 
-    // 현재는 기존 FVector WallSpawnLocation(상대 좌표 widget)을 그대로 사용 중.
-    // 만약 이것도 고정하고 싶다면 TargetPoint로 교체 필요.
-    // 여기서는 보스의 위치 기준으로 WallSpawnLocation 오프셋을 적용하여 소환.
+    // 벽은 보스의 현재 회전 방향(타겟 포인트 방향)으로 생성됩니다.
+    FRotator SpawnRot = GetActorRotation();
     FVector SpawnLoc = GetActorTransform().TransformPosition(WallSpawnLocation);
 
     ADeathWall* NewWall = GetWorld()->SpawnActor<ADeathWall>(DeathWallClass, SpawnLoc, SpawnRot, Params);
@@ -448,48 +372,32 @@ void AStage1Boss::SpawnDeathWall()
 
 void AStage1Boss::TrySpawnSpikeAtRandomPlayer()
 {
-    // [권한 분리]: 패턴 판단과 스폰은 서버에서만
     if (!HasAuthority()) return;
+    if (SpellMontage) Multicast_PlaySpellMontage();
 
-    // 1. 몽타주 재생 (모든 클라이언트에 보임)
-    if (SpellMontage)
-    {
-        Multicast_PlaySpellMontage();
-    }
-
-    // 2. 생존해 있는 플레이어 캐릭터 찾기
     TArray<AActor*> FoundPlayers;
     UGameplayStatics::GetAllActorsOfClass(GetWorld(), ACharacter::StaticClass(), FoundPlayers);
 
-    // 플레이어 태그나 특정 클래스로 필터링이 필요할 수 있음
     TArray<AActor*> ValidPlayers;
     for (AActor* Actor : FoundPlayers)
     {
-        // 보스 자신 제외, 죽은 플레이어 제외 등 조건 체크
-        if (Actor != this && !Actor->IsHidden())
-        {
-            ValidPlayers.Add(Actor);
-        }
+        if (Actor != this && !Actor->IsHidden()) ValidPlayers.Add(Actor);
     }
 
     if (ValidPlayers.Num() == 0) return;
 
-    // 3. 랜덤 타겟 선정
     int32 RandomIndex = FMath::RandRange(0, ValidPlayers.Num() - 1);
     AActor* TargetPlayer = ValidPlayers[RandomIndex];
 
     if (TargetPlayer && SpikeTrapClass)
     {
-        // 4. 플레이어 발밑 좌표 계산 (바닥 Z값 보정 필요 시 수정)
         FVector SpawnLocation = TargetPlayer->GetActorLocation();
-        SpawnLocation.Z -= 90.0f; // 캡슐 절반 높이만큼 내려서 바닥에 붙임 (조정 필요)
+        SpawnLocation.Z -= 90.0f;
         FRotator SpawnRotation = FRotator::ZeroRotator;
-
         FActorSpawnParameters SpawnParams;
         SpawnParams.Owner = this;
-        SpawnParams.Instigator = this; // 데미지 처리를 위해 Instigator 설정
+        SpawnParams.Instigator = this;
 
-        // 5. 함정 스폰 (Replicated 액터이므로 클라에도 자동 생성됨)
         GetWorld()->SpawnActor<ABossSpikeTrap>(SpikeTrapClass, SpawnLocation, SpawnRotation, SpawnParams);
     }
 }
@@ -501,47 +409,23 @@ void AStage1Boss::Multicast_PlaySpellMontage_Implementation()
         GetMesh()->GetAnimInstance()->Montage_Play(SpellMontage);
     }
 }
-// [1] 패턴 시작: 몽타주만 재생 (서버)
-// 수정: 지역 변수 선언을 제거하고 멤버 변수 BossData를 직접 사용
-// Source/Project_Bang_Squad/Character/StageBoss/Stage1Boss.cpp
+
+// ============================================================================
+// [Spike Pattern]
+// ============================================================================
 
 void AStage1Boss::StartSpikePattern()
 {
-    // 1. [권한 체크]
     if (!HasAuthority()) return;
+    if (!BossData || !BossData->SpellMontage) return;
 
-    UE_LOG(LogTemp, Warning, TEXT("[BOSS_DEBUG] StartSpikePattern Called!"));
+    if (GetMesh()) GetMesh()->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
 
-    // 2. [데이터 체크]
-    if (!BossData || !BossData->SpellMontage)
-    {
-        UE_LOG(LogTemp, Error, TEXT("[BOSS_DEBUG] CRITICAL: BossData or SpellMontage is NULL!"));
-        return;
-    }
+    StopAnimMontage(); // 기존 모션 캔슬
 
-    // 3. [중요] 서버 애니메이션 틱 강제 활성화
-    // 보스가 화면 밖에 있어도 애니메이션을 계산하도록 설정 (노티파이 발동 보장)
-    if (GetMesh())
-    {
-        GetMesh()->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
-    }
-
-    // 4. [중요] 기존 몽타주 강제 정지 (충돌 방지)
-    StopAnimMontage();
-
-    // 5. 몽타주 재생 및 결과 확인
     float Duration = PlayAnimMontage(BossData->SpellMontage);
-
-    if (Duration > 0.0f)
+    if (Duration <= 0.0f)
     {
-        UE_LOG(LogTemp, Warning, TEXT("[BOSS_DEBUG] SUCCESS: Montage Started! Duration: %.2f sec. Expecting Notify..."), Duration);
-    }
-    else
-    {
-        UE_LOG(LogTemp, Error, TEXT("[BOSS_DEBUG] FAIL: PlayAnimMontage returned 0.0f! Mesh is not ready or Montage is invalid."));
-
-        // [비상 대책] 몽타주 재생 실패 시, 강제로 스킬 함수 직접 호출 (타이머)
-        // 애니메이션 없이 기능이라도 작동하게 함
         FTimerHandle FallbackHandle;
         GetWorldTimerManager().SetTimer(FallbackHandle, this, &AStage1Boss::ExecuteSpikeSpell, 0.5f, false);
     }
@@ -549,10 +433,8 @@ void AStage1Boss::StartSpikePattern()
 
 void AStage1Boss::ExecuteSpikeSpell()
 {
-    // 1. [권한 분리]
     if (!HasAuthority()) return;
 
-    // 2. 캐릭터 검색
     TArray<AActor*> FoundActors;
     UGameplayStatics::GetAllActorsOfClass(GetWorld(), ACharacter::StaticClass(), FoundActors);
 
@@ -561,86 +443,201 @@ void AStage1Boss::ExecuteSpikeSpell()
     {
         ACharacter* Char = Cast<ACharacter>(Actor);
         if (!Char) continue;
-
-        // [핵심 수정] 보스 자신 제외 + "플레이어가 조종 중인 캐릭터"만 포함!
-        // 이 줄이 없어서 아까 BP_Enemy_Normal(쫄몹)이 타겟으로 잡힌 겁니다.
         if (Actor != this && !Actor->IsHidden() && Char->IsPlayerControlled())
         {
-            // (선택) 죽은 플레이어 제외 로직
             UHealthComponent* HC = Char->FindComponentByClass<UHealthComponent>();
             if (HC && HC->IsDead()) continue;
-
             ValidPlayers.Add(Actor);
         }
     }
 
-    if (ValidPlayers.Num() == 0)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("[Boss] ExecuteSpikeSpell: No Valid Targets Found!"));
-        return;
-    }
+    if (ValidPlayers.Num() == 0) return;
 
-    // 3. 랜덤 타겟 선정
     int32 RandomIndex = FMath::RandRange(0, ValidPlayers.Num() - 1);
     AActor* TargetPlayer = ValidPlayers[RandomIndex];
 
-    // 4. 함정 스폰 로직
     if (TargetPlayer && SpikeTrapClass)
     {
         FVector TargetLoc = TargetPlayer->GetActorLocation();
         FVector SpawnLocation = TargetLoc;
         FRotator SpawnRotation = FRotator::ZeroRotator;
 
-        // ================================================================
-        // [FIX 1] 바닥 보정 (LineTrace)
-        // 플레이어가 점프 중이거나 경사로에 있을 때, 허공이나 땅속에 생기는 것 방지
-        // ================================================================
         FHitResult HitResult;
         FCollisionQueryParams Params;
-        Params.AddIgnoredActor(TargetPlayer); // 플레이어 몸은 무시
+        Params.AddIgnoredActor(TargetPlayer);
         Params.AddIgnoredActor(this);
 
-        // 플레이어 위치에서 아래로 500만큼 레이저를 쏴서 바닥을 찾음
-        bool bHit = GetWorld()->LineTraceSingleByChannel(
-            HitResult,
-            TargetLoc,
-            TargetLoc - FVector(0, 0, 500.0f),
-            ECC_WorldStatic, // 움직이지 않는 배경(땅)만 체크
-            Params
-        );
+        bool bHit = GetWorld()->LineTraceSingleByChannel(HitResult, TargetLoc, TargetLoc - FVector(0, 0, 500.0f), ECC_WorldStatic, Params);
+        if (bHit) SpawnLocation = HitResult.Location;
+        else SpawnLocation.Z -= 90.0f;
 
-        if (bHit)
-        {
-            SpawnLocation = HitResult.Location; // 정확한 바닥 위치
-            // 바닥 기울기에 맞춰 회전시키고 싶다면 아래 주석 해제
-            // SpawnRotation = HitResult.Normal.Rotation(); 
-        }
-        else
-        {
-            // 바닥을 못 찾았으면(낙사 구간 등) 그냥 발 밑 보정값 사용
-            SpawnLocation.Z -= 90.0f;
-        }
-
-        // ================================================================
-        // [FIX 2] 충돌 무시하고 강제 스폰 (AlwaysSpawn)
-        // 이게 없으면 바닥이랑 조금만 겹쳐도 스폰이 실패함 (가장 큰 원인!)
-        // ================================================================
         FActorSpawnParameters SpawnParams;
         SpawnParams.Owner = this;
         SpawnParams.Instigator = this;
-
-        // [핵심] "충돌이 있어도 무조건 생성해라" 옵션
         SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
-        AActor* SpikedActor = GetWorld()->SpawnActor<ABossSpikeTrap>(SpikeTrapClass, SpawnLocation, SpawnRotation, SpawnParams);
+        GetWorld()->SpawnActor<ABossSpikeTrap>(SpikeTrapClass, SpawnLocation, SpawnRotation, SpawnParams);
+    }
+}
 
-        if (SpikedActor)
+// ============================================================================
+// [Death Wall Sequence] - 최종 수정 (안전장치 + State Lock 강화)
+// ============================================================================
+
+void AStage1Boss::OnHealthChanged(float CurrentHealth, float MaxHealth)
+{
+    if (!HasAuthority()) return;
+    if (bHasTriggeredDeathWall || CurrentHealth <= 0.0f) return;
+
+    float HpRatio = (MaxHealth > 0.0f) ? (CurrentHealth / MaxHealth) : 0.0f;
+
+    // [조건] HP 70% 이하가 되면 1회만 발동
+    if (HpRatio <= 0.7f)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[Stage1Boss] HP 70%% Reached! Starting Death Wall Sequence."));
+        bHasTriggeredDeathWall = true; // 중복 실행 방지
+        StartDeathWallSequence();
+    }
+}
+
+void AStage1Boss::StartDeathWallSequence()
+{
+    AAIController* AIC = Cast<AAIController>(GetController());
+
+    if (AIC && DeathWallCastLocation)
+    {
+        UE_LOG(LogTemp, Warning, TEXT(">>> [BOSS] Death Wall Sequence STARTED (Invincible ON)"));
+
+        bIsDeathWallSequenceActive = true; // 무적 상태 ON
+
+        // 1. 기존 동작 및 AI 강제 정지
+        StopAnimMontage();
+        if (UBrainComponent* Brain = AIC->GetBrainComponent())
         {
-            UE_LOG(LogTemp, Log, TEXT("[Boss] Trap Spawned SUCCESS at %s (Target: %s)"), *SpawnLocation.ToString(), *TargetPlayer->GetName());
+            Brain->StopLogic(TEXT("DeathWallPattern"));
         }
-        else
+        AIC->StopMovement();
+        AIC->ClearFocus(EAIFocusPriority::Gameplay); // 시선 고정 해제
+
+        // 2. 이동 명령
+        AIC->ReceiveMoveCompleted.AddDynamic(this, &AStage1Boss::OnArrivedAtCastLocation);
+        AIC->MoveToActor(DeathWallCastLocation, 50.0f);
+
+        // 3. ★ [Safety] 안전장치 타이머 시작 (15초 후 강제 종료)
+        // 이동이 꼬이거나 애니메이션 노티파이가 씹혀서 영원히 무적이 되는 것을 방지
+        GetWorldTimerManager().SetTimer(
+            FailSafeTimerHandle,
+            this,
+            &AStage1Boss::FinishDeathWallPattern,
+            DeathWallPatternDuration + 15.0f, // 넉넉하게 시간 부여
+            false
+        );
+    }
+    else
+    {
+        // 타겟 포인트가 없으면 즉시 제자리 시전
+        UE_LOG(LogTemp, Warning, TEXT(">>> [BOSS] No Cast Location! Casting Immediately."));
+
+        bIsDeathWallSequenceActive = true;
+        StopAnimMontage();
+        if (AIC)
         {
-            UE_LOG(LogTemp, Error, TEXT("[Boss] Trap Spawn FAILED! Check SpikeTrapClass Blueprint."));
+            AIC->StopMovement();
+            AIC->ClearFocus(EAIFocusPriority::Gameplay);
+            if (UBrainComponent* Brain = AIC->GetBrainComponent()) Brain->StopLogic(TEXT("DeathWallPattern"));
+        }
+
+        // 즉시 도착 처리
+        OnArrivedAtCastLocation(FAIRequestID::CurrentRequest, EPathFollowingResult::Success);
+
+        // 안전장치 타이머 가동
+        GetWorldTimerManager().SetTimer(FailSafeTimerHandle, this, &AStage1Boss::FinishDeathWallPattern, DeathWallPatternDuration + 5.0f, false);
+    }
+}
+
+void AStage1Boss::OnArrivedAtCastLocation(FAIRequestID RequestID, EPathFollowingResult::Type Result)
+{
+    if (Result == EPathFollowingResult::Success)
+    {
+        if (AAIController* AIC = Cast<AAIController>(GetController()))
+        {
+            // 델리게이트 해제
+            AIC->ReceiveMoveCompleted.RemoveDynamic(this, &AStage1Boss::OnArrivedAtCastLocation);
+
+            // [방향 정렬] 타겟 포인트 방향(벽이 나아갈 방향)으로 회전
+            if (DeathWallCastLocation)
+            {
+                SetActorRotation(DeathWallCastLocation->GetActorRotation());
+            }
+
+            // 움직임 및 시선 확실히 고정
+            AIC->StopMovement();
+            AIC->ClearFocus(EAIFocusPriority::Gameplay);
+        }
+
+        UE_LOG(LogTemp, Log, TEXT("[Stage1Boss] Arrived! Playing Montage."));
+        Multicast_PlayDeathWallMontage();
+    }
+}
+
+void AStage1Boss::Multicast_PlayDeathWallMontage_Implementation()
+{
+    if (BossData && BossData->DeathWallSummonMontage)
+    {
+        PlayAnimMontage(BossData->DeathWallSummonMontage);
+    }
+    else
+    {
+        // 몽타주 없으면 수동 호출 (테스트용)
+        if (HasAuthority())
+        {
+            AnimNotify_ActivateDeathWall();
+        }
+    }
+}
+
+void AStage1Boss::AnimNotify_ActivateDeathWall()
+{
+    if (!HasAuthority()) return;
+
+    UE_LOG(LogTemp, Warning, TEXT(">>> [BOSS] AnimNotify Triggered: Spawning Wall!"));
+
+    // 1. 벽 스폰
+    SpawnDeathWall();
+
+    // 2. ★ 타이머 재설정 (안전장치 해제 후 정규 대기 시간 설정)
+    // 애니메이션이 정상 실행되었으므로, 불필요하게 긴 안전장치 타이머를 지우고
+    // 정확한 대기 시간(DeathWallPatternDuration)으로 교체합니다.
+    GetWorldTimerManager().ClearTimer(FailSafeTimerHandle);
+
+    GetWorldTimerManager().SetTimer(
+        DeathWallTimerHandle,
+        this,
+        &AStage1Boss::FinishDeathWallPattern,
+        DeathWallPatternDuration, // 설정한 대기 시간 (예: 10초)
+        false
+    );
+}
+
+void AStage1Boss::FinishDeathWallPattern()
+{
+    if (!HasAuthority()) return;
+
+    UE_LOG(LogTemp, Warning, TEXT(">>> [BOSS] Wall Pattern Finished. Invincible OFF. AI Resumed."));
+
+    // 1. 상태 잠금 해제 (이제 다시 데미지 입음)
+    bIsDeathWallSequenceActive = false;
+
+    // 2. 잔여 타이머 모두 제거
+    GetWorldTimerManager().ClearTimer(DeathWallTimerHandle);
+    GetWorldTimerManager().ClearTimer(FailSafeTimerHandle);
+
+    // 3. AI 재개
+    if (AAIController* AIC = Cast<AAIController>(GetController()))
+    {
+        if (UBrainComponent* Brain = AIC->GetBrainComponent())
+        {
+            Brain->RestartLogic(); // 뇌 재가동
         }
     }
 }
