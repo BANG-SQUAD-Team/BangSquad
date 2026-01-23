@@ -136,51 +136,53 @@ void AStageBossAIController::SetState(EBossAIState NewState)
     case EBossAIState::SwitchTarget:
     {
         TArray<AActor*> Candidates;
-        // 모든 캐릭터 가져오기
         UGameplayStatics::GetAllActorsOfClass(GetWorld(), ACharacter::StaticClass(), Candidates);
 
         TArray<AActor*> ValidPlayers;
 
+        // 1. [1차 필터링] 모든 "살아있는 플레이어"를 수집 (현재 타겟 포함)
         for (AActor* Actor : Candidates)
         {
             ACharacter* CharCandidate = Cast<ACharacter>(Actor);
             if (!CharCandidate) continue;
 
-            // 1. [제외] 보스 자신
+            // 보스 자신 제외
             if (CharCandidate == OwnerBoss) continue;
 
-            // 2. [제외] 현재 타겟 (다른 사람을 노리게 하려면 유지, 혼자 남았을 때를 대비하려면 제거 고려)
-            // * 팁: 생존자가 1명이면 이 조건 때문에 타겟을 못 찾을 수 있습니다. 
-            //       가급적이면 이 줄은 지우거나, 후보가 0명일 때 다시 포함시키는 로직이 좋습니다.
-            if (CharCandidate == TargetActor && Candidates.Num() > 2) continue;
-
-            // 3. [핵심] 몬스터 제외 필터링 (플레이어 컨트롤러가 빙의된 폰만 찾기)
-            // AIController가 조종하는 몹들은 여기서 걸러집니다.
+            // [핵심] 몬스터/NPC 제외 (AIController가 조종하는 폰은 무시)
             if (!CharCandidate->IsPlayerControlled()) continue;
 
-            // 4. [제외] 이미 죽은 플레이어는 타겟팅 금지
+            // [핵심] 이미 죽은 플레이어 제외
             UHealthComponent* HC = CharCandidate->FindComponentByClass<UHealthComponent>();
             if (HC && HC->IsDead()) continue;
 
-            // 모든 검증 통과 -> 유효한 플레이어 타겟
+            // 여기까지 오면 "공격 가능한 플레이어"임
             ValidPlayers.Add(CharCandidate);
         }
 
-        if (ValidPlayers.Num() > 0)
+        // 2. [2차 선택] 타겟 결정
+        if (ValidPlayers.Num() == 0)
         {
-            // 랜덤 타겟 선정
-            TargetActor = ValidPlayers[FMath::RandRange(0, ValidPlayers.Num() - 1)];
+            // 정말 아무도 없을 때 (모두 사망)
+            UE_LOG(LogTemp, Warning, TEXT("[BossAI] No Valid Player Target Found! Going to Idle."));
+            TargetActor = nullptr;
+            SetState(EBossAIState::Idle); // 추격하지 말고 대기
         }
         else
         {
-            // 예외 처리: 때릴 사람이 아무도 없음 (모두 사망 or 로그아웃)
-            // 가장 가까운 대상이라도 찾거나, Idle로 돌아가야 함
-            UE_LOG(LogTemp, Warning, TEXT("[BossAI] No Valid Player Target Found!"));
-            // 타겟을 null로 두거나, 기존 타겟 유지
-        }
+            // 플레이어가 2명 이상이면, 가급적 "현재 타겟이 아닌 사람"을 노림
+            if (ValidPlayers.Num() > 1 && TargetActor)
+            {
+                ValidPlayers.Remove(TargetActor);
+            }
 
-        // 타겟 변경 후 바로 추격
-        SetState(EBossAIState::Chase);
+            // 남은 후보들 중에서 랜덤 선택 (한 명이면 그 사람이 선택됨)
+            int32 RandomIndex = FMath::RandRange(0, ValidPlayers.Num() - 1);
+            TargetActor = ValidPlayers[RandomIndex];
+
+            // 타겟을 정했으니 추격 시작
+            SetState(EBossAIState::Chase);
+        }
     }
     break;
     }

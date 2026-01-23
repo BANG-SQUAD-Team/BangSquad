@@ -49,58 +49,67 @@ void ABossSpikeTrap::Tick(float DeltaTime)
     SpikeTimeline.TickTimeline(DeltaTime);
 }
 
+// Source/Project_Bang_Squad/Character/StageBoss/BossSpikeTrap.cpp
+
 void ABossSpikeTrap::TriggerTrapLogic()
 {
-    // [권한 분리]: 중요 로직은 서버에서만
+    // [권한 분리]
     if (!HasAuthority()) return;
 
-    // 1. 비주얼 동기화 (모든 클라에 가시 올라오는 연출 명령)
+    // 1. 비주얼 실행
     Multicast_ActivateVisuals();
 
-    // 2. 범위 판정 (Overlap Sphere)
+    // 2. 범위 판정
     TArray<FOverlapResult> OverlapResults;
     FVector Center = GetActorLocation();
     FCollisionShape SphereShape = FCollisionShape::MakeSphere(TrapRadius);
 
-    // Pawn(캐릭터) 타입만 검사하도록 설정
     FCollisionQueryParams QueryParams;
-    QueryParams.AddIgnoredActor(this); // 자기 자신 제외
-    if (GetInstigator()) QueryParams.AddIgnoredActor(GetInstigator()); // 보스(시전자) 제외
+    QueryParams.AddIgnoredActor(this);
+    if (GetInstigator()) QueryParams.AddIgnoredActor(GetInstigator());
 
-    // 월드에 겹친 액터 검사
     bool bHit = GetWorld()->OverlapMultiByObjectType(
         OverlapResults,
         Center,
         FQuat::Identity,
-        FCollisionObjectQueryParams(ECollisionChannel::ECC_Pawn), // 폰만 검사
+        FCollisionObjectQueryParams(ECollisionChannel::ECC_Pawn),
         SphereShape,
         QueryParams
     );
 
     if (bHit)
     {
+        // [핵심] 중복 데미지 방지용 목록 (이번 프레임에 맞은 놈들 기록)
+        TSet<AActor*> DamagedActors;
+
         for (const FOverlapResult& Result : OverlapResults)
         {
             AActor* HitActor = Result.GetActor();
-            if (!IsValid(HitActor)) continue;
 
-            // 3. 데미지 처리
+            // 유효성 체크 및 "이미 맞았는지" 확인
+            if (!IsValid(HitActor) || DamagedActors.Contains(HitActor)) continue;
+
+            // 목록에 등록 (이제 넌 두 번 안 맞는다)
+            DamagedActors.Add(HitActor);
+
+            // 3. 데미지 처리 (이제 딱 한 번만 실행됨)
             UGameplayStatics::ApplyDamage(HitActor, TrapDamage, GetInstigatorController(), this, UDamageType::StaticClass());
 
-            // 4. 에어본 처리 (LaunchCharacter)
+            UE_LOG(LogTemp, Warning, TEXT("[Trap] Dealt %.1f Damage to %s"), TrapDamage, *HitActor->GetName());
+
+            // 4. 에어본 처리
             ACharacter* HitCharacter = Cast<ACharacter>(HitActor);
             if (HitCharacter)
             {
-                // Z축으로 강하게 띄움. XYOverride, ZOverride를 true로 하여 기존 관성 무시
                 FVector LaunchVelocity(0.f, 0.f, AirborneStrength);
                 HitCharacter->LaunchCharacter(LaunchVelocity, true, true);
             }
         }
     }
 
-    // 5. 액터 수명 종료 (연출 끝난 뒤 3초 후)
     SetLifeSpan(3.0f);
 }
+
 
 void ABossSpikeTrap::Multicast_ActivateVisuals_Implementation()
 {
