@@ -7,7 +7,7 @@
 #include "Project_Bang_Squad/Core/BSGameInstance.h"
 #include "Project_Bang_Squad/Game/Stage/StageGameMode.h"
 #include "Project_Bang_Squad/Character/Component/HealthComponent.h"
-
+#include "DrawDebugHelpers.h" // 필수 헤더
 #include "Kismet/KismetSystemLibrary.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/Character.h"
@@ -503,61 +503,144 @@ void AStage1Boss::Multicast_PlaySpellMontage_Implementation()
 }
 // [1] 패턴 시작: 몽타주만 재생 (서버)
 // 수정: 지역 변수 선언을 제거하고 멤버 변수 BossData를 직접 사용
+// Source/Project_Bang_Squad/Character/StageBoss/Stage1Boss.cpp
+
 void AStage1Boss::StartSpikePattern()
 {
-    // [권한 분리]
+    // 1. [권한 체크]
     if (!HasAuthority()) return;
 
-    // 오류 수정: UEnemyBossData* BossData 선언 제거.
-    // 클래스 멤버 변수 BossData를 바로 사용합니다.
-    if (BossData && BossData->SpellMontage)
+    UE_LOG(LogTemp, Warning, TEXT("[BOSS_DEBUG] StartSpikePattern Called!"));
+
+    // 2. [데이터 체크]
+    if (!BossData || !BossData->SpellMontage)
     {
-        // 몽타주 재생 (Multicast로 자동 복제됨)
-        PlayAnimMontage(BossData->SpellMontage);
+        UE_LOG(LogTemp, Error, TEXT("[BOSS_DEBUG] CRITICAL: BossData or SpellMontage is NULL!"));
+        return;
+    }
+
+    // 3. [중요] 서버 애니메이션 틱 강제 활성화
+    // 보스가 화면 밖에 있어도 애니메이션을 계산하도록 설정 (노티파이 발동 보장)
+    if (GetMesh())
+    {
+        GetMesh()->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
+    }
+
+    // 4. [중요] 기존 몽타주 강제 정지 (충돌 방지)
+    StopAnimMontage();
+
+    // 5. 몽타주 재생 및 결과 확인
+    float Duration = PlayAnimMontage(BossData->SpellMontage);
+
+    if (Duration > 0.0f)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[BOSS_DEBUG] SUCCESS: Montage Started! Duration: %.2f sec. Expecting Notify..."), Duration);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("[BOSS_DEBUG] FAIL: PlayAnimMontage returned 0.0f! Mesh is not ready or Montage is invalid."));
+
+        // [비상 대책] 몽타주 재생 실패 시, 강제로 스킬 함수 직접 호출 (타이머)
+        // 애니메이션 없이 기능이라도 작동하게 함
+        FTimerHandle FallbackHandle;
+        GetWorldTimerManager().SetTimer(FallbackHandle, this, &AStage1Boss::ExecuteSpikeSpell, 0.5f, false);
     }
 }
-// [2] 실제 스폰: AnimNotify가 호출 (서버)
-// 수정: 기존 TrySpawnSpikeAtRandomPlayer의 로직을 여기로 이식
+
 void AStage1Boss::ExecuteSpikeSpell()
 {
-    // [권한 분리] 스폰은 오직 서버만!
+    // 1. [권한 분리]
     if (!HasAuthority()) return;
 
-    // 1. 생존해 있는 플레이어 캐릭터 찾기
-    TArray<AActor*> FoundPlayers;
-    UGameplayStatics::GetAllActorsOfClass(GetWorld(), ACharacter::StaticClass(), FoundPlayers);
+    // 2. 캐릭터 검색
+    TArray<AActor*> FoundActors;
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), ACharacter::StaticClass(), FoundActors);
 
     TArray<AActor*> ValidPlayers;
-    for (AActor* Actor : FoundPlayers)
+    for (AActor* Actor : FoundActors)
     {
-        // 보스 자신 제외, 죽은 플레이어 제외 등 조건 체크
-        if (Actor != this && !Actor->IsHidden())
+        ACharacter* Char = Cast<ACharacter>(Actor);
+        if (!Char) continue;
+
+        // [핵심 수정] 보스 자신 제외 + "플레이어가 조종 중인 캐릭터"만 포함!
+        // 이 줄이 없어서 아까 BP_Enemy_Normal(쫄몹)이 타겟으로 잡힌 겁니다.
+        if (Actor != this && !Actor->IsHidden() && Char->IsPlayerControlled())
         {
+            // (선택) 죽은 플레이어 제외 로직
+            UHealthComponent* HC = Char->FindComponentByClass<UHealthComponent>();
+            if (HC && HC->IsDead()) continue;
+
             ValidPlayers.Add(Actor);
         }
     }
 
-    if (ValidPlayers.Num() == 0) return;
+    if (ValidPlayers.Num() == 0)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[Boss] ExecuteSpikeSpell: No Valid Targets Found!"));
+        return;
+    }
 
-    // 2. 랜덤 타겟 선정
+    // 3. 랜덤 타겟 선정
     int32 RandomIndex = FMath::RandRange(0, ValidPlayers.Num() - 1);
     AActor* TargetPlayer = ValidPlayers[RandomIndex];
 
-    // 3. 함정 스폰
+    // 4. 함정 스폰 로직
     if (TargetPlayer && SpikeTrapClass)
     {
-        // 플레이어 발밑 좌표 계산 (바닥 Z값 보정 필요 시 수정, 예: -90)
-        FVector SpawnLocation = TargetPlayer->GetActorLocation();
-        SpawnLocation.Z -= 90.0f;
+        FVector TargetLoc = TargetPlayer->GetActorLocation();
+        FVector SpawnLocation = TargetLoc;
         FRotator SpawnRotation = FRotator::ZeroRotator;
 
+        // ================================================================
+        // [FIX 1] 바닥 보정 (LineTrace)
+        // 플레이어가 점프 중이거나 경사로에 있을 때, 허공이나 땅속에 생기는 것 방지
+        // ================================================================
+        FHitResult HitResult;
+        FCollisionQueryParams Params;
+        Params.AddIgnoredActor(TargetPlayer); // 플레이어 몸은 무시
+        Params.AddIgnoredActor(this);
+
+        // 플레이어 위치에서 아래로 500만큼 레이저를 쏴서 바닥을 찾음
+        bool bHit = GetWorld()->LineTraceSingleByChannel(
+            HitResult,
+            TargetLoc,
+            TargetLoc - FVector(0, 0, 500.0f),
+            ECC_WorldStatic, // 움직이지 않는 배경(땅)만 체크
+            Params
+        );
+
+        if (bHit)
+        {
+            SpawnLocation = HitResult.Location; // 정확한 바닥 위치
+            // 바닥 기울기에 맞춰 회전시키고 싶다면 아래 주석 해제
+            // SpawnRotation = HitResult.Normal.Rotation(); 
+        }
+        else
+        {
+            // 바닥을 못 찾았으면(낙사 구간 등) 그냥 발 밑 보정값 사용
+            SpawnLocation.Z -= 90.0f;
+        }
+
+        // ================================================================
+        // [FIX 2] 충돌 무시하고 강제 스폰 (AlwaysSpawn)
+        // 이게 없으면 바닥이랑 조금만 겹쳐도 스폰이 실패함 (가장 큰 원인!)
+        // ================================================================
         FActorSpawnParameters SpawnParams;
         SpawnParams.Owner = this;
-        SpawnParams.Instigator = this; // 데미지 처리를 위해 Instigator 설정
+        SpawnParams.Instigator = this;
 
-        // Replicated 액터이므로 서버에서 스폰하면 클라에도 자동 생성됨
-        GetWorld()->SpawnActor<ABossSpikeTrap>(SpikeTrapClass, SpawnLocation, SpawnRotation, SpawnParams);
+        // [핵심] "충돌이 있어도 무조건 생성해라" 옵션
+        SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
-        UE_LOG(LogTemp, Log, TEXT("Trap Spawned at %s by AnimNotify!"), *TargetPlayer->GetName());
+        AActor* SpikedActor = GetWorld()->SpawnActor<ABossSpikeTrap>(SpikeTrapClass, SpawnLocation, SpawnRotation, SpawnParams);
+
+        if (SpikedActor)
+        {
+            UE_LOG(LogTemp, Log, TEXT("[Boss] Trap Spawned SUCCESS at %s (Target: %s)"), *SpawnLocation.ToString(), *TargetPlayer->GetName());
+        }
+        else
+        {
+            UE_LOG(LogTemp, Error, TEXT("[Boss] Trap Spawn FAILED! Check SpikeTrapClass Blueprint."));
+        }
     }
 }

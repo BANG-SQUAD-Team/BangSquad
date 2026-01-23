@@ -5,6 +5,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Project_Bang_Squad/Character/Component/HealthComponent.h"
+#include "Project_Bang_Squad/Core/BSGameInstance.h"
 
 AEnemyCharacterBase::AEnemyCharacterBase()
 {
@@ -18,6 +19,14 @@ void AEnemyCharacterBase::BeginPlay()
 {
     Super::BeginPlay();
 
+	UBSGameInstance* GI = Cast<UBSGameInstance>(GetGameInstance());
+	if (GI && GI->IsMonsterDead(MyUniqueID))
+	{
+		// 이미 죽은 기록이 있다면, 태어나자마자 조용히 사라집니다.
+		Destroy();
+		return; 
+	}
+	
     if (UCharacterMovementComponent* Move = GetCharacterMovement())
     {
        DefaultMaxWalkSpeed = Move->MaxWalkSpeed;
@@ -191,6 +200,15 @@ void AEnemyCharacterBase::StartDeath()
     bIsDead = true;
     bIsHitReacting = false;
 
+	if (HasAuthority())
+	{
+		UBSGameInstance* GI = Cast<UBSGameInstance>(GetGameInstance());
+		if (GI)
+		{
+			GI->MarkMonsterAsDead(MyUniqueID);
+		}
+	}
+	
     OnDeathStarted();
 
     if (AAIController* AIC = Cast<AAIController>(GetController()))
@@ -264,4 +282,14 @@ void AEnemyCharacterBase::Multicast_EnterRagdoll_Implementation()
     GetMesh()->SetSimulatePhysics(true);
     GetMesh()->WakeAllRigidBodies();
     GetMesh()->bBlendPhysics = true;
+}
+
+void AEnemyCharacterBase::GenerateUniqueID()
+{
+	FVector SpawnLocation = GetActorLocation();
+
+	uint32 LocationHash = GetTypeHash(SpawnLocation);
+	uint32 ClassHash = GetTypeHash(GetClass()->GetName());
+
+	MyUniqueID = HashCombine(LocationHash, ClassHash);
 }

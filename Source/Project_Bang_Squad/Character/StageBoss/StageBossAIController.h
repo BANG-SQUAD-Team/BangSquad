@@ -13,6 +13,7 @@ enum class EBossAIState : uint8
     MeleeAttack,    // 근접 공격 (3회)
     Retreat,        // 후퇴 (직선 도주)
     RangeAttack,    // 원거리 공격 (3회)
+    SpikeAttack,    // 스파이크 패턴 (원거리 공격 후 연계)
     SwitchTarget    // 타겟 변경
 };
 
@@ -38,6 +39,8 @@ protected:
     void HandleMeleeAttack(float DeltaTime);
     void HandleRetreat(float DeltaTime);
     void HandleRangeAttack(float DeltaTime);
+    void HandleSpikeAttack(float DeltaTime);
+
 
     bool IsTargetValid() const;
 
@@ -73,6 +76,10 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss AI|Config|Combat")
     float AttackInterval = 1.5f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss AI|Config|Combat")
+    float SpikePatternDuration = 3.0f;
+
 
     // 디버그 라인 표시 여부
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss AI|Debug")

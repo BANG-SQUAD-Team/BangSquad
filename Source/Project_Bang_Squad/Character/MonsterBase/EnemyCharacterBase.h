@@ -112,4 +112,9 @@ private:
 
     FTimerHandle HitReactTimer;
     FTimerHandle DeathToRagdollTimer;
+
+protected:
+    uint32 MyUniqueID = 0;
+
+    void GenerateUniqueID();
 };

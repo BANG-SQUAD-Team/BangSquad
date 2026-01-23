@@ -54,6 +54,7 @@ void AStageBossAIController::Tick(float DeltaTime)
     case EBossAIState::MeleeAttack: HandleMeleeAttack(DeltaTime); break;
     case EBossAIState::Retreat:     HandleRetreat(DeltaTime); break;
     case EBossAIState::RangeAttack: HandleRangeAttack(DeltaTime); break;
+    case EBossAIState::SpikeAttack: HandleSpikeAttack(DeltaTime); break;
     case EBossAIState::SwitchTarget: break;
     }
 }
@@ -110,24 +111,78 @@ void AStageBossAIController::SetState(EBossAIState NewState)
         AttackCooldownTimer = 0.0f;
         break;
 
+        // [New] 스파이크 패턴 진입
+    case EBossAIState::SpikeAttack:
+    {
+        StopMovement();
+        if (TargetActor) SetFocus(TargetActor);
+
+        // 1. [서버 권한] 보스에게 패턴 실행 명령
+        if (OwnerBoss)
+        {
+            OwnerBoss->StartSpikePattern();
+            UE_LOG(LogTemp, Warning, TEXT("[BossAI] Chain Finish: Spike Pattern Started!"));
+        }
+
+        // 2. 타이머는 Tick에서 체크 (SpikePatternDuration 사용)
+    }
+    break;
+
+
+    // Source/Project_Bang_Squad/Character/StageBoss/StageBossAIController.cpp
+
+   // ... (헤더에 HealthComponent 포함 확인: #include "Project_Bang_Squad/Character/Component/HealthComponent.h")
+
     case EBossAIState::SwitchTarget:
     {
         TArray<AActor*> Candidates;
         UGameplayStatics::GetAllActorsOfClass(GetWorld(), ACharacter::StaticClass(), Candidates);
 
-        TArray<AActor*> ValidTargets;
+        TArray<AActor*> ValidPlayers;
+
+        // 1. [1차 필터링] 모든 "살아있는 플레이어"를 수집 (현재 타겟 포함)
         for (AActor* Actor : Candidates)
         {
-            if (Actor != OwnerBoss && Actor != TargetActor) ValidTargets.Add(Actor);
+            ACharacter* CharCandidate = Cast<ACharacter>(Actor);
+            if (!CharCandidate) continue;
+
+            // 보스 자신 제외
+            if (CharCandidate == OwnerBoss) continue;
+
+            // [핵심] 몬스터/NPC 제외 (AIController가 조종하는 폰은 무시)
+            if (!CharCandidate->IsPlayerControlled()) continue;
+
+            // [핵심] 이미 죽은 플레이어 제외
+            UHealthComponent* HC = CharCandidate->FindComponentByClass<UHealthComponent>();
+            if (HC && HC->IsDead()) continue;
+
+            // 여기까지 오면 "공격 가능한 플레이어"임
+            ValidPlayers.Add(CharCandidate);
         }
 
-        if (ValidTargets.Num() > 0)
+        // 2. [2차 선택] 타겟 결정
+        if (ValidPlayers.Num() == 0)
         {
-            TargetActor = ValidTargets[FMath::RandRange(0, ValidTargets.Num() - 1)];
+            // 정말 아무도 없을 때 (모두 사망)
+            UE_LOG(LogTemp, Warning, TEXT("[BossAI] No Valid Player Target Found! Going to Idle."));
+            TargetActor = nullptr;
+            SetState(EBossAIState::Idle); // 추격하지 말고 대기
         }
+        else
+        {
+            // 플레이어가 2명 이상이면, 가급적 "현재 타겟이 아닌 사람"을 노림
+            if (ValidPlayers.Num() > 1 && TargetActor)
+            {
+                ValidPlayers.Remove(TargetActor);
+            }
 
-        // 타겟 변경 후 바로 추격
-        SetState(EBossAIState::Chase);
+            // 남은 후보들 중에서 랜덤 선택 (한 명이면 그 사람이 선택됨)
+            int32 RandomIndex = FMath::RandRange(0, ValidPlayers.Num() - 1);
+            TargetActor = ValidPlayers[RandomIndex];
+
+            // 타겟을 정했으니 추격 시작
+            SetState(EBossAIState::Chase);
+        }
     }
     break;
     }
@@ -224,23 +279,42 @@ void AStageBossAIController::HandleRangeAttack(float DeltaTime)
         return;
     }
 
+    // 공격 실행
     OwnerBoss->DoAttack_Slash();
     CurrentAttackCount++;
 
     if (CurrentAttackCount >= MaxComboCount)
     {
-        // 3발 쏘고 타겟 변경 (딜레이 1.5초)
+        // [핵심 변경] 3타가 끝나면 -> 타겟 변경이 아니라 'SpikeAttack'으로 전환
+        // 딜레이를 조금 주어 마지막 발사 모션이 끝난 뒤 패턴 사용
         FTimerHandle Handle;
         GetWorldTimerManager().SetTimer(Handle, [this]()
             {
-                if (IsValid(this)) SetState(EBossAIState::SwitchTarget);
-            }, 1.5f, false);
+                if (IsValid(this))
+                {
+                    SetState(EBossAIState::SpikeAttack);
+                }
+            }, 1.0f, false); // 1초 뒤 스파이크 진입
 
-        AttackCooldownTimer = 999.0f;
+        AttackCooldownTimer = 999.0f; // 추가 공격 방지
     }
     else
     {
         AttackCooldownTimer = AttackInterval;
+    }
+}
+
+// [New] 스파이크 패턴 핸들러 (지속 시간 대기 후 종료)
+void AStageBossAIController::HandleSpikeAttack(float DeltaTime)
+{
+    // 이미 SetState 진입부에서 StartSpikePattern()을 호출했으므로,
+    // 여기서는 패턴이 끝날 때까지 시간만 셉니다.
+    StateTimer += DeltaTime;
+
+    // 지정된 지속 시간(애니메이션 길이 등)이 지나면 타겟 변경
+    if (StateTimer >= SpikePatternDuration)
+    {
+        SetState(EBossAIState::SwitchTarget);
     }
 }
 

@@ -34,8 +34,7 @@ ADeathWall::ADeathWall()
     PlatformStickOut = 150.0f;
     BranchProbability = 0.6f;
 
-    // 리듬 패턴 관련 변수 초기화 (헤더에 없어도 여기서 쓰기 위해 로컬변수로 사용하거나 하드코딩)
-    // *GeneratePlatforms 함수 내에서 설정됩니다*
+    // 리듬 패턴 관련 변수 초기화 (GeneratePlatforms 함수 내에서 설정됩니다)
 }
 
 void ADeathWall::BeginPlay()
@@ -64,6 +63,19 @@ void ADeathWall::BeginPlay()
     }
 }
 
+void ADeathWall::Tick(float DeltaTime)
+{
+    Super::Tick(DeltaTime);
+    if (HasAuthority() && bIsActive)
+    {
+        // [수정] Forward(앞) 대신 Right(오른쪽) 벡터 사용
+        // 만약 반대로 가면 -GetActorRightVector() 로 바꾸시면 됩니다.
+        FVector MoveDir = GetActorRightVector();
+
+        AddActorWorldOffset(MoveDir * MoveSpeed * DeltaTime);
+    }
+}
+
 void ADeathWall::GeneratePlatforms()
 {
     if (!PlatformClass) return;
@@ -77,124 +89,153 @@ void ADeathWall::GeneratePlatforms()
     float BoxTopZ = BoxOrigin.Z + BoxExtent.Z;
 
     // ====================================================
-    // [설정: 리듬 액션 - 넓게, 좁게, 점프!]
+    // [설정값]
     // ====================================================
-
-    // 1. 평소 계단 (220 ~ 450 랜덤)
-    float MinStairGap = 220.0f;
-    float MaxStairGap = 450.0f;
-
-    // 2. ★ 리듬 패턴 설정 ★
-    // "턴하기 직전 패드는 220, 그 전 패드는 450"
-    float LastStepGap = 220.0f;      // 마지막 발판 (도움닫기/브레이크)
-    float SecondLastStepGap = 450.0f; // 그 전 발판 (멀리뛰기)
-
-    // 3. 턴 점프 (600 ~ 650 랜덤)
-    float MinJumpGap = 600.0f;
-    float MaxJumpGap = 650.0f;
-
-    // 높이: 110cm
     float GridHeight = 110.0f;
-
-    // ----------------------------------------------------
-
-    // [1. 바닥]
-    float CurrentZ = BoxBottomZ + 50.0f;
-    float CurrentY = 0.0f;
-    float CurrentDirection = (FMath::RandBool()) ? 1.0f : -1.0f;
-    int32 StepsInCurrentDir = 0;
-
-    // 몇 층까지 가고 꺾을까? (최소 4칸은 가야 패턴이 나옴)
-    int32 TargetSteps = FMath::RandRange(4, 6);
-
-    // 첫 발판
-    FVector StartPos = BoxOrigin;
-    StartPos.Z = CurrentZ;
-    StartPos += FwdVec * PlatformStickOut;
-    GetWorld()->SpawnActor<AActor>(PlatformClass, StartPos, GetActorRotation())
-        ->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepWorldTransform);
-
-    // [2. 패턴 생성]
-    CurrentZ += GridHeight;
+    float StickOut = 200.0f;
     float MaxY = BoxExtent.Y - 100.0f;
 
-    while (CurrentZ < BoxTopZ)
+    // ★ 랜덤 방향 결정 (True면 왼쪽이 돌, False면 오른쪽이 돌)
+    bool bStoneOnLeft = FMath::RandBool();
+
+    float StoneMainDir = bStoneOnLeft ? -1.0f : 1.0f;
+    float PadMainDir = bStoneOnLeft ? 1.0f : -1.0f;
+
+
+    // ----------------------------------------------------
+    // [1] 공통 구간 (2개 생성 - 확실한 계단 만들기)
+    // ----------------------------------------------------
+    float CurrentZ = BoxBottomZ + 50.0f;
+
+    // 1번 발판 (바닥) - 완전 중앙
+    FVector Pos1 = BoxOrigin;
+    Pos1.Z = CurrentZ;
+    Pos1 += FwdVec * StickOut;
+    Pos1 += RightVec * 0.0f;
+    GetWorld()->SpawnActor<AActor>(PlatformClass, Pos1, GetActorRotation())
+        ->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepWorldTransform);
+
+    // 2번 발판 (분기점) - 옆으로 이동
+    CurrentZ += GridHeight;
+    float ForkY = StoneMainDir * 200.0f;
+
+    FVector Pos2 = BoxOrigin;
+    Pos2.Z = CurrentZ;
+    Pos2 += FwdVec * StickOut;
+    Pos2 += RightVec * ForkY;
+    GetWorld()->SpawnActor<AActor>(PlatformClass, Pos2, GetActorRotation())
+        ->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepWorldTransform);
+
+    float ForkZ = CurrentZ;
+
+
+    // ====================================================
+    // [2] 돌 발판 길 (Stone Path) - 기존 유지
+    // ====================================================
+    float StoneZ = ForkZ + GridHeight;
+    float StoneY = ForkY + (StoneMainDir * 200.0f);
+
+    float StoneWanderDir = StoneMainDir;
+    int32 StoneSteps = 0;
+    int32 StoneTarget = 4;
+
+    while (StoneZ < BoxTopZ)
     {
-        // 1. 행동 결정
-        bool bIsJumpTurn = false;
+        if (FMath::Abs(StoneY + (StoneWanderDir * 300.0f)) > MaxY)
+            StoneWanderDir *= -1.0f;
 
-        // 목표 층수 채웠거나, 벽 뚫으면 턴
-        if (StepsInCurrentDir >= TargetSteps) bIsJumpTurn = true;
+        if (StoneSteps >= StoneTarget) {
+            StoneWanderDir *= -1.0f;
+            StoneSteps = 0;
+            StoneTarget = FMath::RandRange(3, 5);
+        }
 
-        // 벽 체크 (대략 450으로 계산)
-        float NextStepY = CurrentY + (CurrentDirection * 450.0f);
-        if (FMath::Abs(NextStepY) > MaxY) bIsJumpTurn = true;
+        StoneY += (StoneWanderDir * FMath::RandRange(200.0f, 350.0f));
 
-        // 2. 위치 계산
-        if (bIsJumpTurn)
+        // 반대편(점프패드 구역) 침범 방지
+        if (bStoneOnLeft)
         {
-            // [점프 턴] 600 ~ 650
-            float RandomJump = FMath::RandRange(MinJumpGap, MaxJumpGap);
-
-            CurrentDirection *= -1.0f;
-            CurrentY += (CurrentDirection * RandomJump);
-
-            // 맵 보정
-            if (FMath::Abs(CurrentY) > MaxY)
-            {
-                CurrentY = (CurrentDirection > 0) ? -MaxY + 100.0f : MaxY - 100.0f;
-            }
-
-            StepsInCurrentDir = 0;
-            TargetSteps = FMath::RandRange(4, 6);
+            if (StoneY > -50.0f) StoneY = -50.0f;
+            if (StoneY < -MaxY) StoneY = -MaxY + 50.0f;
         }
         else
         {
-            // [계단 구간]
-            float GapToUse;
-
-            // ★ 사용자 요청 패턴 적용 ★
-            if (StepsInCurrentDir == TargetSteps - 1)
-            {
-                // [마지막 발판] 턴하기 직전 -> 220 (짧게)
-                GapToUse = LastStepGap;
-            }
-            else if (StepsInCurrentDir == TargetSteps - 2)
-            {
-                // [마지막 전 발판] 그 전 패드 -> 450 (길게)
-                GapToUse = SecondLastStepGap;
-            }
-            else
-            {
-                // [평소] 220 ~ 450 랜덤
-                GapToUse = FMath::RandRange(MinStairGap, MaxStairGap);
-            }
-
-            CurrentY += (CurrentDirection * GapToUse);
+            if (StoneY < 50.0f) StoneY = 50.0f;
+            if (StoneY > MaxY) StoneY = MaxY - 50.0f;
         }
 
-        // 3. 생성
         FVector SpawnPos = BoxOrigin;
-        SpawnPos.Z = CurrentZ;
-        SpawnPos += FwdVec * PlatformStickOut;
-        SpawnPos += RightVec * CurrentY;
+        SpawnPos.Z = StoneZ;
+        SpawnPos += FwdVec * StickOut;
+        SpawnPos += RightVec * StoneY;
 
-        FActorSpawnParameters SpawnParams;
-        SpawnParams.Owner = this;
+        AActor* NewPlat = GetWorld()->SpawnActor<AActor>(PlatformClass, SpawnPos, GetActorRotation());
+        if (NewPlat) NewPlat->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepWorldTransform);
 
-        AActor* NewPlatform = GetWorld()->SpawnActor<AActor>(PlatformClass, SpawnPos, GetActorRotation(), SpawnParams);
-        if (NewPlatform)
+        StoneZ += GridHeight;
+        StoneSteps++;
+    }
+
+
+    // ====================================================
+    // [3] 점프 패드 길 (Jump Pad Path) - ★ 수정됨
+    // ====================================================
+    if (JumpPadClass)
+    {
+        float PadZ = ForkZ + 120.0f;
+        float PadY = ForkY + (PadMainDir * 300.0f);
+
+        // 첫 점프 패드
+        FVector FirstPadPos = BoxOrigin;
+        FirstPadPos.Z = PadZ;
+        FirstPadPos += FwdVec * StickOut;
+        FirstPadPos += RightVec * PadY;
+
+        AActor* FirstPad = GetWorld()->SpawnActor<AActor>(JumpPadClass, FirstPadPos, GetActorRotation());
+        if (FirstPad) FirstPad->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepWorldTransform);
+
+        PadZ += GridHeight;
+
+        // ★ [수정] 간격을 3~4칸으로 확 줄임 (촘촘하게 생성)
+        int32 PadSkip = FMath::RandRange(3, 4);
+        float ZigZag = 1.0f;
+
+        while (PadZ < BoxTopZ)
         {
-            NewPlatform->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepWorldTransform);
-        }
+            PadSkip--;
+            if (PadSkip <= 0)
+            {
+                ZigZag *= -1.0f;
+                PadY += (ZigZag * 100.0f) + FMath::RandRange(-30.0f, 30.0f);
 
-        // 4. 업데이트
-        CurrentZ += GridHeight;
-        StepsInCurrentDir++;
+                // 반대편(돌 구역) 침범 방지
+                if (bStoneOnLeft) // 패드는 오른쪽
+                {
+                    if (PadY < 50.0f) PadY = 100.0f;
+                    if (PadY > MaxY) PadY = MaxY - 50.0f;
+                }
+                else // 패드는 왼쪽
+                {
+                    if (PadY > -50.0f) PadY = -100.0f;
+                    if (PadY < -MaxY) PadY = -MaxY + 50.0f;
+                }
+
+                FVector PadPos = BoxOrigin;
+                PadPos.Z = PadZ;
+                PadPos += FwdVec * StickOut;
+                PadPos += RightVec * PadY;
+
+                AActor* NewPad = GetWorld()->SpawnActor<AActor>(JumpPadClass, PadPos, GetActorRotation());
+                if (NewPad) NewPad->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepWorldTransform);
+
+                // ★ [수정] 다음 패드도 3~4칸 뒤에 바로 생성
+                PadSkip = FMath::RandRange(5, 7);
+            }
+            PadZ += GridHeight;
+        }
     }
 }
 
-// 헤더에 선언되어 있으므로 구현체만 남겨둠 (현재 로직에서는 직접 호출되지 않더라도 에러 방지용)
 void ADeathWall::SpawnRow(float Z, int32 CenterIdx, int32 Size, float Width, FVector Origin, FVector Fwd, FVector Right)
 {
     for (int32 i = 0; i < Size; i++)
@@ -250,16 +291,12 @@ void ADeathWall::SpawnCluster(float Z, int32 CenterIdx, int32 Size, float Width,
     }
 }
 
-void ADeathWall::Tick(float DeltaTime)
-{
-    Super::Tick(DeltaTime);
-    if (HasAuthority() && bIsActive)
-    {
-        AddActorWorldOffset(GetActorForwardVector() * MoveSpeed * DeltaTime);
-    }
-}
-
 void ADeathWall::ActivateWall()
 {
     if (HasAuthority()) bIsActive = true;
+}
+
+void ADeathWall::DeactivateWall()
+{
+    if (HasAuthority()) bIsActive = false;
 }
