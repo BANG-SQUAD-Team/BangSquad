@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -71,4 +71,8 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<UStageMainWidget> StageMainWidget;
+
+	// 에디터에서 생성한 MPC 에셋을 넣을 변수
+	UPROPERTY(EditDefaultsOnly, Category = "BS|Visual")
+	TObjectPtr<class UMaterialParameterCollection> WorldSettingsMPC;
 };
