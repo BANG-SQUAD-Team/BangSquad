@@ -36,6 +36,9 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wall Settings")
     TSubclassOf<AActor> PlatformClass;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wall Settings")
+    TSubclassOf<AActor> JumpPadClass;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wall Movement")
     float MoveSpeed = 50.0f;
 
