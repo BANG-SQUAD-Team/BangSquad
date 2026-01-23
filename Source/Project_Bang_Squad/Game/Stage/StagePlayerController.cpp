@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "Project_Bang_Squad/Game/Stage/StagePlayerController.h"
@@ -9,6 +9,7 @@
 #include "GameFramework/GameStateBase.h"
 #include "GameFramework/PlayerState.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "Kismet/KismetMaterialLibrary.h"
 #include "Project_Bang_Squad/Character/Base/BaseCharacter.h"
 #include "Project_Bang_Squad/Core/BSGameInstance.h"
 #include "Project_Bang_Squad/Game/InteractionInterface.h"
@@ -22,6 +23,20 @@ void AStagePlayerController::BeginPlay()
 	//Local인 경우에만
 	if (IsLocalPlayerController())
 	{
+		// 캐릭터 밝기 조절
+		if (WorldSettingsMPC)
+		{
+			FString MapName = GetWorld()->GetMapName();
+			float TargetEmissive = 1.5f; // 기본 밝기
+
+			if (MapName.Contains(TEXT("Stage2")))
+			{
+				TargetEmissive = 0.1f;
+			}
+
+			UKismetMaterialLibrary::SetScalarParameterValue(GetWorld(), WorldSettingsMPC, TEXT("GlobalCharacterEmissive"), TargetEmissive);
+		}
+
 		//UI
 		if (StageMainWidgetClass)
 		{
