@@ -67,6 +67,7 @@ APaladinCharacter::APaladinCharacter()
     SmashVFXScale = FVector(1.0f, 1.0f, 1.0f);
 }
 
+
 void APaladinCharacter::BeginPlay()
 {
     Super::BeginPlay();
@@ -758,5 +759,35 @@ void APaladinCharacter::Multicast_StopMontage_Implementation(float BlendOutTime)
     {
         if (AnimInstance->GetCurrentActiveMontage() == DeathMontage) return;
         AnimInstance->Montage_Stop(BlendOutTime);
+    }
+}
+
+// 1. 방향 판정 헬퍼 (내적 활용)
+bool APaladinCharacter::IsBlockingDirection(FVector IncomingDirection) const
+{
+    // 방어 중이 아니거나 방패가 깨졌으면 못 막음
+    if (!bIsGuarding || bIsShieldBroken) return false;
+
+    // 내적(Dot Product) 계산
+    // 내 정면(Forward)과 들어오는 힘(Direction)이 서로 마주봐야 함 (반대 방향)
+    // 예: 바람이 남쪽(↓)으로 불 때, 나는 북쪽(↑)을 봐야 막아짐 -> 내적 값은 -1.0
+    float DotResult = FVector::DotProduct(GetActorForwardVector(), IncomingDirection.GetSafeNormal());
+
+    // -0.2 이하면 대략 전방 160도 정도 커버 (수치가 -1에 가까울수록 정면만 막음)
+    return DotResult < -0.2f;
+}
+
+// 2. 방패 체력 소모 (서버 전용)
+void APaladinCharacter::ConsumeShield(float Amount)
+{
+    if (!HasAuthority()) return; // 서버만 처리
+
+    CurrentShieldHP -= Amount;
+    
+
+    // 깨짐 체크
+    if (CurrentShieldHP <= 0.0f)
+    {
+        OnShieldBroken();
     }
 }

@@ -15,6 +15,7 @@ public:
     //  섹션 1: 생성자 및 필수 오버라이드 (Constructor & Essentials)
     // ====================================================================================
     APaladinCharacter();
+    
 
     // 리플리케이션 변수 등록 (네트워크)
     virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;
@@ -36,6 +37,12 @@ public:
     UFUNCTION(NetMulticast, Reliable) 
     void Multicast_StopMontage(float BlendOutTime = 0.25f);
     void Multicast_StopMontage_Implementation(float BlendOutTime);
+
+    //  특정 방향에서 오는 힘을 막고 있는지 검사 (바람, 투사체 등 공용)
+    bool IsBlockingDirection(FVector IncomingDirection) const;
+
+    // [ 외부(기믹)에서 방패 체력을 깎기 위한 함수
+    void ConsumeShield(float Amount);
 
 protected:
     
