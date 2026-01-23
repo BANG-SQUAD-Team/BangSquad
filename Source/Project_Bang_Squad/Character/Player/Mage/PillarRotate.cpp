@@ -3,12 +3,13 @@
 #include "Components/ArrowComponent.h"
 #include "Curves/CurveFloat.h"
 #include "Net/UnrealNetwork.h"
+#include "GameFramework/GameStateBase.h" // 서버 시간 참조용
 
 APillarRotate::APillarRotate()
 {
 	PrimaryActorTick.bCanEverTick = true;
 	bReplicates = true;
-	SetReplicateMovement(false);
+	SetReplicateMovement(false); // 직접 계산하므로 엔진의 기본 복제는 끕니다.
 
 	SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
 	RootComponent = SceneRoot;
@@ -16,12 +17,10 @@ APillarRotate::APillarRotate()
 	HingeHelper = CreateDefaultSubobject<USphereComponent>(TEXT("HingeHelper"));
 	HingeHelper->SetupAttachment(SceneRoot);
 	HingeHelper->SetSphereRadius(20.0f);
-	HingeHelper->ShapeColor = FColor::Magenta;
 	HingeHelper->bIsEditorOnly = true;
 
 	DirectionHelper = CreateDefaultSubobject<UArrowComponent>(TEXT("DirectionHelper"));
 	DirectionHelper->SetupAttachment(SceneRoot);
-	DirectionHelper->ArrowColor = FColor::Cyan;
 	DirectionHelper->bIsEditorOnly = true;
 
 	PillarMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PillarMesh"));
@@ -31,12 +30,49 @@ APillarRotate::APillarRotate()
 void APillarRotate::BeginPlay()
 {
 	Super::BeginPlay();
-	InitialRotation = GetActorRotation();
-	InitialLocation = GetActorLocation();
+}
 
-	if (DirectionHelper)
+void APillarRotate::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	// 모든 클라이언트가 동일한 애니메이션 상태를 갖도록 복제 등록
+	DOREPLIFETIME(APillarRotate, bIsFalling);
+	DOREPLIFETIME(APillarRotate, StartTime);
+	DOREPLIFETIME(APillarRotate, ReplicatedRotationAxis);
+	DOREPLIFETIME(APillarRotate, ReplicatedInitialRotation);
+	DOREPLIFETIME(APillarRotate, ReplicatedInitialLocation);
+}
+
+void APillarRotate::ProcessMageInput(FVector Direction)
+{
+	if (!HasAuthority()) return; // 서버에서만 판정
+	if (bIsFalling || StartTime > 0.0f) return;
+
+	if (Direction.Y > 0.4f)
 	{
-		RotationAxis = DirectionHelper->GetRightVector();
+		// [핵심] 상호작용 시점의 월드 상태를 캡처하여 고정합니다.
+		if (AGameStateBase* GS = GetWorld()->GetGameState())
+		{
+			StartTime = GS->GetServerWorldTimeSeconds();
+		}
+
+		ReplicatedInitialRotation = GetActorRotation();
+		ReplicatedInitialLocation = GetActorLocation();
+
+		if (DirectionHelper)
+		{
+			// DirectionHelper의 방향을 기준으로 회전축을 서버에서 확정합니다.
+			ReplicatedRotationAxis = DirectionHelper->GetRightVector();
+		}
+
+		bIsFalling = true;
+		SetActorTickEnabled(true);
+
+		SetMageHighlight(false);
+		if (PillarMesh)
+		{
+			PillarMesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
+		}
 	}
 }
 
@@ -44,66 +80,43 @@ void APillarRotate::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	if (bIsFalling)
+	// 서버 시간이 복제되었다면 애니메이션 계산 시작
+	if (StartTime > 0.f)
 	{
-		CurrentTime += DeltaTime;
-
-		float Alpha = FMath::Clamp(CurrentTime / FallDuration, 0.0f, 1.0f);
-
-		float TargetAlpha = Alpha;
-		if (FallCurve)
+		if (AGameStateBase* GS = GetWorld()->GetGameState())
 		{
-			TargetAlpha = FallCurve->GetFloatValue(CurrentTime);
-		}
+			float ServerTime = GS->GetServerWorldTimeSeconds();
+			float ElapsedTime = ServerTime - StartTime;
 
-		UpdateFallProgress(TargetAlpha);
+			float Alpha = FMath::Clamp(ElapsedTime / FallDuration, 0.0f, 1.0f);
 
-		if (CurrentTime >= FallDuration)
-		{
-			UpdateFallProgress(FallCurve ? FallCurve->GetFloatValue(FallDuration) : 1.0f);
-			bIsFalling = false;
-			SetActorTickEnabled(false);
+			float TargetAlpha = Alpha;
+			if (FallCurve)
+			{
+				// 커브도 현재 경과 시간을 기준으로 샘플링합니다.
+				TargetAlpha = FallCurve->GetFloatValue(ElapsedTime);
+			}
+
+			UpdateFallProgress(TargetAlpha);
+
+			// 애니메이션이 완료되면 틱을 종료하여 성능 최적화
+			if (ElapsedTime >= FallDuration)
+			{
+				SetActorTickEnabled(false);
+			}
 		}
 	}
 }
 
-void APillarRotate::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+void APillarRotate::UpdateFallProgress(float Alpha)
 {
-	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-	DOREPLIFETIME(APillarRotate, bIsFalling);
-}
+	// 서버에서 복제된 축과 초기값을 사용하여 쿼터니언 회전 적용
+	FQuat DeltaRotation = FQuat(ReplicatedRotationAxis, FMath::DegreesToRadians(MaxFallAngle * Alpha));
+	SetActorRotation(DeltaRotation * ReplicatedInitialRotation.Quaternion());
 
-void APillarRotate::SetMageHighlight(bool bActive)
-{
-	if (PillarMesh)
-	{
-		if (bIsFalling || CurrentTime > 0.0f)
-		{
-			PillarMesh->SetRenderCustomDepth(false);
-			return;
-		}
-
-		PillarMesh->SetRenderCustomDepth(bActive);
-		PillarMesh->SetCustomDepthStencilValue(bActive ? 250 : 0);
-	}
-}
-
-void APillarRotate::ProcessMageInput(FVector Direction)
-{
-	if (!HasAuthority()) return;
-	if (bIsFalling || CurrentTime > 0.0f) return;
-
-	if (Direction.Y > 0.4f)
-	{
-		bIsFalling = true;
-		SetActorTickEnabled(true);
-		
-		SetMageHighlight(false);
-		if (PillarMesh)
-		{
-			PillarMesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
-		}
-	}
+	// 위치 보간
+	FVector TargetLoc = ReplicatedInitialLocation + ReplicatedInitialRotation.RotateVector(FallLocationOffset);
+	SetActorLocation(FMath::Lerp(ReplicatedInitialLocation, TargetLoc, Alpha));
 }
 
 void APillarRotate::OnRep_bIsFalling()
@@ -112,18 +125,19 @@ void APillarRotate::OnRep_bIsFalling()
 	{
 		SetActorTickEnabled(true);
 		SetMageHighlight(false);
-		if (PillarMesh)
-		{
-			PillarMesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
-		}
 	}
 }
 
-void APillarRotate::UpdateFallProgress(float Alpha)
+void APillarRotate::SetMageHighlight(bool bActive)
 {
-	FQuat DeltaRotation = FQuat(RotationAxis, FMath::DegreesToRadians(MaxFallAngle * Alpha));
-	SetActorRotation(DeltaRotation * InitialRotation.Quaternion());
-
-	FVector TargetLoc = InitialLocation + InitialRotation.RotateVector(FallLocationOffset);
-	SetActorLocation(FMath::Lerp(InitialLocation, TargetLoc, Alpha));
+	if (PillarMesh)
+	{
+		if (bIsFalling || StartTime > 0.0f)
+		{
+			PillarMesh->SetRenderCustomDepth(false);
+			return;
+		}
+		PillarMesh->SetRenderCustomDepth(bActive);
+		PillarMesh->SetCustomDepthStencilValue(bActive ? 250 : 0);
+	}
 }
