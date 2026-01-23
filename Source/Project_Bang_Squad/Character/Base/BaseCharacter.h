@@ -86,6 +86,8 @@ public:
 
 	UFUNCTION()
 	bool IsDead() {return bIsDead;}
+	
+	void SetWindResistance(bool bEnable);
 protected:
 	virtual void BeginPlay() override;
 	
@@ -218,4 +220,8 @@ protected:
 	// 서버와 클라이언트 모두 속도를 바꾸게 하는 방송 함수
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_SetMaxWalkSpeed(float NewSpeed);
+	
+private:
+	// 원래 브레이크 수치 저장용
+	float OriginalBrakingDeceleration = 0.0f;
 };

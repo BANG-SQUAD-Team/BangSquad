@@ -514,3 +514,26 @@ void ABaseCharacter::OnAttackMontageEnded(UAnimMontage* Montage, bool bInterrupt
 	// 몽타주가 끝나거나 취소되면 다시 행동 가능 상태로 복구
 	bIsAttacking = false;
 }
+
+void ABaseCharacter::SetWindResistance(bool bEnable)
+{
+	UCharacterMovementComponent* MoveComp = GetCharacterMovement();
+	if (!MoveComp) return;
+
+	if (bEnable)
+	{
+		// [윈드존 입장]
+		// 1. 원래 브레이크 값 저장 (복구를 위해)
+		OriginalBrakingDeceleration = MoveComp->BrakingDecelerationWalking;
+
+		// 2. 브레이크를 거의 0으로 만듦 (미끄러지듯이 밀리게)
+		// 0으로 하면 얼음판 같으니까 100~500 정도로 테스트 해보세요.
+		MoveComp->BrakingDecelerationWalking = 100.0f; 
+	}
+	else
+	{
+		// [윈드존 퇴장]
+		// 원래대로 브레이크 복구 (안 하면 계속 미끄러짐)
+		MoveComp->BrakingDecelerationWalking = OriginalBrakingDeceleration;
+	}
+}
