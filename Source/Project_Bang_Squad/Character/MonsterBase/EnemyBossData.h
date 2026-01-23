@@ -50,6 +50,11 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss Animation")
     TObjectPtr<UAnimMontage> SpellMontage; 
     
+    // 8. 데스 월(죽음의 벽) 소환 패턴 몽타주
+    // 기획자가 이 부분에 애니메이션을 할당하면 코드 수정 없이 패턴 연출 변경 가능
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Anim")
+    TObjectPtr<UAnimMontage> DeathWallSummonMontage;
+
     // (추후 확장)
     // 보스 등장 몽타주, 전용 BGM 등은 여기에 추가하면 됩니다.
 };
