@@ -19,7 +19,10 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void Tick(float DeltaTime) override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
+	/* ===== 컴포넌트 ===== */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	USceneComponent* SceneRoot;
 
@@ -32,25 +35,34 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	UStaticMeshComponent* PillarMesh;
 
-	UPROPERTY(EditAnywhere, Category = "Timeline")
+	/* ===== 설정 및 커브 ===== */
+	UPROPERTY(EditAnywhere, Category = "Pillar|Settings")
 	UCurveFloat* FallCurve;
 
-	UPROPERTY(EditAnywhere, Category = "PillarSettings")
+	UPROPERTY(EditAnywhere, Category = "Pillar|Settings")
 	float FallDuration = 1.0f;
 
-	UPROPERTY(EditAnywhere, Category = "PillarSettings")
+	UPROPERTY(EditAnywhere, Category = "Pillar|Settings")
 	FVector FallLocationOffset = FVector::ZeroVector;
 
-	UPROPERTY(EditAnywhere, Category = "PillarSettings")
+	UPROPERTY(EditAnywhere, Category = "Pillar|Settings")
 	float MaxFallAngle = 90.f;
 
+	/* ===== 멀티플레이어 동기화 변수 ===== */
 	UPROPERTY(ReplicatedUsing = OnRep_bIsFalling)
 	bool bIsFalling = false;
 
-	float CurrentTime = 0.0f;
-	FVector RotationAxis = FVector(0.f, 1.f, 0.f);
-	FRotator InitialRotation;
-	FVector InitialLocation;
+	UPROPERTY(Replicated)
+	float StartTime = -1.f; // 서버 절대 시간 기준 시작점
+
+	UPROPERTY(Replicated)
+	FVector ReplicatedRotationAxis;
+
+	UPROPERTY(Replicated)
+	FRotator ReplicatedInitialRotation;
+
+	UPROPERTY(Replicated)
+	FVector ReplicatedInitialLocation;
 
 	UFUNCTION()
 	void OnRep_bIsFalling();
@@ -58,9 +70,7 @@ protected:
 	void UpdateFallProgress(float Alpha);
 
 public:
-	virtual void Tick(float DeltaTime) override;
-	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
-
+	/* ===== 인터페이스 구현 ===== */
 	virtual void SetMageHighlight(bool bActive) override;
 	virtual void ProcessMageInput(FVector Direction) override;
 };
