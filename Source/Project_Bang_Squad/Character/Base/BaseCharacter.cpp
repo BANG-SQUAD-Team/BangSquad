@@ -81,9 +81,12 @@ void ABaseCharacter::BeginPlay()
 		{
 			UnlockedStageLevel = 3;
 		}
-		else
+		
+		// 미니게임 맵 감지
+		if (MapName.Contains(TEXT("MiniGameMap")))
 		{
-			UnlockedStageLevel = 3;
+			bIsMiniGameMode = true;
+			UnlockedStageLevel = 0;
 		}
 	}
 }
@@ -408,7 +411,7 @@ void ABaseCharacter::Look(const FInputActionValue& Value)
 	AddControllerPitchInput(-Input.Y);
 }
 
-
+  
 void ABaseCharacter::Jump()
 {
 	if (bCanJump && !GetCharacterMovement()->IsFalling())
@@ -427,6 +430,11 @@ void ABaseCharacter::ResetJump() { bCanJump = true; }
 
 bool ABaseCharacter::IsSkillUnlocked(int32 RequiredStage)
 {
+	if (bIsMiniGameMode)
+	{
+		return false;
+	}
+	
 	if (RequiredStage == 0) return true;
 	return UnlockedStageLevel >= RequiredStage;
 }

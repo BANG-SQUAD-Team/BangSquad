@@ -388,6 +388,7 @@ void AStrikerCharacter::Multicast_PlaySlamFX_Implementation()
 // ============================================================================
 void AStrikerCharacter::JobAbility()
 {
+	if (!IsSkillUnlocked(1)) return;
 	if (!CanAttack()) return;
     float CurrentTime = GetWorld()->GetTimeSeconds();
     if (CurrentTime < JobAbilityCooldownTime) return;

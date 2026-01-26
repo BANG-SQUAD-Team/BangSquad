@@ -521,6 +521,8 @@ void AMageCharacter::SpawnDelayedProjectile(UClass* ProjectileClass, float Damag
 
 void AMageCharacter::JobAbility()
 {
+    if (!IsSkillUnlocked(1)) return;
+    
     if (bIsDead) return;
     
     UAnimMontage* TargetMontage = nullptr;

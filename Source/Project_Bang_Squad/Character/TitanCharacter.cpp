@@ -310,6 +310,7 @@ void ATitanCharacter::Multicast_FixMesh_Implementation(ACharacter* Victim)
 
 void ATitanCharacter::JobAbility()
 {
+	if (!IsSkillUnlocked(1)) return;
 	// 로컬 체크
 	if (bIsDead || bIsCooldown) return;
 

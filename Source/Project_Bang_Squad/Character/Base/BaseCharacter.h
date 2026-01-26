@@ -175,6 +175,9 @@ protected:
 	virtual void JobAbility() {}
 
 	bool IsSkillUnlocked(int32 RequiredStage);
+	
+	// 미니게임 맵인지 확인하는 플래그
+	bool bIsMiniGameMode = false;
 
 	// 플레이어 캐릭터의 속도를 저장할 변수
 	float CachedWalkSpeed = 0.0f;
