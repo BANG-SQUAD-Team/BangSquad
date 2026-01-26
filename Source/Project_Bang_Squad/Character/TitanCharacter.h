@@ -118,6 +118,9 @@ protected:
 	UFUNCTION()
 	void OnThrownActorHit(AActor* SelfActor, AActor* OtherActor, FVector NormalImpulse, const FHitResult& Hit);
 
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_ForceThrowCleanup(ACharacter* Victim, FVector Velocity);
+
 	// =================================================================
 	// [네트워크: 스킬 1 (Rock Throw)]
 	// =================================================================
