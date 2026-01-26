@@ -99,6 +99,7 @@ void ADeathWall::GeneratePlatforms()
     FRotator PlatformRot = BaseRot;
     PlatformRot.Yaw += 90.0f;
 
+    // ★ [1] 방향 결정 (여기서 딱 한 번만 해야 함!)
     bool bStoneOnLeft = FMath::RandBool();
 
     float LeftWall = -BoxExtent.Y + 50.0f;
@@ -109,6 +110,7 @@ void ADeathWall::GeneratePlatforms()
     float StoneDir = 0.0f; // -1: 왼쪽, 1: 오른쪽
     float PadDir = 0.0f;   // 돌과 반대
 
+    // 구역 설정
     if (bStoneOnLeft)
     {
         StoneDir = -1.0f;
@@ -142,18 +144,11 @@ void ADeathWall::GeneratePlatforms()
 
     float GridHeight = 110.0f;
     float StickOut = 200.0f;
-    float MaxY = BoxExtent.Y - 100.0f;
-
-    // 방향 결정
-    bool bStoneOnLeft = FMath::RandBool();
-
-    float StoneMainDir = bStoneOnLeft ? -1.0f : 1.0f;
-    float PadMainDir = bStoneOnLeft ? 1.0f : -1.0f;
 
     // ----------------------------------------------------
     // [2] 공통 시작 구간 (Start)
     // ----------------------------------------------------
-    // ★ [수정] 50도 높다고 하셔서 20으로 바닥에 붙임
+    // ★ 높이: 바닥 + 20 (요청하신 대로 낮게)
     float CurrentZ = BoxBottomZ + 20.0f;
 
     // 1번 발판: 완전 중앙 바닥
@@ -258,19 +253,15 @@ void ADeathWall::GeneratePlatforms()
     // ====================================================
     // [4] 점프 패드 루프 (20% 구역)
     // ====================================================
-    // ★ [중요] 점프 패드 진입로 만들기
-    // 문제는 '중앙'에서 '구석 패드존'까지 거리가 먼데 발판이 없어서 못 가는 것.
-    // 중앙(0)에서 패드존(PadZoneCenter)까지 이어주는 "가로 징검다리"를 놓습니다.
-
-    float PadZ = CurrentZ + 20.0f; // 1번 발판(중앙)보다 조금 위에서 시작
+    // 1번 발판(CurrentZ)보다 살짝 위(+20)에서 징검다리 시작
+    float PadZ = CurrentZ + 20.0f;
     float PadZoneCenter = (PadMinY + PadMaxY) * 0.5f;
 
-    // 중앙(0)부터 패드 구역(PadZoneCenter)까지 3번에 나눠서 이동
+    // 중앙(0) -> 패드 구역까지 이어주는 징검다리 4개
     int32 BridgeSteps = 4;
 
     for (int32 i = 1; i <= BridgeSteps; ++i)
     {
-        // 0.33, 0.66, 1.0 비율로 위치 보간 (중앙 -> 패드구역)
         float Alpha = (float)i / (float)BridgeSteps;
         float BridgeY = FMath::Lerp(0.0f, PadZoneCenter, Alpha);
 
@@ -282,12 +273,12 @@ void ADeathWall::GeneratePlatforms()
         AActor* StepPlat = GetWorld()->SpawnActor<AActor>(PlatformClass, StepPos, PlatformRot);
         if (StepPlat) StepPlat->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepWorldTransform);
 
-        PadZ += FMath::RandRange(30.0f, 80.0f);
+        PadZ += FMath::RandRange(30.0f, 80.0f); // 랜덤 높이 증가
     }
 
-    // 이제 패드 구역에 도착했으니 점프 패드 생성 시작
+    // 점프 패드 생성 시작
     float PadY = PadZoneCenter;
-    int32 PadSkip = 0; // 바로 생성
+    int32 PadSkip = 0;
 
     while (PadZ < BoxTopZ)
     {
