@@ -2,7 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
-#include "DeathWall.generated.h" // 이 파일은 반드시 마지막 include여야 합니다.
+#include "DeathWall.generated.h"
 
 UCLASS()
 class PROJECT_BANG_SQUAD_API ADeathWall : public AActor
@@ -25,7 +25,10 @@ public:
     void DeactivateWall();
 
 protected:
-    // [컴포넌트]
+    // [수정] 메쉬를 담을 루트 컴포넌트 추가
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+    class USceneComponent* DefaultSceneRoot;
+
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
     class UStaticMeshComponent* WallMesh;
 
