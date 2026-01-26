@@ -5,6 +5,7 @@
 #include "Components/PrimitiveComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/BoxComponent.h"
+#include "GameFramework/Actor.h"
 
 ADeathWall::ADeathWall()
 {
@@ -49,10 +50,13 @@ void ADeathWall::BeginPlay()
     {
         GeneratePlatforms();
 
-        // 성벽 충돌 무시 로직
+        // [핵심 1] 벽의 수명을 1분 40초(100초)로 설정
+        // 이 시간이 지나면 벽은 자동으로 Destroy 됩니다.
+        SetLifeSpan(105.0f);
+
+        // (기존 코드: 다른 성벽 무시 로직 유지...)
         TArray<AActor*> FoundRamparts;
         UGameplayStatics::GetAllActorsOfClass(GetWorld(), ABoss1_Rampart::StaticClass(), FoundRamparts);
-
         for (AActor* Actor : FoundRamparts)
         {
             if (ABoss1_Rampart* Rampart = Cast<ABoss1_Rampart>(Actor))
@@ -311,4 +315,18 @@ void ADeathWall::ActivateWall()
 void ADeathWall::DeactivateWall()
 {
     if (HasAuthority()) bIsActive = false;
+}
+
+void ADeathWall::NotifyActorBeginOverlap(AActor* OtherActor)
+{
+    Super::NotifyActorBeginOverlap(OtherActor);
+
+    // 서버에서만 삭제 처리를 관리합니다.
+    if (!HasAuthority()) return;
+
+    if (OtherActor && OtherActor->ActorHasTag(FName("KillZone")))
+    {
+        UE_LOG(LogTemp, Warning, TEXT(">>> [DEATHWALL] Reached KillZone. Self-Destructing."));
+        Destroy();
+    }
 }

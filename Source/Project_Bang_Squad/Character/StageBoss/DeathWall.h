@@ -14,7 +14,7 @@ public:
 
 protected:
     virtual void BeginPlay() override;
-
+    virtual void NotifyActorBeginOverlap(AActor* OtherActor) override;
 public:
     virtual void Tick(float DeltaTime) override;
 
@@ -23,6 +23,7 @@ public:
 
     UFUNCTION(BlueprintCallable)
     void DeactivateWall();
+
 
 protected:
     // [수정] 메쉬를 담을 루트 컴포넌트 추가

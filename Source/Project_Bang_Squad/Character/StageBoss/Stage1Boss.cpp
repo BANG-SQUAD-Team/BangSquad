@@ -1,4 +1,5 @@
 // Source/Project_Bang_Squad/Character/StageBoss/Stage1Boss.cpp
+
 #include "Stage1Boss.h"
 #include "JobCrystal.h"
 #include "DeathWall.h"
@@ -8,6 +9,7 @@
 #include "Kismet/KismetSystemLibrary.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h" // [추가] 무브먼트 모드 설정을 위해 필수
 #include "Components/CapsuleComponent.h"
 #include "TimerManager.h"
 #include "Engine/TargetPoint.h"
@@ -15,6 +17,7 @@
 #include "AIController.h"
 #include "BrainComponent.h"
 #include "Net/UnrealNetwork.h"
+#include "Project_Bang_Squad/BossPattern/Boss1_Rampart.h"
 
 AStage1Boss::AStage1Boss() {}
 
@@ -31,7 +34,9 @@ void AStage1Boss::BeginPlay()
 
 float AStage1Boss::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
+    // [무적 처리] 패턴 진행 중(bIsDeathWallSequenceActive)일 때 데미지 0 처리
     if (!HasAuthority() || bIsDeathWallSequenceActive) return 0.0f;
+
     AActor* Attacker = DamageCauser;
     if (EventInstigator && EventInstigator->GetPawn()) Attacker = EventInstigator->GetPawn();
     if (Attacker && (Attacker == this || Attacker->IsA(AEnemyCharacterBase::StaticClass()))) return 0.0f;
@@ -117,7 +122,6 @@ void AStage1Boss::Multicast_PlayAttackMontage_Implementation(UAnimMontage* Monta
 {
     if (!MontageToPlay) return;
 
-    // 왜 이렇게 짰는가: 서버에서만 AI 행동 잠금을 걸어 새로운 상태 전이를 막습니다.
     if (HasAuthority()) bIsActionInProgress = true;
 
     UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
@@ -126,14 +130,12 @@ void AStage1Boss::Multicast_PlayAttackMontage_Implementation(UAnimMontage* Monta
         float Duration = AnimInstance->Montage_Play(MontageToPlay);
         if (SectionName != NAME_None) AnimInstance->Montage_JumpToSection(SectionName, MontageToPlay);
 
-        // 왜 이렇게 짰는가: 몽타주가 끝날 때 반드시 서버에서 bIsActionInProgress를 풀어줘야 합니다.
         if (HasAuthority())
         {
             FOnMontageEnded EndDelegate;
             EndDelegate.BindUObject(this, &AStage1Boss::OnMontageEnded);
             AnimInstance->Montage_SetEndDelegate(EndDelegate, MontageToPlay);
 
-            // 안전장치: 만약 몽타주 재생 시간이 0 이하라면 즉시 풀어줍니다.
             if (Duration <= 0.f) bIsActionInProgress = false;
         }
     }
@@ -141,11 +143,14 @@ void AStage1Boss::Multicast_PlayAttackMontage_Implementation(UAnimMontage* Monta
 
 void AStage1Boss::OnMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
-    // 왜 이렇게 짰는가: 몽타주가 끝나거나, 다른 몽타주에 의해 중단(Interrupted)되어도 잠금을 풀어야 AI가 다음 행동을 합니다.
     if (HasAuthority())
     {
-        bIsActionInProgress = false;
-        UE_LOG(LogTemp, Log, TEXT("[Stage1Boss] Action Lock Released."));
+        // DeathWall 패턴 중일 때는 몽타주가 끝나도 잠금을 풀지 않음 (타이머가 풀 때까지 대기)
+        if (!bIsDeathWallSequenceActive)
+        {
+            bIsActionInProgress = false;
+            UE_LOG(LogTemp, Log, TEXT("[Stage1Boss] Action Lock Released."));
+        }
     }
 }
 
@@ -209,38 +214,42 @@ void AStage1Boss::OnHealthChanged(float CH, float MH)
     }
 }
 
+// --------------------------------------------------------
+// [수정됨] 패턴 시작: 성벽 내리기 + 타이머 설정
+// --------------------------------------------------------
 void AStage1Boss::StartDeathWallSequence()
 {
     if (!HasAuthority()) return;
 
-    UE_LOG(LogTemp, Warning, TEXT(">>> [BOSS] Death Wall: Stationary Mode Start"));
+    UE_LOG(LogTemp, Warning, TEXT(">>> [BOSS] Death Wall Sequence Started. Ramparts Sinking."));
 
-    // 1. 상태 잠금 및 무적 설정
+    // 1. [추가] 맵에 있는 모든 성벽을 찾아서 내립니다 (Sinking)
+    ControlRamparts(true);
+
+    // 2. [추가] 1분 45초(105초) 뒤에 성벽을 다시 올리는 타이머 설정
+    GetWorldTimerManager().SetTimer(
+        RampartTimerHandle,
+        this,
+        &AStage1Boss::RestoreRamparts,
+        105.0f, // 1분 45초
+        false
+    );
+
+    // --- 기존 로직 유지 ---
+    if (GetCharacterMovement()) GetCharacterMovement()->SetMovementMode(MOVE_None);
     bIsDeathWallSequenceActive = true;
     bIsActionInProgress = true;
-
-    // 2. AI 판단만 일시정지 (이동 명령을 내리지 않으므로 안전함)
+    bIsInvincible = true; 
+    FVector SafeLocation = GetActorLocation() - (GetActorForwardVector() * 250.0f);
+    SetActorLocation(SafeLocation, false);
     if (AAIController* AIC = Cast<AAIController>(GetController()))
     {
         AIC->StopMovement();
-        if (UBrainComponent* BC = AIC->GetBrainComponent())
-        {
-            BC->PauseLogic(TEXT("DeathWallStationary"));
-        }
+        if (UBrainComponent* BC = AIC->GetBrainComponent()) BC->PauseLogic(TEXT("DeathWallPattern"));
     }
-
-    // 3. 몽타주 재생 (제자리 점프 3번)
     Multicast_PlayDeathWallMontage();
-
-    // 4. [핵심] 안전장치 타이머 - 애니메이션이 씹혀도 10~15초 뒤엔 무조건 무적 풀림
-    GetWorldTimerManager().SetTimer(
-        FailSafeTimerHandle,
-        this,
-        &AStage1Boss::FinishDeathWallPattern,
-        15.0f,
-        false
-    );
 }
+
 void AStage1Boss::OnArrivedAtCastLocation(FAIRequestID RID, EPathFollowingResult::Type R)
 {
     if (R == EPathFollowingResult::Success)
@@ -256,92 +265,120 @@ void AStage1Boss::OnArrivedAtCastLocation(FAIRequestID RID, EPathFollowingResult
 
 void AStage1Boss::Multicast_PlayDeathWallMontage_Implementation()
 {
-    // 왜 이렇게 짰는가: 이미 해당 몽타주가 재생 중인지 확인하여 무한 루프(재귀 호출)를 방지합니다.
     UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
     if (AnimInstance && BossData && BossData->DeathWallSummonMontage)
     {
-        if (AnimInstance->Montage_IsPlaying(BossData->DeathWallSummonMontage))
-        {
-            return; // 이미 재생 중이면 중복 실행 차단 (크래시 방지 핵심)
-        }
-
+        if (AnimInstance->Montage_IsPlaying(BossData->DeathWallSummonMontage)) return;
         PlayAnimMontage(BossData->DeathWallSummonMontage);
     }
     else if (HasAuthority())
     {
-        // 몽타주가 없는 비상 상황에서만 직접 호출
         AnimNotify_ActivateDeathWall();
     }
 }
 
+// --------------------------------------------------------
+// [수정됨] 벽 스폰 트리거: 보스는 60초 뒤에 풀려남
+// --------------------------------------------------------
 void AStage1Boss::AnimNotify_ActivateDeathWall()
 {
     if (!HasAuthority()) return;
+
+    // 1. 벽 스폰 (벽의 수명은 SpawnDeathWall 내부에서 설정)
     SpawnDeathWall();
+
+    // 2. 기존 안전장치 타이머 제거
     GetWorldTimerManager().ClearTimer(FailSafeTimerHandle);
-    GetWorldTimerManager().SetTimer(DeathWallTimerHandle, this, &AStage1Boss::FinishDeathWallPattern, DeathWallPatternDuration, false);
+
+    // 3. [핵심] 보스 행동 재개 타이머 (60초)
+    // 벽은 1분 40초(100초) 살지만, 보스는 1분(60초) 뒤에 먼저 움직입니다.
+    GetWorldTimerManager().SetTimer(
+        DeathWallTimerHandle,
+        this,
+        &AStage1Boss::FinishDeathWallPattern,
+        60.0f,
+        false
+    );
 }
 
+// --------------------------------------------------------
+// [수정됨] 벽 스폰 로직: 100초 수명 설정 + 충돌 무시
+// --------------------------------------------------------
 void AStage1Boss::SpawnDeathWall()
 {
     if (!HasAuthority() || !DeathWallClass) return;
 
-    FVector SpawnLoc;
-    FRotator SpawnRot;
-
-    // 보스 위치가 아닌, 레벨에 배치한 'DeathWallCastLocation' 기준 생성
-    if (IsValid(DeathWallCastLocation))
-    {
-        SpawnLoc = DeathWallCastLocation->GetActorLocation();
-        SpawnRot = DeathWallCastLocation->GetActorRotation();
-    }
-    else
-    {
-        // 타겟 포인트가 없으면 보스 앞 500유닛 지점에 생성 (방어 코드)
-        SpawnLoc = GetActorLocation() + GetActorForwardVector() * 500.0f;
-        SpawnRot = GetActorRotation();
-        UE_LOG(LogTemp, Error, TEXT("DeathWallCastLocation is missing in Level!"));
-    }
+    FVector SpawnLoc = IsValid(DeathWallCastLocation) ? DeathWallCastLocation->GetActorLocation() : GetActorLocation() + GetActorForwardVector() * 500.f;
+    FRotator SpawnRot = IsValid(DeathWallCastLocation) ? DeathWallCastLocation->GetActorRotation() : GetActorRotation();
+    SpawnRot.Yaw += 180.0f;
 
     FActorSpawnParameters Params;
     Params.Owner = this;
     Params.Instigator = this;
+    Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
     ADeathWall* NewWall = GetWorld()->SpawnActor<ADeathWall>(DeathWallClass, SpawnLoc, SpawnRot, Params);
+
     if (NewWall)
     {
+        // [핵심] 벽 수명 설정: 1분 40초 (100초)
+        // DeathWall.cpp를 수정하지 않아도 여기서 강제 설정합니다.
+        NewWall->SetLifeSpan(110.0f);
+
+        // [핵심] 상호 충돌 무시 (영구적)
+        // 보스 -> 벽 무시
+        if (GetCapsuleComponent())
+        {
+            GetCapsuleComponent()->IgnoreActorWhenMoving(NewWall, true);
+        }
+        // 벽 -> 보스 무시
+        if (UPrimitiveComponent* WallRoot = Cast<UPrimitiveComponent>(NewWall->GetRootComponent()))
+        {
+            WallRoot->IgnoreActorWhenMoving(this, true);
+        }
+
+        UE_LOG(LogTemp, Warning, TEXT(">>> [BOSS] Wall Spawned. Life: 100s. Boss Waiting: 60s."));
+
         NewWall->ActivateWall();
     }
 }
 
+// --------------------------------------------------------
+// [수정됨] 60초 뒤 보스 정상화 (벽은 아직 40초 남음)
+// --------------------------------------------------------
+// --------------------------------------------------------
+// [수정됨] 패턴 종료 함수 (기존 로직 + 타이머 정리)
+// --------------------------------------------------------
 void AStage1Boss::FinishDeathWallPattern()
 {
     if (!HasAuthority()) return;
 
-    // 무적 및 행동 잠금 해제
+    // ... 기존 로직 (무브먼트 복구, AI 재시작 등) ...
+    if (GetCharacterMovement()) GetCharacterMovement()->SetMovementMode(MOVE_Walking);
     bIsDeathWallSequenceActive = false;
     bIsActionInProgress = false;
+    bIsInvincible = false;
 
+    // 기존 타이머들 정리
     GetWorldTimerManager().ClearTimer(DeathWallTimerHandle);
     GetWorldTimerManager().ClearTimer(FailSafeTimerHandle);
 
+    // 주의: RampartTimer는 105초라 아직 돌고 있을 수 있으니 여기서 굳이 끄지 않습니다.
+    // 만약 "보스 패턴이 강제 종료되면 성벽도 즉시 올라와야 한다"면 여기서 RestoreRamparts()를 호출하세요.
+
     if (AAIController* AIC = Cast<AAIController>(GetController()))
     {
-        if (UBrainComponent* BC = AIC->GetBrainComponent())
-        {
-            BC->RestartLogic(); // AI 재가동
-        }
+        if (UBrainComponent* BC = AIC->GetBrainComponent()) BC->RestartLogic();
     }
 
-    UE_LOG(LogTemp, Warning, TEXT(">>> [BOSS] Death Wall Pattern Ended. Invincible OFF."));
+    UE_LOG(LogTemp, Warning, TEXT(">>> [BOSS] Boss Active Again."));
 }
-
 
 void AStage1Boss::StartSpikePattern()
 {
     if (HasAuthority() && BossData && BossData->SpellMontage)
     {
-        bIsActionInProgress = true; // 여기서 잠금!
+        bIsActionInProgress = true;
         Multicast_PlayAttackMontage(BossData->SpellMontage);
     }
 }
@@ -364,3 +401,39 @@ void AStage1Boss::ExecuteSpikeSpell()
 
 void AStage1Boss::TrySpawnSpikeAtRandomPlayer() { if (HasAuthority()) { if (SpellMontage) Multicast_PlaySpellMontage(); ExecuteSpikeSpell(); } }
 void AStage1Boss::Multicast_PlaySpellMontage_Implementation() { if (GetMesh() && GetMesh()->GetAnimInstance() && SpellMontage) GetMesh()->GetAnimInstance()->Montage_Play(SpellMontage); }
+
+// --------------------------------------------------------
+// [추가됨] 성벽 제어 헬퍼 함수
+// --------------------------------------------------------
+void AStage1Boss::ControlRamparts(bool bSink)
+{
+    if (!HasAuthority()) return;
+
+    TArray<AActor*> FoundRamparts;
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), ABoss1_Rampart::StaticClass(), FoundRamparts);
+
+    for (AActor* Actor : FoundRamparts)
+    {
+        if (ABoss1_Rampart* Rampart = Cast<ABoss1_Rampart>(Actor))
+        {
+            // true면 내리고(Sink), false면 올림(Rise)
+            Rampart->Server_SetRampartActive(bSink);
+        }
+    }
+}
+
+// --------------------------------------------------------
+// [추가됨] 105초 뒤 호출: 성벽 복구
+// --------------------------------------------------------
+void AStage1Boss::RestoreRamparts()
+{
+    if (!HasAuthority()) return;
+
+    // 성벽을 다시 올립니다 (Rising)
+    ControlRamparts(false);
+
+    // 타이머 정리
+    GetWorldTimerManager().ClearTimer(RampartTimerHandle);
+
+    UE_LOG(LogTemp, Warning, TEXT(">>> [BOSS] 1m 45s Passed. Ramparts Rising."));
+}

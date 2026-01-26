@@ -8,6 +8,7 @@
 #include "Engine/TargetPoint.h"
 #include "AITypes.h"
 #include "Navigation/PathFollowingComponent.h"
+#include "Project_Bang_Squad/BossPattern/Boss1_Rampart.h"
 #include "Stage1Boss.generated.h"
 
 class AJobCrystal;
@@ -33,9 +34,11 @@ protected:
     virtual void BeginPlay() override;
 
 public:
+    // --- [Data Asset Config] ---
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Boss|Data")
     TObjectPtr<UEnemyBossData> BossData;
 
+    // --- [Stage Specific Config] ---
     UPROPERTY(EditDefaultsOnly, Category = "Boss|Gimmick")
     TMap<EJobType, TSubclassOf<AJobCrystal>> JobCrystalClasses;
 
@@ -73,6 +76,7 @@ protected:
     virtual void OnDeathStarted() override;
 
 public:
+    // --- [AI Command Interface] ---
     UFUNCTION(BlueprintCallable, Category = "Boss|Combat")
     void DoAttack_Slash();
 
@@ -91,6 +95,7 @@ public:
     UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Boss|Combat")
     void AnimNotify_CheckMeleeHit();
 
+    // [중요 수정]: 헤더에 함수가 선언되어 있어야 블루프린트에서 호출이 가능합니다.
     UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Boss|Combat")
     void AnimNotify_ActivateDeathWall();
 
@@ -108,11 +113,9 @@ private:
     void SpawnCrystals();
     void SpawnDeathWall();
 
-    // 몽타주 재생 멀티캐스트 (Reliable로 변경하여 패킷 유실 방지)
     UFUNCTION(NetMulticast, Reliable)
     void Multicast_PlayAttackMontage(UAnimMontage* MontageToPlay, FName SectionName = NAME_None);
 
-    // 몽타주 종료 콜백
     UFUNCTION()
     void OnMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 
@@ -126,6 +129,7 @@ private:
     FTimerHandle QTETimerHandle;
 
 protected:
+    // --- [Death Wall Sequence Logic] ---
     bool bHasTriggeredDeathWall = false;
     bool bIsDeathWallSequenceActive = false;
     FTimerHandle DeathWallTimerHandle;
@@ -157,4 +161,16 @@ protected:
 
     UFUNCTION(NetMulticast, Reliable)
     void Multicast_PlaySpellMontage();
+
+    protected:
+        // ... 기존 타이머 핸들들 (DeathWallTimerHandle 등) ...
+
+        // 성벽 복구용 타이머 핸들
+        FTimerHandle RampartTimerHandle;
+
+        // 1분 45초 뒤에 호출될 함수
+        void RestoreRamparts();
+
+        // 성벽을 제어하는 헬퍼 함수 (bSink: true=내리기, false=올리기)
+        void ControlRamparts(bool bSink);
 };
