@@ -88,8 +88,14 @@ public:
 	bool IsDead() {return bIsDead;}
 	
 	void SetWindResistance(bool bEnable);
+	
+	// 원래 속도를 반환하는 함수 (WindZone에서 사용)
+	float GetDefaultWalkSpeed() const { return DefaultMaxWalkSpeed; }
 protected:
 	virtual void BeginPlay() override;
+	
+	// 게임 시작 시 저장해둘 원래 속도
+	float DefaultMaxWalkSpeed;
 	
 	// =========================================================
 	//  체력 자동 재생 (Health Regen)

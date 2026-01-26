@@ -57,6 +57,13 @@ void ABaseCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 	
+	// 시작할 때 설정된 MaxWalkSpeed를 기억해둠 
+	if (GetCharacterMovement())
+	{
+		DefaultMaxWalkSpeed = GetCharacterMovement()->MaxWalkSpeed;
+	}
+	
+	
 	// HealthComponent가 있으면 '사망 이벤트'를 내 함수 OnDeath에 연결
 	if (HealthComp)
 	{
@@ -83,7 +90,7 @@ void ABaseCharacter::BeginPlay()
 		}
 		
 		// 미니게임 맵 감지
-		if (MapName.Contains(TEXT("MiniGameMap")))
+		if (MapName.Contains(TEXT("Stage1_MiniGame")))
 		{
 			bIsMiniGameMode = true;
 			UnlockedStageLevel = 0;

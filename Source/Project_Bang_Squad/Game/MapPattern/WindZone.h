@@ -61,7 +61,7 @@ protected:
 	
 	// 바람의 세기
 	UPROPERTY(EditAnywhere, Category = "Wind Setting")
-	float WindStrength = 200000.0f;
+	float WindStrength = 300000.0f;
 	
 	// 바람 방향 (True면 화살표 방향, False면 반대)
 	UPROPERTY(EditAnywhere, Category = "Wind Setting")
