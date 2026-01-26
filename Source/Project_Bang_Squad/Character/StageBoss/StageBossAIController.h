@@ -5,7 +5,8 @@
 #include "AIController.h"
 #include "StageBossAIController.generated.h"
 
-// 보스 AI 상태 정의
+/** 보스 AI 상태 정의 */
+UENUM(BlueprintType)
 enum class EBossAIState : uint8
 {
     Idle,           // 대기
@@ -31,7 +32,11 @@ public:
 
 protected:
     // --- [State Machine] ---
+    UPROPERTY(VisibleAnywhere, Category = "Boss AI|State")
     EBossAIState CurrentState = EBossAIState::Idle;
+
+    // 왜 이렇게 짰는가: 상태 변경은 언제든 가능해야 하지만, 
+    // 실제 행동은 보스의 애니메이션(ActionInProgress) 종료 여부에 따라 결정됩니다.
     void SetState(EBossAIState NewState);
 
     void HandleIdle(float DeltaTime);
@@ -40,11 +45,11 @@ protected:
     void HandleRetreat(float DeltaTime);
     void HandleRangeAttack(float DeltaTime);
     void HandleSpikeAttack(float DeltaTime);
-
+    void HandleSwitchTarget(); // 상태 로직 통합
 
     bool IsTargetValid() const;
 
-    // [NEW] 등 뒤로 직선 후퇴 좌표 계산
+    // 등 뒤로 직선 후퇴 좌표 계산
     FVector GetStraightRetreatLocation() const;
 
     UPROPERTY()
@@ -58,18 +63,18 @@ protected:
     float AttackCooldownTimer = 0.0f;
 
 public:
-    // --- [Config] 에디터에서 조정 가능 ---
+    // --- [Config] ---
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss AI|Config|Movement")
-    float AttackTriggerRange = 500.0f; // 공격 사거리
+    float AttackTriggerRange = 500.0f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss AI|Config|Movement")
-    float MoveStopRange = 10.0f;       // 바짝 붙기
+    float MoveStopRange = 10.0f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss AI|Config|Retreat")
-    float RetreatDuration = 2.0f;      // 2초간 이동
+    float RetreatDuration = 2.0f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss AI|Config|Retreat")
-    float RetreatDistance = 1000.0f;   // 뒤로 빠질 거리 (넉넉하게)
+    float RetreatDistance = 1000.0f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss AI|Config|Combat")
     int32 MaxComboCount = 3;
@@ -80,8 +85,6 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss AI|Config|Combat")
     float SpikePatternDuration = 3.0f;
 
-
-    // 디버그 라인 표시 여부
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss AI|Debug")
     bool bShowDebugLines = true;
 };
