@@ -1,5 +1,4 @@
 // Source/Project_Bang_Squad/Character/StageBoss/StageBossAIController.cpp
-
 #include "StageBossAIController.h"
 #include "Stage1Boss.h"
 #include "Kismet/GameplayStatics.h"
@@ -7,8 +6,7 @@
 #include "GameFramework/Character.h"
 #include "Project_Bang_Squad/Character/Component/HealthComponent.h"
 #include "DrawDebugHelpers.h"
-#include "Components/CapsuleComponent.h" // 캡슐 컴포넌트 헤더 필요
-
+#include "Components/CapsuleComponent.h"
 
 AStageBossAIController::AStageBossAIController()
 {
@@ -34,6 +32,10 @@ void AStageBossAIController::Tick(float DeltaTime)
 
     if (!IsValid(OwnerBoss)) return;
 
+    // 왜 이렇게 짰는가: 보스가 몽타주 재생 중이면 AI의 모든 판단 로직을 잠시 중단합니다.
+    // 하지만 상태(CurrentState)는 이미 바뀌어 있을 수 있습니다.
+    if (OwnerBoss->bIsActionInProgress) return;
+
     UHealthComponent* HealthComp = OwnerBoss->FindComponentByClass<UHealthComponent>();
     if (HealthComp && HealthComp->IsDead())
     {
@@ -49,23 +51,23 @@ void AStageBossAIController::Tick(float DeltaTime)
 
     switch (CurrentState)
     {
-    case EBossAIState::Idle:        HandleIdle(DeltaTime); break;
-    case EBossAIState::Chase:       HandleChase(DeltaTime); break;
-    case EBossAIState::MeleeAttack: HandleMeleeAttack(DeltaTime); break;
-    case EBossAIState::Retreat:     HandleRetreat(DeltaTime); break;
-    case EBossAIState::RangeAttack: HandleRangeAttack(DeltaTime); break;
-    case EBossAIState::SpikeAttack: HandleSpikeAttack(DeltaTime); break;
-    case EBossAIState::SwitchTarget: break;
+    case EBossAIState::Idle:         HandleIdle(DeltaTime); break;
+    case EBossAIState::Chase:        HandleChase(DeltaTime); break;
+    case EBossAIState::MeleeAttack:  HandleMeleeAttack(DeltaTime); break;
+    case EBossAIState::Retreat:      HandleRetreat(DeltaTime); break;
+    case EBossAIState::RangeAttack:  HandleRangeAttack(DeltaTime); break;
+    case EBossAIState::SpikeAttack:  HandleSpikeAttack(DeltaTime); break;
+    case EBossAIState::SwitchTarget: HandleSwitchTarget(); break;
     }
 }
 
 void AStageBossAIController::SetState(EBossAIState NewState)
 {
+    // [중요] 상태 변경은 언제든 허용합니다. (잠긴 상태에서 SetState 호출을 무시하지 않음)
     CurrentState = NewState;
     StateTimer = 0.0f;
     AttackCooldownTimer = 0.0f;
 
-    // --- [State Entry Logic] ---
     switch (CurrentState)
     {
     case EBossAIState::Chase:
@@ -73,159 +75,31 @@ void AStageBossAIController::SetState(EBossAIState NewState)
         break;
 
     case EBossAIState::Retreat:
-    {
-        // [핵심 변경] 플레이어를 보지 마라 (어리버리 방지)
         ClearFocus(EAIFocusPriority::Gameplay);
         StopMovement();
-
-        // 현재 보고 있는 방향의 '정반대'로 달린다.
-        FVector RetreatDest = GetStraightRetreatLocation();
-
-        // 이동 명령 (가속/회전 고려하여 넉넉한 수용 반경 설정)
-        MoveToLocation(RetreatDest, 50.0f, true, true, true, true, 0, true);
-
-        UE_LOG(LogTemp, Warning, TEXT("[BossAI] Straight Retreat Started!"));
-    }
-    break;
+        MoveToLocation(GetStraightRetreatLocation(), 50.0f, true, true, true, true, 0, true);
+        break;
 
     case EBossAIState::RangeAttack:
-        // [핵심] 이동이 끝났으니 다시 플레이어를 쳐다봐라 (뒤돌기)
         StopMovement();
-        if (TargetActor)
-        {
-            SetFocus(TargetActor);
-            // 즉시 회전하도록 강제하고 싶다면 아래 코드 추가 가능
-            // FVector Dir = TargetActor->GetActorLocation() - OwnerBoss->GetActorLocation();
-            // Dir.Z = 0.0f;
-            // OwnerBoss->SetActorRotation(Dir.Rotation());
-        }
-
+        if (TargetActor) SetFocus(TargetActor);
         CurrentAttackCount = 0;
-        AttackCooldownTimer = 1.0f; // 돌아서는 시간 고려하여 1초 뒤 발사
+        AttackCooldownTimer = 0.5f;
         break;
 
     case EBossAIState::MeleeAttack:
         StopMovement();
         if (TargetActor) SetFocus(TargetActor);
         CurrentAttackCount = 0;
-        AttackCooldownTimer = 0.0f;
         break;
 
-        // [New] 스파이크 패턴 진입
     case EBossAIState::SpikeAttack:
-    {
         StopMovement();
         if (TargetActor) SetFocus(TargetActor);
-
-        // 1. [서버 권한] 보스에게 패턴 실행 명령
-        if (OwnerBoss)
-        {
-            OwnerBoss->StartSpikePattern();
-            UE_LOG(LogTemp, Warning, TEXT("[BossAI] Chain Finish: Spike Pattern Started!"));
-        }
-
-        // 2. 타이머는 Tick에서 체크 (SpikePatternDuration 사용)
+        // Spike 패턴 진입 시 몽타주 실행은 Character 쪽 함수에서 Action Lock을 겁니다.
+        if (OwnerBoss) OwnerBoss->StartSpikePattern();
+        break;
     }
-    break;
-
-
-    // Source/Project_Bang_Squad/Character/StageBoss/StageBossAIController.cpp
-
-   // ... (헤더에 HealthComponent 포함 확인: #include "Project_Bang_Squad/Character/Component/HealthComponent.h")
-
-    case EBossAIState::SwitchTarget:
-    {
-        TArray<AActor*> Candidates;
-        UGameplayStatics::GetAllActorsOfClass(GetWorld(), ACharacter::StaticClass(), Candidates);
-
-        TArray<AActor*> ValidPlayers;
-
-        // 1. [1차 필터링] 모든 "살아있는 플레이어"를 수집 (현재 타겟 포함)
-        for (AActor* Actor : Candidates)
-        {
-            ACharacter* CharCandidate = Cast<ACharacter>(Actor);
-            if (!CharCandidate) continue;
-
-            // 보스 자신 제외
-            if (CharCandidate == OwnerBoss) continue;
-
-            // [핵심] 몬스터/NPC 제외 (AIController가 조종하는 폰은 무시)
-            if (!CharCandidate->IsPlayerControlled()) continue;
-
-            // [핵심] 이미 죽은 플레이어 제외
-            UHealthComponent* HC = CharCandidate->FindComponentByClass<UHealthComponent>();
-            if (HC && HC->IsDead()) continue;
-
-            // 여기까지 오면 "공격 가능한 플레이어"임
-            ValidPlayers.Add(CharCandidate);
-        }
-
-        // 2. [2차 선택] 타겟 결정
-        if (ValidPlayers.Num() == 0)
-        {
-            // 정말 아무도 없을 때 (모두 사망)
-            UE_LOG(LogTemp, Warning, TEXT("[BossAI] No Valid Player Target Found! Going to Idle."));
-            TargetActor = nullptr;
-            SetState(EBossAIState::Idle); // 추격하지 말고 대기
-        }
-        else
-        {
-            // 플레이어가 2명 이상이면, 가급적 "현재 타겟이 아닌 사람"을 노림
-            if (ValidPlayers.Num() > 1 && TargetActor)
-            {
-                ValidPlayers.Remove(TargetActor);
-            }
-
-            // 남은 후보들 중에서 랜덤 선택 (한 명이면 그 사람이 선택됨)
-            int32 RandomIndex = FMath::RandRange(0, ValidPlayers.Num() - 1);
-            TargetActor = ValidPlayers[RandomIndex];
-
-            // 타겟을 정했으니 추격 시작
-            SetState(EBossAIState::Chase);
-        }
-    }
-    break;
-    }
-}
-
-// --- [State Handlers] ---
-
-void AStageBossAIController::HandleIdle(float DeltaTime)
-{
-    TargetActor = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
-    if (IsTargetValid()) SetState(EBossAIState::Chase);
-}
-
-// ============================================================================
-// [수정 1] 추적 로직: 높이(Z) 무시하고 수평 거리만 계산
-// ============================================================================
-void AStageBossAIController::HandleChase(float DeltaTime)
-{
-    if (!IsTargetValid()) return;
-
-    // [변경 전] 3D 거리 계산 (키 차이 때문에 멀다고 착각함)
-    // float Dist = OwnerBoss->GetDistanceTo(TargetActor);
-
-    // [변경 후] 2D 수평 거리 계산 (높이 무시)
-    FVector BossLoc = OwnerBoss->GetActorLocation();
-    FVector TargetLoc = TargetActor->GetActorLocation();
-
-    // Z축을 0으로 만들어 수평 거리만 남김
-    float Dist2D = FVector::DistXY(BossLoc, TargetLoc);
-
-    // 디버깅: 실제 인식하는 거리 확인 (로그로 확인해보세요)
-    // UE_LOG(LogTemp, Warning, TEXT("Dist2D: %.2f / Trigger: %.2f"), Dist2D, AttackTriggerRange);
-
-    // 공격 사거리 내 진입 시
-    if (Dist2D <= AttackTriggerRange)
-    {
-        StopMovement(); // 확실하게 멈춤
-        SetState(EBossAIState::MeleeAttack);
-        return;
-    }
-
-    // 계속 추적 (바짝 붙도록)
-    MoveToActor(TargetActor, MoveStopRange);
 }
 
 void AStageBossAIController::HandleMeleeAttack(float DeltaTime)
@@ -236,159 +110,110 @@ void AStageBossAIController::HandleMeleeAttack(float DeltaTime)
         return;
     }
 
-    OwnerBoss->DoAttack_Swing();
-    CurrentAttackCount++;
-
+    // 콤보 횟수 체크
     if (CurrentAttackCount >= MaxComboCount)
     {
-        // 3타 후 후퇴로 전환 (딜레이 1.2초)
-        FTimerHandle Handle;
-        GetWorldTimerManager().SetTimer(Handle, [this]()
-            {
-                if (IsValid(this)) SetState(EBossAIState::Retreat);
-            }, 1.2f, false);
-
-        AttackCooldownTimer = 999.0f;
+        SetState(EBossAIState::Retreat);
+        return;
     }
-    else
-    {
-        AttackCooldownTimer = AttackInterval;
-    }
-}
 
-void AStageBossAIController::HandleRetreat(float DeltaTime)
-{
-    // 여기선 그냥 시간만 잰다 (이동은 SetState에서 이미 실행됨)
-    StateTimer += DeltaTime;
+    // 왜 이렇게 짰는가: 보스가 이전 공격의 몽타주를 아직 재생 중이라면 다음 공격 명령을 유보합니다.
+    if (OwnerBoss->bIsActionInProgress) return;
 
-    // 2초 동안 뒤로 달리고 나서 원거리 공격으로 전환
-    if (StateTimer >= RetreatDuration)
-    {
-        SetState(EBossAIState::RangeAttack);
-    }
+    OwnerBoss->DoAttack_Swing();
+    CurrentAttackCount++;
+    AttackCooldownTimer = AttackInterval;
 }
 
 void AStageBossAIController::HandleRangeAttack(float DeltaTime)
 {
-    // 타겟 바라보기 유지
     if (TargetActor) SetFocus(TargetActor);
-
     if (AttackCooldownTimer > 0.0f)
     {
         AttackCooldownTimer -= DeltaTime;
         return;
     }
 
-    // 공격 실행
-    OwnerBoss->DoAttack_Slash();
-    CurrentAttackCount++;
-
     if (CurrentAttackCount >= MaxComboCount)
     {
-        // [핵심 변경] 3타가 끝나면 -> 타겟 변경이 아니라 'SpikeAttack'으로 전환
-        // 딜레이를 조금 주어 마지막 발사 모션이 끝난 뒤 패턴 사용
-        FTimerHandle Handle;
-        GetWorldTimerManager().SetTimer(Handle, [this]()
-            {
-                if (IsValid(this))
-                {
-                    SetState(EBossAIState::SpikeAttack);
-                }
-            }, 1.0f, false); // 1초 뒤 스파이크 진입
-
-        AttackCooldownTimer = 999.0f; // 추가 공격 방지
+        SetState(EBossAIState::SpikeAttack);
+        return;
     }
+
+    if (OwnerBoss->bIsActionInProgress) return;
+
+    OwnerBoss->DoAttack_Slash();
+    CurrentAttackCount++;
+    AttackCooldownTimer = AttackInterval;
+}
+
+void AStageBossAIController::HandleSwitchTarget()
+{
+    TArray<AActor*> Candidates;
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), ACharacter::StaticClass(), Candidates);
+    TArray<AActor*> ValidPlayers;
+
+    for (AActor* Actor : Candidates)
+    {
+        ACharacter* Char = Cast<ACharacter>(Actor);
+        if (Char && Char != OwnerBoss && Char->IsPlayerControlled())
+        {
+            UHealthComponent* HC = Char->FindComponentByClass<UHealthComponent>();
+            if (HC && !HC->IsDead()) ValidPlayers.Add(Char);
+        }
+    }
+
+    if (ValidPlayers.Num() == 0) SetState(EBossAIState::Idle);
     else
     {
-        AttackCooldownTimer = AttackInterval;
+        if (ValidPlayers.Num() > 1 && TargetActor) ValidPlayers.Remove(TargetActor);
+        TargetActor = ValidPlayers[FMath::RandRange(0, ValidPlayers.Num() - 1)];
+        SetState(EBossAIState::Chase);
     }
 }
 
-// [New] 스파이크 패턴 핸들러 (지속 시간 대기 후 종료)
+void AStageBossAIController::HandleIdle(float DeltaTime)
+{
+    TargetActor = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
+    if (IsTargetValid()) SetState(EBossAIState::Chase);
+}
+
+void AStageBossAIController::HandleChase(float DeltaTime)
+{
+    if (!IsTargetValid()) return;
+    float Dist2D = FVector::DistXY(OwnerBoss->GetActorLocation(), TargetActor->GetActorLocation());
+    if (Dist2D <= AttackTriggerRange)
+    {
+        StopMovement();
+        SetState(EBossAIState::MeleeAttack);
+    }
+    else MoveToActor(TargetActor, MoveStopRange);
+}
+
+void AStageBossAIController::HandleRetreat(float DeltaTime)
+{
+    StateTimer += DeltaTime;
+    if (StateTimer >= RetreatDuration) SetState(EBossAIState::RangeAttack);
+}
+
 void AStageBossAIController::HandleSpikeAttack(float DeltaTime)
 {
-    // 이미 SetState 진입부에서 StartSpikePattern()을 호출했으므로,
-    // 여기서는 패턴이 끝날 때까지 시간만 셉니다.
     StateTimer += DeltaTime;
-
-    // 지정된 지속 시간(애니메이션 길이 등)이 지나면 타겟 변경
-    if (StateTimer >= SpikePatternDuration)
-    {
-        SetState(EBossAIState::SwitchTarget);
-    }
+    if (StateTimer >= SpikePatternDuration) SetState(EBossAIState::SwitchTarget);
 }
 
-// --- [Helper Functions] ---
-
-// ============================================================================
-// [수정 2] 후퇴 로직: 벽이 있으면 벽 앞까지만 도망감 (스마트 후퇴)
-// ============================================================================
 FVector AStageBossAIController::GetStraightRetreatLocation() const
 {
     if (!OwnerBoss) return FVector::ZeroVector;
-
     FVector Origin = OwnerBoss->GetActorLocation();
-    FVector BackwardDir = -OwnerBoss->GetActorForwardVector(); // 등 뒤 방향
-
-    // 1. 뒤쪽에 벽이 있는지 레이저를 쏴서 확인 (충돌 체크)
-    FHitResult HitResult;
-    FCollisionQueryParams Params;
-    Params.AddIgnoredActor(OwnerBoss); // 나는 무시
-
-    // RetreatDistance만큼 뒤로 쏴봄
-    bool bHit = GetWorld()->LineTraceSingleByChannel(
-        HitResult,
-        Origin,
-        Origin + (BackwardDir * RetreatDistance),
-        ECC_WorldStatic, // 벽(Static)만 체크
-        Params
-    );
-
-    FVector FinalDest;
-
-    if (bHit)
-    {
-        // 벽에 부딪혔다면? -> 벽에서 보스 덩치만큼 떨어진 곳까지만 이동
-        float CapsuleRadius = OwnerBoss->GetCapsuleComponent()->GetScaledCapsuleRadius();
-        float SafeBuffer = CapsuleRadius + 100.0f; // 덩치 + 여유공간
-
-        // (벽 위치)에서 (앞으로 살짝) 이동
-        FinalDest = HitResult.Location + (HitResult.Normal * SafeBuffer);
-
-        // 디버그: 벽 감지됨
-        if (bShowDebugLines)
-        {
-            DrawDebugLine(GetWorld(), Origin, HitResult.Location, FColor::Red, false, 2.0f, 0, 3.0f);
-            DrawDebugSphere(GetWorld(), FinalDest, 30.0f, 12, FColor::Orange, false, 2.0f);
-        }
-        UE_LOG(LogTemp, Warning, TEXT("[BossAI] Wall Detected behind! Shortening retreat distance."));
-    }
-    else
-    {
-        // 벽이 없으면 원래대로 최대 거리 이동
-        FinalDest = Origin + (BackwardDir * RetreatDistance);
-
-        if (bShowDebugLines)
-        {
-            DrawDebugLine(GetWorld(), Origin, FinalDest, FColor::Green, false, 2.0f, 0, 3.0f);
-        }
-    }
-
-    // 2. 네비게이션 위에 투영 (최종 갈 수 있는 땅인지 확인)
+    FVector BackwardDir = -OwnerBoss->GetActorForwardVector();
+    FHitResult Hit;
+    FCollisionQueryParams P; P.AddIgnoredActor(OwnerBoss);
+    FVector Dest = GetWorld()->LineTraceSingleByChannel(Hit, Origin, Origin + (BackwardDir * RetreatDistance), ECC_WorldStatic, P)
+        ? Hit.Location + (Hit.Normal * (OwnerBoss->GetCapsuleComponent()->GetScaledCapsuleRadius() + 100.f))
+        : Origin + (BackwardDir * RetreatDistance);
     FNavLocation NavLoc;
-    UNavigationSystemV1* NavSys = UNavigationSystemV1::GetCurrent(GetWorld());
-
-    // Extent(검색 범위)를 넉넉하게(Z축 500) 줘서 위아래 층도 인식 가능하게 함
-    if (NavSys && NavSys->ProjectPointToNavigation(FinalDest, NavLoc, FVector(500, 500, 500)))
-    {
-        return NavLoc.Location;
-    }
-
-    // 갈 곳이 정 없다면 현재 위치 반환 (이동 실패)
-    UE_LOG(LogTemp, Error, TEXT("[BossAI] Retreat Path Blocked (NavMesh not found)!"));
-    return Origin;
+    return (UNavigationSystemV1::GetCurrent(GetWorld())->ProjectPointToNavigation(Dest, NavLoc, FVector(500, 500, 500))) ? NavLoc.Location : Origin;
 }
-bool AStageBossAIController::IsTargetValid() const
-{
-    return (TargetActor && IsValid(TargetActor));
-}
+
+bool AStageBossAIController::IsTargetValid() const { return (TargetActor && IsValid(TargetActor)); }
