@@ -324,7 +324,7 @@ void AStrikerCharacter::Server_StartSkill2_Implementation()
     }
     Skill2ReadyTime = CurrentTime + ActualCooldown;
 
-    ProcessSkill(TEXT("Skill2"));
+    Multicast_Skill2();
 
     FVector SlamVelocity = FVector(0.f, 0.f, -3000.f);
     LaunchCharacter(SlamVelocity, true, true);
@@ -378,6 +378,11 @@ void AStrikerCharacter::Server_Skill2Impact_Implementation()
     }
 }
 
+void AStrikerCharacter::Multicast_Skill2_Implementation()
+{
+	ProcessSkill(TEXT("Skill2"));
+}
+
 void AStrikerCharacter::Multicast_PlaySlamFX_Implementation()
 {
     if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Purple, TEXT("SLAM IMPACT!!"));
@@ -388,6 +393,7 @@ void AStrikerCharacter::Multicast_PlaySlamFX_Implementation()
 // ============================================================================
 void AStrikerCharacter::JobAbility()
 {
+	if (!IsSkillUnlocked(1)) return;
 	if (!CanAttack()) return;
     float CurrentTime = GetWorld()->GetTimeSeconds();
     if (CurrentTime < JobAbilityCooldownTime) return;
@@ -407,7 +413,7 @@ void AStrikerCharacter::JobAbility()
 void AStrikerCharacter::Server_UseJobAbility_Implementation()
 {
     float AbilityDamage = 50.f;
-    ProcessSkill(TEXT("JobAbility"));
+    Multicast_JobAbility();
 
     if (SkillDataTable)
     {
@@ -447,6 +453,11 @@ void AStrikerCharacter::Server_UseJobAbility_Implementation()
             TargetChar->LaunchCharacter(LaunchVel, true, true);
         }
     }
+}
+
+void AStrikerCharacter::Multicast_JobAbility_Implementation()
+{
+	ProcessSkill(TEXT("JobAbility"));
 }
 
 // ============================================================================

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
@@ -175,6 +175,9 @@ protected:
 	virtual void JobAbility() {}
 
 	bool IsSkillUnlocked(int32 RequiredStage);
+	
+	// 미니게임 맵인지 확인하는 플래그
+	bool bIsMiniGameMode = false;
 
 	// 플레이어 캐릭터의 속도를 저장할 변수
 	float CachedWalkSpeed = 0.0f;
@@ -224,4 +227,11 @@ protected:
 private:
 	// 원래 브레이크 수치 저장용
 	float OriginalBrakingDeceleration = 0.0f;
+
+	// 40~50도 경사에서 미끄러지는 로직 
+	void ApplySlopeSlide(float DeltaTime);
+
+	// 미끄러지는 힘의 세기 (800 정도면 걷는 속도 550을 이기고 밀려남)
+	UPROPERTY(EditAnywhere, Category = "Movement")
+	float SlopeSlideStrength = 800.0f;
 };

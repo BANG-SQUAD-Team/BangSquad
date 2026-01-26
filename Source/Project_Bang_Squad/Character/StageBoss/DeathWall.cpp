@@ -142,6 +142,13 @@ void ADeathWall::GeneratePlatforms()
 
     float GridHeight = 110.0f;
     float StickOut = 200.0f;
+    float MaxY = BoxExtent.Y - 100.0f;
+
+    // 방향 결정
+    bool bStoneOnLeft = FMath::RandBool();
+
+    float StoneMainDir = bStoneOnLeft ? -1.0f : 1.0f;
+    float PadMainDir = bStoneOnLeft ? 1.0f : -1.0f;
 
     // ----------------------------------------------------
     // [2] 공통 시작 구간 (Start)

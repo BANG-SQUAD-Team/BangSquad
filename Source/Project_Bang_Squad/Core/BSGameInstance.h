@@ -112,7 +112,7 @@ private:
 
 	//미니게임 방문 여부
 	UPROPERTY()
-	bool bHasVisitedMiniGame = false;
+	bool bHasVisitedMap = false;
 
 public:
 	FORCEINLINE EJobType GetMyJob() const { return MyJob; }
@@ -122,8 +122,8 @@ public:
 	UPROPERTY()
 	FString UserNickname;
 
-	bool GetbHasVisitedMiniGame() { return bHasVisitedMiniGame; }
-	void SetbHasVisitedMiniGame(bool bNew) { bHasVisitedMiniGame = bNew; }
+	bool GetbHasVisitedMap() const { return bHasVisitedMap; }
+	void SetbHasVisitedMap(bool bNew) { bHasVisitedMap = bNew; }
 
 #pragma region Stage Data Save
 public:

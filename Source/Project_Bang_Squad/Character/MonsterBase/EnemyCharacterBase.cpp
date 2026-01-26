@@ -19,6 +19,8 @@ void AEnemyCharacterBase::BeginPlay()
 {
     Super::BeginPlay();
 
+	GenerateUniqueID();
+
 	UBSGameInstance* GI = Cast<UBSGameInstance>(GetGameInstance());
 	if (GI && GI->IsMonsterDead(MyUniqueID))
 	{

@@ -4,18 +4,18 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
-#include "MiniGamePortal.generated.h"
+#include "MapPortal.generated.h"
 
 class UTextRenderComponent;
 class USphereComponent;
 
 UCLASS()
-class PROJECT_BANG_SQUAD_API AMiniGamePortal : public AActor
+class PROJECT_BANG_SQUAD_API AMapPortal : public AActor
 {
 	GENERATED_BODY()
 
 public:
-	AMiniGamePortal();
+	AMapPortal();
 
 protected:
 	virtual void BeginPlay() override;
@@ -31,6 +31,10 @@ protected:
 	//카운트다운 표시용 텍스트
 	UPROPERTY(VisibleAnywhere, Category = "BS|Components")
 	TObjectPtr<UTextRenderComponent> CountdownText;
+
+	//맵 경로
+	UPROPERTY(EditAnywhere, Category = "BS|Map")
+	TSoftObjectPtr<UWorld> TargetLevel;
 
 	//Overlap
 	UFUNCTION()

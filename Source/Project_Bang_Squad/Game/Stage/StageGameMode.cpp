@@ -99,14 +99,6 @@ void AStageGameMode::RequestRespawn(AController* Controller)
 	{
 		float WaitTime = 3.f;
 
-		/*if (AStagePlayerController* StagePC = Cast<AStagePlayerController>(Controller))
-		{
-			float CalculatedTime = 3.f + (StagePC->GetDeathCount() * 2.f);
-			WaitTime = FMath::Min(CalculatedTime, 15.f);
-
-			StagePC->IncreaseDeathCount();
-		}*/
-
 		if (AStagePlayerState* PS = Controller->GetPlayerState<AStagePlayerState>())
 		{
 			float CalculatedTime = 3.f + (PS->GetDeathCount() * 2.f);

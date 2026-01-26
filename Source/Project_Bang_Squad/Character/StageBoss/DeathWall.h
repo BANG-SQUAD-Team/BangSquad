@@ -2,7 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
-#include "DeathWall.generated.h"
+#include "DeathWall.generated.h" // 이 파일은 반드시 마지막 include여야 합니다.
 
 UCLASS()
 class PROJECT_BANG_SQUAD_API ADeathWall : public AActor

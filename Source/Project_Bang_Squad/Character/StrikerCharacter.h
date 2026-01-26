@@ -26,8 +26,15 @@ protected:
 	virtual void Attack() override;
 	virtual void Skill1() override;
 	virtual void Skill2() override;
+	void Multicast_Skill2_Implementation();
 	virtual void JobAbility() override;
 
+	UFUNCTION(NetMulticast, Unreliable)
+	void Multicast_Skill2();
+
+	UFUNCTION(NetMulticast, Unreliable)
+	void Multicast_JobAbility();
+	
 public:
 	// 공격 시 이동 (몽타주 노티파이에서 호출됨)
 	UFUNCTION(BlueprintCallable, Category = "Combat")

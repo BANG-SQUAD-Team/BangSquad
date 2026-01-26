@@ -1,7 +1,7 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 
-#include "MiniGamePortal.h"
+#include "MapPortal.h"
 
 #include "Components/SphereComponent.h"
 #include "Components/TextRenderComponent.h"
@@ -10,7 +10,7 @@
 #include "Project_Bang_Squad/Character/Base/BaseCharacter.h"
 #include "Project_Bang_Squad/Core/BSGameInstance.h"
 
-AMiniGamePortal::AMiniGamePortal()
+AMapPortal::AMapPortal()
 {
 	bReplicates = true;
 	bAlwaysRelevant = true;
@@ -31,25 +31,25 @@ AMiniGamePortal::AMiniGamePortal()
 	CountdownText->SetRelativeLocation(FVector(0.f, 0.f, 150.f));
 }
 
-void AMiniGamePortal::BeginPlay()
+void AMapPortal::BeginPlay()
 {
 	Super::BeginPlay();
 
 	if (HasAuthority())
 	{
 		UBSGameInstance* GI = Cast<UBSGameInstance>(GetGameInstance());
-		if (GI && GI->GetbHasVisitedMiniGame())
+		if (GI && GI->GetbHasVisitedMap())
 		{
 			Destroy();
 			return;
 		}
 		
-		TriggerSphere->OnComponentBeginOverlap.AddDynamic(this, &AMiniGamePortal::OnOverlapBegin);
-		TriggerSphere->OnComponentEndOverlap.AddDynamic(this, &AMiniGamePortal::OnOverlapEnd);
+		TriggerSphere->OnComponentBeginOverlap.AddDynamic(this, &AMapPortal::OnOverlapBegin);
+		TriggerSphere->OnComponentEndOverlap.AddDynamic(this, &AMapPortal::OnOverlapEnd);
 	}
 }
 
-void AMiniGamePortal::OnOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+void AMapPortal::OnOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
 	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
 	if (!HasAuthority()) return;
@@ -68,7 +68,7 @@ void AMiniGamePortal::OnOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor
 	}
 }
 
-void AMiniGamePortal::OnOverlapEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+void AMapPortal::OnOverlapEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
 	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
 {
 	if (!HasAuthority()) return;
@@ -79,19 +79,19 @@ void AMiniGamePortal::OnOverlapEnd(UPrimitiveComponent* OverlappedComp, AActor* 
 	}
 }
 
-void AMiniGamePortal::StartCountdown()
+void AMapPortal::StartCountdown()
 {
 	RemainingTime = 5;
 
 	//5초 후 이동
-	GetWorldTimerManager().SetTimer(TravelTimerHandle, this, &AMiniGamePortal::ProcessLevelTransition, 5.f, false);
+	GetWorldTimerManager().SetTimer(TravelTimerHandle, this, &AMapPortal::ProcessLevelTransition, 5.f, false);
 
 	//1초마다 텍스트 갱신
-	GetWorldTimerManager().SetTimer(CountdownUpdateTimer, this, &AMiniGamePortal::UpdateCountdownText, 1.f, true);
+	GetWorldTimerManager().SetTimer(CountdownUpdateTimer, this, &AMapPortal::UpdateCountdownText, 1.f, true);
 	UpdateCountdownText();
 }
 
-void AMiniGamePortal::CancelCountdown()
+void AMapPortal::CancelCountdown()
 {
 	if (GetWorldTimerManager().IsTimerActive(TravelTimerHandle))
 	{
@@ -103,17 +103,24 @@ void AMiniGamePortal::CancelCountdown()
 	}
 }
 
-void AMiniGamePortal::ProcessLevelTransition()
+void AMapPortal::ProcessLevelTransition()
 {
 	UBSGameInstance* GI = Cast<UBSGameInstance>(GetGameInstance());
 	if (GI)
 	{
-		GI->SetbHasVisitedMiniGame(true);
+		GI->SetbHasVisitedMap(true);
 	}
-	GetWorld()->ServerTravel("/Game/TeamShare/Level/MiniGameMap?listen");
+
+	FString LevelPath = TargetLevel.GetLongPackageName();
+
+	if (!LevelPath.IsEmpty())
+	{
+		FString FinalPath = LevelPath + TEXT("?listen");
+		GetWorld()->ServerTravel(FinalPath);
+	}
 }
 
-void AMiniGamePortal::UpdateCountdownText()
+void AMapPortal::UpdateCountdownText()
 {
 	if (RemainingTime > 0)
 	{
@@ -122,7 +129,7 @@ void AMiniGamePortal::UpdateCountdownText()
 	}
 }
 
-void AMiniGamePortal::MulticastUpdateText_Implementation(const FString& NewText)
+void AMapPortal::MulticastUpdateText_Implementation(const FString& NewText)
 {
 	if (CountdownText)
 		CountdownText->SetText(FText::FromString(NewText));
