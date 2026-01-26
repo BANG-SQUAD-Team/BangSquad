@@ -44,87 +44,93 @@ void AWindZone::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
     
+    // [수정 1] 특정 클래스(ABaseCharacter)만 찾던 것을 -> 모든 액터(AActor)로 변경
     TArray<AActor*> OverlappingActors;
-    WindBox->GetOverlappingActors(OverlappingActors, ABaseCharacter::StaticClass()); 
+    WindBox->GetOverlappingActors(OverlappingActors); 
     
     FVector WindDir = GetActorForwardVector() * (bPushForward ? 1.0f : -1.0f);
     
     for (AActor* Actor : OverlappingActors)
     {
-        ABaseCharacter* TargetChar = Cast<ABaseCharacter>(Actor);
-        if (!TargetChar) continue;
-        if (!TargetChar->ActorHasTag("Player")) continue; 
+        if (!Actor || Actor == this) continue;
 
         // =========================================================
-        // [1] 보호 여부 판단
+        // [CASE A] 캐릭터 처리 (기존 로직 유지)
         // =========================================================
-        bool bIsProtected = false;
-
-        // A. 팔라딘 본인 체크
-        if (APaladinCharacter* Paladin = Cast<APaladinCharacter>(TargetChar))
+        if (ABaseCharacter* TargetChar = Cast<ABaseCharacter>(Actor))
         {
-            if (Paladin->IsBlockingDirection(WindDir))
-            {
-                bIsProtected = true; 
-                Paladin->ConsumeShield(DeltaTime * ShieldDamagePerSec); 
-            }
-        }
+            // 플레이어 태그 체크 (기존 유지)
+            if (!TargetChar->ActorHasTag("Player")) continue; 
 
-        // B. 다른 캐릭터 체크 (앞에 장애물/방패 있나 확인)
-        if (!bIsProtected)
-        {
-            FVector TraceEnd = TargetChar->GetActorLocation();
-            FVector TraceStart = TraceEnd - (WindDir * 800.0f); 
-            
-            FHitResult HitResult;
-            FCollisionQueryParams Params;
-            Params.AddIgnoredActor(this);
-            Params.AddIgnoredActor(TargetChar); 
-            
-            bool bHit = GetWorld()->LineTraceSingleByChannel(
-                HitResult, TraceStart, TraceEnd, BlockChannel, Params
-            );
-            
-            if (bHit) bIsProtected = true; 
-        }
+            bool bIsProtected = false;
 
-        // =========================================================
-        // [2] 물리 상태 적용
-        // =========================================================
-        if (UCharacterMovementComponent* CMC = TargetChar->GetCharacterMovement())
-        {
-            if (bIsProtected)
+            // 1. 팔라딘 방어 체크
+            if (APaladinCharacter* Paladin = Cast<APaladinCharacter>(TargetChar))
             {
-                //  [보호 상태] -> 원래대로 복구
-                CMC->GroundFriction = 8.0f; 
-                CMC->BrakingDecelerationWalking = 2048.0f;
-                
-                //  550.0f 대신 캐릭터 고유의 속도로 복구
-                CMC->MaxWalkSpeed = TargetChar->GetDefaultWalkSpeed(); 
-                
-                // 보호받으면 바람 힘은 적용 안 함
-            }
-            else
-            {
-                //[피격 상태] -> 바람에 밀리는 세팅
-                
-                // 1. 앞으로 갈 때 저항감 (느리게)
-                CMC->MaxWalkSpeed = 200.0f; 
-                
-                // 2. 약간 미끄럽게 (마찰 감소)
-                CMC->GroundFriction = 2.0f; 
-                
-                // 3. 제동력 제거 (멈추면 바로 밀리게)
-                CMC->BrakingDecelerationWalking = 0.0f;
-
-                // 4. 바람 힘 적용
-                float FinalStrength = WindStrength;
-                if (CMC->IsMovingOnGround())
+                if (Paladin->IsBlockingDirection(WindDir))
                 {
-                    FinalStrength *= GroundFrictionMultiplier;
+                    bIsProtected = true; 
+                    Paladin->ConsumeShield(DeltaTime * ShieldDamagePerSec); 
                 }
+            }
+
+            // 2. 차폐물(LineTrace) 체크
+            if (!bIsProtected)
+            {
+                FVector TraceEnd = TargetChar->GetActorLocation();
+                FVector TraceStart = TraceEnd - (WindDir * 800.0f); 
                 
-                CMC->AddForce(WindDir * FinalStrength);
+                FHitResult HitResult;
+                FCollisionQueryParams Params;
+                Params.AddIgnoredActor(this);
+                Params.AddIgnoredActor(TargetChar); 
+                
+                bool bHit = GetWorld()->LineTraceSingleByChannel(
+                    HitResult, TraceStart, TraceEnd, BlockChannel, Params
+                );
+                
+                if (bHit) bIsProtected = true; 
+            }
+
+            // 3. 물리 적용 (캐릭터 무브먼트)
+            if (UCharacterMovementComponent* CMC = TargetChar->GetCharacterMovement())
+            {
+                if (bIsProtected)
+                {
+                    CMC->GroundFriction = 8.0f; 
+                    CMC->BrakingDecelerationWalking = 2048.0f;
+                    CMC->MaxWalkSpeed = TargetChar->GetDefaultWalkSpeed(); 
+                }
+                else
+                {
+                    CMC->MaxWalkSpeed = 200.0f; 
+                    CMC->GroundFriction = 2.0f; 
+                    CMC->BrakingDecelerationWalking = 0.0f;
+
+                    float FinalStrength = WindStrength;
+                    if (CMC->IsMovingOnGround())
+                    {
+                        FinalStrength *= GroundFrictionMultiplier;
+                    }
+                    CMC->AddForce(WindDir * FinalStrength);
+                }
+            }
+        }
+        // =========================================================
+        // [CASE B] 물리 액터 처리 (버섯 등) -> 새로 추가된 부분
+        // =========================================================
+        else if (UPrimitiveComponent* PrimComp = Cast<UPrimitiveComponent>(Actor->GetRootComponent()))
+        {
+            // "Simulate Physics"가 켜진 물체만 바람에 날아감
+            if (PrimComp->IsSimulatingPhysics())
+            {
+                // 버섯은 가벼우니까 캐릭터보다 바람을 더 잘 타야 함
+                // DeltaTime을 곱하지 않고 AddForce를 계속 주면 가속도가 붙어서 자연스럽게 날아감
+                // 필요하다면 여기서 힘 조절 
+                PrimComp->AddForce(WindDir * WindStrength);
+                
+                //  바람에 날릴 때 약간의 회전(Torque)을 주면 더 리얼함
+                PrimComp->AddTorqueInRadians(FVector(0, 0, 100.0f));
             }
         }
     }
