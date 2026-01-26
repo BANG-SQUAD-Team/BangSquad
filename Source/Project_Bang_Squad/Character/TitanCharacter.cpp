@@ -310,6 +310,8 @@ void ATitanCharacter::Multicast_FixMesh_Implementation(ACharacter* Victim)
 
 void ATitanCharacter::JobAbility()
 {
+	
+	if (!CanAttack()) return;
 	if (!IsSkillUnlocked(1)) return;
 	// 로컬 체크
 	if (bIsDead || bIsCooldown) return;
@@ -337,6 +339,7 @@ void ATitanCharacter::JobAbility()
 
 void ATitanCharacter::Skill1()
 {
+	if (!CanAttack()) return;
 	if (bIsDead || bIsSkill1Cooldown) return;
 
 	// [수정] 클라이언트 선제적 쿨타임 적용
@@ -357,6 +360,7 @@ void ATitanCharacter::Skill1()
 
 void ATitanCharacter::Skill2()
 {
+	if (!CanAttack()) return;
 	if (bIsDead || bIsSkill2Cooldown) return;
 
 	// [수정] 클라이언트 선제적 쿨타임 적용
@@ -691,14 +695,18 @@ void ATitanCharacter::Server_Skill1_Implementation()
 		// 쿨타임 설정
 		if (Row->Cooldown > 0.0f) Skill1CooldownTime = Row->Cooldown;
 
-		// ★ 핵심: 이제 몽타주만 재생하면 끝! 
-		// (돌 생성과 던지기는 몽타주 안에 심은 노티파이가 알아서 함)
-		if (Row->SkillMontage) PlayAnimMontage(Row->SkillMontage);
+		Multicast_Skill1();
 	}
 
 	// 쿨타임 타이머 (이건 유지)
 	bIsSkill1Cooldown = true;
 	GetWorldTimerManager().SetTimer(Skill1CooldownTimerHandle, this, &ATitanCharacter::ResetSkill1Cooldown, Skill1CooldownTime, false);
+}
+
+void ATitanCharacter::Multicast_Skill1_Implementation()
+{
+	// ProcessSkill을 호출하면 몽타주 재생 + PlayActionMontage(잠금)까지 한 번에 해결
+	ProcessSkill(TEXT("Skill1"));
 }
 
 void ATitanCharacter::ThrowRock()
@@ -817,7 +825,7 @@ void ATitanCharacter::Server_Skill2_Implementation()
 		if (!IsSkillUnlocked(Row->RequiredStage)) return;
 		CurrentSkillDamage = Row->Damage;
 		if (Row->Cooldown > 0.0f) Skill2CooldownTime = Row->Cooldown;
-		if (Row->SkillMontage) PlayAnimMontage(Row->SkillMontage);
+		Multicast_Skill2();
 	}
 
 	if (!bIsCharging)
@@ -843,6 +851,11 @@ void ATitanCharacter::Server_Skill2_Implementation()
 		GetWorldTimerManager().SetTimer(Skill2CooldownTimerHandle, this, &ATitanCharacter::ResetSkill2Cooldown, Skill2CooldownTime, false);
 		GetWorldTimerManager().SetTimer(ChargeTimerHandle, this, &ATitanCharacter::StopCharge, 0.3f, false);
 	}
+}
+
+void ATitanCharacter::Multicast_Skill2_Implementation()
+{
+	ProcessSkill(TEXT("Skill2"));
 }
 
 void ATitanCharacter::OnChargeOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
@@ -893,7 +906,12 @@ void ATitanCharacter::ProcessSkill(FName SkillRowName, FName StartSectionName)
 			}
 			else
 			{
-				PlayAnimMontage(Data->SkillMontage, 1.0f, StartSectionName);
+				PlayActionMontage(Data->SkillMontage);
+				// 만약 PlayActionMontage가 섹션 인자를 안 받는다면, 재생 직후 점프
+				if (StartSectionName != NAME_None)
+				{
+					AnimInstance->Montage_JumpToSection(StartSectionName, Data->SkillMontage);
+				}
 			}
 		}
 	}

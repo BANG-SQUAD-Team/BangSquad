@@ -32,6 +32,12 @@ protected:
 	virtual void JobAbility() override;  // 잡기/던지기
 	virtual void Skill1() override;      // 바위 던지기
 	virtual void Skill2() override;      // 돌진
+	
+	UFUNCTION(NetMulticast, Unreliable)
+	void Multicast_Skill1();
+	
+	UFUNCTION(NetMulticast, Unreliable)
+	void Multicast_Skill2();
 
 public:
 	// 잡기 실행 함수 (몽타주 등에서 호출 가능)

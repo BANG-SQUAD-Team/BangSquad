@@ -521,6 +521,7 @@ void AMageCharacter::SpawnDelayedProjectile(UClass* ProjectileClass, float Damag
 
 void AMageCharacter::JobAbility()
 {
+    if (!CanAttack()) return;
     if (!IsSkillUnlocked(1)) return;
     
     if (bIsDead) return;

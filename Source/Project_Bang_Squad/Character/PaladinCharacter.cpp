@@ -527,6 +527,8 @@ void APaladinCharacter::Multicast_PlaySmashVFX_Implementation(FVector Location)
 
 void APaladinCharacter::JobAbility()
 {
+    if (!CanAttack()) return;
+    
     if (!IsSkillUnlocked(1)) return;
     
     // 방패가 깨졌거나 HP 0이면 사용 불가
