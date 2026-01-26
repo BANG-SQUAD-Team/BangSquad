@@ -8,6 +8,7 @@
 ABS_Seesaw::ABS_Seesaw()
 {
 	PrimaryActorTick.bCanEverTick = true;
+    PrimaryActorTick.TickGroup = TG_PrePhysics;
 	bReplicates = true;
 	SetReplicateMovement(false);
 

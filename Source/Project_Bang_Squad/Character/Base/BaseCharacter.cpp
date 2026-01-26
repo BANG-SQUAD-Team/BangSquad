@@ -30,6 +30,8 @@ ABaseCharacter::ABaseCharacter()
 	MoveComp->MaxWalkSpeed = 550.f;
 	MoveComp->JumpZVelocity = 500.f;
 	MoveComp->AirControl = 0.5f;
+	MoveComp->SetWalkableFloorAngle(60.f);
+	MoveComp->bMaintainHorizontalGroundVelocity = false;
 	
 	JumpCooldownTimer = 1.2f;
 
@@ -102,7 +104,6 @@ void ABaseCharacter::BeginPlay()
 void ABaseCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-
 	ApplySlopeSlide(DeltaTime);
 }
 
@@ -558,37 +559,42 @@ void ABaseCharacter::SetWindResistance(bool bEnable)
 void ABaseCharacter::ApplySlopeSlide(float DeltaTime)
 {
 	UCharacterMovementComponent* MoveComp = GetCharacterMovement();
-	// 바닥에 서 있을 때만 계산
 	if (!MoveComp || !MoveComp->IsWalking() || !MoveComp->CurrentFloor.IsWalkableFloor())
 	{
+		MoveComp->MaxWalkSpeed = 550.0f;
+		MoveComp->GroundFriction = 8.0f; // 평지 기본 마찰력 복구
 		return;
 	}
 
-	// 1. 현재 밟고 있는 바닥의 경사각 계산
 	FVector FloorNormal = MoveComp->CurrentFloor.HitResult.Normal;
 	float SlopeAngle = FMath::RadiansToDegrees(FMath::Acos(FloorNormal.Z));
 
-	// 2. 40도부터 미끄러짐 발동
-	if (SlopeAngle >= 40.0f)
+	if (SlopeAngle >= 30.0f)
 	{
-		// 40도(0.0)에서 50도(1.0) 사이의 비율(Alpha) 계산
-		float SlideAlpha = FMath::GetMappedRangeValueClamped(FVector2D(40.f, 50.f), FVector2D(0.f, 1.f), SlopeAngle);
+		// 30~50도 사이의 비율 (0.0 ~ 1.0)
+		float Alpha = FMath::GetMappedRangeValueClamped(FVector2D(30.f, 50.f), FVector2D(0.f, 1.f), SlopeAngle);
+		float CurveAlpha = FMath::Sqrt(Alpha);
+		float CurrentAccel = CurveAlpha * MaxSlideAccel;
 
-		// 3. 미끄러질 방향 계산 (중력을 바닥 평면에 투영)
+		// 1. 마찰력 및 제동력 제거
+		float FrictionAlpha = FMath::GetMappedRangeValueClamped(FVector2D(40.f, 50.f), FVector2D(0.f, 1.f), SlopeAngle);
+		MoveComp->GroundFriction = FMath::Lerp(2.0f, 0.5f, FrictionAlpha);
+		MoveComp->BrakingDecelerationWalking = FMath::Lerp(500.0f, 0.0f, FrictionAlpha);
+
+		// 2.  걷기 속도 추가 제한
+		MoveComp->MaxWalkSpeed = FMath::Lerp(550.0f, 200.0f, Alpha);
+
+		// 3. 경사 아래 방향 계산 및 힘 적용
 		FVector GravityDir = FVector(0, 0, -1);
 		FVector SlideDir = GravityDir - (FloorNormal * FVector::DotProduct(GravityDir, FloorNormal));
 		SlideDir.Normalize();
 
-		// 4. 속도에 미끄러지는 힘 추가
-		MoveComp->Velocity += SlideDir * SlopeSlideStrength * SlideAlpha * DeltaTime * 10.0f;
-
-		// 5. 마찰력을 낮춰서 더 미끄럽게 만듦
-		// 50도에 가까워질수록 마찰력이 0에 수렴
-		MoveComp->GroundFriction = FMath::Lerp(2.0f, 0.0f, SlideAlpha);
+		// 가속도 적용
+		MoveComp->Velocity += SlideDir * CurrentAccel * DeltaTime * 12.0f;
 	}
 	else
 	{
-		// 40도 미만일 때는 기본 마찰력(2.0) 유지
-		MoveComp->GroundFriction = 2.0f;
+		MoveComp->MaxWalkSpeed = 550.0f;
+		MoveComp->GroundFriction = 8.0f;
 	}
 }

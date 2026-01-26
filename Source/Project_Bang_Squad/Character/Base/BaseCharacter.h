@@ -237,7 +237,7 @@ private:
 	// 40~50도 경사에서 미끄러지는 로직 
 	void ApplySlopeSlide(float DeltaTime);
 
-	// 미끄러지는 힘의 세기 (800 정도면 걷는 속도 550을 이기고 밀려남)
+	// 최대 가속도 기준값 (50도일 때의 값)
 	UPROPERTY(EditAnywhere, Category = "Movement")
-	float SlopeSlideStrength = 800.0f;
+	float MaxSlideAccel = 230.0f;
 };
