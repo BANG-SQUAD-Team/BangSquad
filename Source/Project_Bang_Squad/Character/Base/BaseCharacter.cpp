@@ -1,4 +1,4 @@
-#include "BaseCharacter.h" 
+﻿#include "BaseCharacter.h" 
 #include "Project_Bang_Squad/Character/Component/HealthComponent.h"
 #include "Project_Bang_Squad/Character/StageBoss/StageBossGameMode.h" 
 #include "Camera/CameraComponent.h"
@@ -95,6 +95,8 @@ void ABaseCharacter::BeginPlay()
 void ABaseCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+	ApplySlopeSlide(DeltaTime);
 }
 
 float ABaseCharacter::TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser)
@@ -543,5 +545,43 @@ void ABaseCharacter::SetWindResistance(bool bEnable)
 		// [윈드존 퇴장]
 		// 원래대로 브레이크 복구 (안 하면 계속 미끄러짐)
 		MoveComp->BrakingDecelerationWalking = OriginalBrakingDeceleration;
+	}
+}
+
+void ABaseCharacter::ApplySlopeSlide(float DeltaTime)
+{
+	UCharacterMovementComponent* MoveComp = GetCharacterMovement();
+	// 바닥에 서 있을 때만 계산
+	if (!MoveComp || !MoveComp->IsWalking() || !MoveComp->CurrentFloor.IsWalkableFloor())
+	{
+		return;
+	}
+
+	// 1. 현재 밟고 있는 바닥의 경사각 계산
+	FVector FloorNormal = MoveComp->CurrentFloor.HitResult.Normal;
+	float SlopeAngle = FMath::RadiansToDegrees(FMath::Acos(FloorNormal.Z));
+
+	// 2. 40도부터 미끄러짐 발동
+	if (SlopeAngle >= 40.0f)
+	{
+		// 40도(0.0)에서 50도(1.0) 사이의 비율(Alpha) 계산
+		float SlideAlpha = FMath::GetMappedRangeValueClamped(FVector2D(40.f, 50.f), FVector2D(0.f, 1.f), SlopeAngle);
+
+		// 3. 미끄러질 방향 계산 (중력을 바닥 평면에 투영)
+		FVector GravityDir = FVector(0, 0, -1);
+		FVector SlideDir = GravityDir - (FloorNormal * FVector::DotProduct(GravityDir, FloorNormal));
+		SlideDir.Normalize();
+
+		// 4. 속도에 미끄러지는 힘 추가
+		MoveComp->Velocity += SlideDir * SlopeSlideStrength * SlideAlpha * DeltaTime * 10.0f;
+
+		// 5. 마찰력을 낮춰서 더 미끄럽게 만듦
+		// 50도에 가까워질수록 마찰력이 0에 수렴
+		MoveComp->GroundFriction = FMath::Lerp(2.0f, 0.0f, SlideAlpha);
+	}
+	else
+	{
+		// 40도 미만일 때는 기본 마찰력(2.0) 유지
+		MoveComp->GroundFriction = 2.0f;
 	}
 }
