@@ -311,13 +311,13 @@ void ATitanCharacter::Multicast_FixMesh_Implementation(ACharacter* Victim)
 void ATitanCharacter::JobAbility()
 {
 	
-	if (!CanAttack()) return;
 	if (!IsSkillUnlocked(1)) return;
 	// 로컬 체크
 	if (bIsDead || bIsCooldown) return;
 
 	if (bIsGrabbing)
 	{
+		if (bIsCooldown) return;
 		bIsCooldown = true;
 		// 데이터 테이블에서 쿨타임 가져오기
 		float LocalThrowCooldown = 3.0f; // 기본값
@@ -326,13 +326,15 @@ void ATitanCharacter::JobAbility()
 			FSkillData* Row = SkillDataTable->FindRow<FSkillData>(TEXT("JobAbility"), TEXT("TitanJob_Local"));
 			if (Row && Row->Cooldown > 0.0f) LocalThrowCooldown = Row->Cooldown;
 		}
+		
 		GetWorldTimerManager().SetTimer(CooldownTimerHandle, this, &ATitanCharacter::ResetCooldown, LocalThrowCooldown, false);
-
 		FVector ThrowOrigin = ThrowSpawnPoint->GetComponentLocation();
 		Server_ThrowTarget(ThrowOrigin);
 	}
 	else
 	{
+		if (!CanAttack()) return;
+		if (bIsCooldown) return;
 		if (HoveredActor) Server_TryGrab(HoveredActor);
 	}
 }
@@ -651,7 +653,11 @@ void ATitanCharacter::Server_ThrowTarget_Implementation(FVector ThrowStartLocati
 	// 방향 및 힘 계산
 	FRotator ThrowRotation = GetControlRotation();
 	FVector ThrowDir = ThrowRotation.Vector();
-	if (ThrowDir.Z < -0.1f) { ThrowDir.Z = -0.1f; ThrowDir.Normalize(); }
+	
+	if (ThrowDir.Z < -0.1f)
+	{
+		ThrowDir.Z = -0.1f; ThrowDir.Normalize();
+	}
 
 	// 약간 위쪽으로 보정된 최종 방향
 	FVector FinalThrowDir = (ThrowDir + FVector(0.f, 0.f, 0.3f)).GetSafeNormal();
