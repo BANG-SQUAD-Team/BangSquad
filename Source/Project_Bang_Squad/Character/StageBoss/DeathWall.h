@@ -2,7 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
-#include "DeathWall.generated.h"
+#include "DeathWall.generated.h" // 이 파일은 반드시 마지막 include여야 합니다.
 
 UCLASS()
 class PROJECT_BANG_SQUAD_API ADeathWall : public AActor
@@ -11,9 +11,6 @@ class PROJECT_BANG_SQUAD_API ADeathWall : public AActor
 
 public:
     ADeathWall();
-
-    // 변수 동기화 등록
-    virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 protected:
     virtual void BeginPlay() override;
@@ -35,10 +32,6 @@ protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
     class UBoxComponent* SpawnVolume;
 
-    // [New] 이동 방향을 에디터에서 직관적으로 보기 위한 화살표
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-    class UArrowComponent* DirectionArrow;
-
     // [설정]
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wall Settings")
     TSubclassOf<AActor> PlatformClass;
@@ -49,28 +42,25 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wall Movement")
     float MoveSpeed = 50.0f;
 
-    // [상태] 서버->클라이언트 동기화 (멈춤/가동 상태 공유)
-    UPROPERTY(Replicated, VisibleAnywhere, BlueprintReadOnly, Category = "Wall State")
     bool bIsActive = true;
 
     // [패턴 설정값]
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern Settings")
+    float FirstPlatformHeight = 60.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern Settings")
+    float LayerHeight = 150.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern Settings")
     float PlatformStickOut = 150.0f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern Settings")
-    float FirstPlatformHeight = 60.0f;
+    float RandomFlatProb = 0.3f;
 
-    // 내부 알고리즘용 변수
-    float LayerHeight = 150.0f;
+    // CPP 생성자용 변수
     float BranchWidth = 120.0f;
     float BranchProbability = 0.6f;
 
-private:
-    // 내부 로직 분리
+    // 내부 함수
     void GeneratePlatforms();
-
-    // 플랫폼 스폰 헬퍼 (중복 코드 제거)
-    void SpawnPlatformAt(FVector Location);
-
-    // 사용하지 않는 SpawnRow, SpawnCluster는 제거하거나 필요 시 구현
 };
