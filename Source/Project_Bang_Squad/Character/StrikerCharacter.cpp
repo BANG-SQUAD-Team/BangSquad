@@ -24,7 +24,12 @@ AStrikerCharacter::AStrikerCharacter()
 void AStrikerCharacter::BeginPlay()
 {
 	Super::BeginPlay();
-	// [삭제] Box Collision 바인딩 코드 제거
+	
+
+    if (GetMesh())
+    {
+        GetMesh()->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
+    }
 }
 
 void AStrikerCharacter::Landed(const FHitResult& Hit)
@@ -225,12 +230,76 @@ void AStrikerCharacter::StopMeleeTrace()
 	SwingDamagedActors.Empty();
 }
 
-// ... (이하 기존 스킬 및 이동 함수 유지) ...
-
 void AStrikerCharacter::ApplyAttackForwardForce()
 {
 	if (HasAuthority()) Server_ApplyAttackForwardForce_Implementation();
 	else Server_ApplyAttackForwardForce();
+}
+
+void AStrikerCharacter::ApplyJobAbilityHit()
+{
+    // 1. 서버인지 확인 (서버에서만 동작해야 함)
+    if (!HasAuthority()) return;
+
+    // [디버그] 서버에서 함수가 불렸는지 로그로 확인
+    // UE_LOG(LogTemp, Warning, TEXT("Server: ApplyJobAbilityHit Called!"));
+
+    float AbilityDamage = 50.f;
+
+    if (SkillDataTable)
+    {
+        static const FString ContextString(TEXT("Striker JobAbility Damage"));
+        FSkillData* Data = SkillDataTable->FindRow<FSkillData>(TEXT("JobAbility"), ContextString);
+        if (Data) AbilityDamage = Data->Damage;
+    }
+
+    FVector MyLoc = GetActorLocation();
+    FVector MyFwd = GetActorForwardVector();
+
+    // 판정 박스 위치 및 크기
+    FVector BoxCenter = MyLoc + (MyFwd * 150.f);
+    FVector BoxExtent = FVector(150.f, 150.f, 150.f); // Y, Z축 범위를 좀 더 넉넉하게 수정
+
+    // [디버그] 눈에 보이는 빨간 박스 그리기 (2초간 유지)
+    DrawDebugBox(GetWorld(), BoxCenter, BoxExtent, FColor::Red, false, 2.0f);
+
+    TArray<AActor*> OverlappingActors;
+    TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;
+    ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_Pawn));
+    ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_WorldDynamic)); // [추가] 적이 Pawn이 아닐 경우 대비
+
+    UKismetSystemLibrary::BoxOverlapActors(GetWorld(), BoxCenter, BoxExtent, ObjectTypes, ACharacter::StaticClass(), { this }, OverlappingActors);
+
+    for (AActor* Actor : OverlappingActors)
+    {
+        ACharacter* TargetChar = Cast<ACharacter>(Actor);
+        if (!TargetChar) continue;
+
+        // 아군(Player 태그) 제외 로직이 필요하면 추가
+        if (TargetChar->ActorHasTag("Player")) continue;
+
+        bool bIsNormal = Actor->IsA(AEnemyNormal::StaticClass());
+        bool bIsBaseChar = Actor->IsA(ABaseCharacter::StaticClass());
+
+        if (bIsNormal || bIsBaseChar)
+        {
+            // 데미지 적용
+            UGameplayStatics::ApplyDamage(TargetChar, AbilityDamage, GetController(), this, UDamageType::StaticClass());
+
+            // [중요 수정 2] 확실하게 띄우기 위한 로직 강화
+            // 땅에 붙어있으면 마찰력 때문에 Launch가 약할 수 있으므로 강제로 Falling 상태로 변경
+            if (TargetChar->GetCharacterMovement())
+            {
+                TargetChar->GetCharacterMovement()->SetMovementMode(MOVE_Falling);
+            }
+
+            // Z축 1000이면 꽤 높이 뜹니다. XY축 반동이 없으면 제자리 점프처럼 보일 수 있으니 살짝 밀어줍니다.
+            FVector LaunchVel = (GetActorForwardVector() * 100.f) + FVector(0.f, 0.f, 1000.f);
+
+            // XY, Z 모두 override(true)
+            TargetChar->LaunchCharacter(LaunchVel, true, true);
+        }
+    }
 }
 void AStrikerCharacter::Server_ApplyAttackForwardForce_Implementation()
 {
@@ -412,49 +481,9 @@ void AStrikerCharacter::JobAbility()
 
 void AStrikerCharacter::Server_UseJobAbility_Implementation()
 {
-    float AbilityDamage = 50.f;
+    // 몽타주 재생 명령만 내림 (노티파이가 타점 잡음)
     Multicast_JobAbility();
-
-    if (SkillDataTable)
-    {
-        static const FString ContextString(TEXT("Striker JobAbility Damage"));
-        FSkillData* Data = SkillDataTable->FindRow<FSkillData>(TEXT("JobAbility"), ContextString);
-        if (Data) AbilityDamage = Data->Damage;
-    }
-
-    FVector MyLoc = GetActorLocation();
-    FVector MyFwd = GetActorForwardVector();
-    FVector BoxCenter = MyLoc + (MyFwd * 150.f);
-    FVector BoxExtent = FVector(150.f, 100.f, 100.f);
-
-    TArray<AActor*> OverlappingActors;
-    TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;
-    ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_Pawn));
-
-    UKismetSystemLibrary::BoxOverlapActors(GetWorld(), BoxCenter, BoxExtent, ObjectTypes, ACharacter::StaticClass(), { this }, OverlappingActors);
-
-    for (AActor* Actor : OverlappingActors)
-    {
-        ACharacter* TargetChar = Cast<ACharacter>(Actor);
-        if (!TargetChar) continue;
-
-        bool bIsNormal = Actor->IsA(AEnemyNormal::StaticClass());
-        bool bIsBaseChar = Actor->IsA(ABaseCharacter::StaticClass());
-
-        if (bIsNormal)
-        {
-            UGameplayStatics::ApplyDamage(TargetChar, AbilityDamage, GetController(), this, UDamageType::StaticClass());
-            FVector LaunchVel = FVector(0.f, 0.f, 1000.f);
-            TargetChar->LaunchCharacter(LaunchVel, true, true);
-        }
-        else if (bIsBaseChar)
-        {
-            FVector LaunchVel = FVector(0.f, 0.f, 1000.f);
-            TargetChar->LaunchCharacter(LaunchVel, true, true);
-        }
-    }
 }
-
 void AStrikerCharacter::Multicast_JobAbility_Implementation()
 {
 	ProcessSkill(TEXT("JobAbility"));

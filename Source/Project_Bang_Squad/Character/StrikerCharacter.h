@@ -40,6 +40,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Combat")
 	void ApplyAttackForwardForce();
 
+	void ApplyJobAbilityHit();
+
 protected:
 	// =================================================================
 	// [공격 판정 (Trace/Sweep) 변수]
