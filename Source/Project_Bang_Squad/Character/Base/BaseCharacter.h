@@ -96,6 +96,9 @@ protected:
 	
 	// 게임 시작 시 저장해둘 원래 속도
 	float DefaultMaxWalkSpeed;
+
+	// 현재 적용 중인 감속 비율 (기본값 1.0 = 감속 없음)
+	float CurrentSlowRatio = 1.0f;
 	
 	// =========================================================
 	//  체력 자동 재생 (Health Regen)
@@ -229,6 +232,8 @@ protected:
 	// 서버와 클라이언트 모두 속도를 바꾸게 하는 방송 함수
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_SetMaxWalkSpeed(float NewSpeed);
+
+
 	
 private:
 	// 원래 브레이크 수치 저장용

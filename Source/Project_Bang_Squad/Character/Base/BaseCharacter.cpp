@@ -31,7 +31,7 @@ ABaseCharacter::ABaseCharacter()
 	MoveComp->JumpZVelocity = 500.f;
 	MoveComp->AirControl = 0.5f;
 	MoveComp->SetWalkableFloorAngle(60.f);
-	MoveComp->bMaintainHorizontalGroundVelocity = false;
+	MoveComp->bMaintainHorizontalGroundVelocity = true;
 	
 	JumpCooldownTimer = 1.2f;
 
@@ -460,45 +460,22 @@ void ABaseCharacter::ApplySlowDebuff(bool bActive, float Ratio)
 	UCharacterMovementComponent* MoveComp = GetCharacterMovement();
 	if (!MoveComp) return;
 
-	float TargetSpeed = 0.0f;
-	
-	if (bActive)
-	{
-		// [장판 입장]
-		// 현재 속도를 백업 (중복 적용 방지)
-		if (CachedWalkSpeed <= 0.0f)
-		{
-			CachedWalkSpeed = MoveComp->MaxWalkSpeed;
-		}
-		// 비율만큼 감속
-		TargetSpeed = CachedWalkSpeed * Ratio;
+	if (bActive) {
+		if (CachedWalkSpeed <= 0.1f) CachedWalkSpeed = MoveComp->MaxWalkSpeed;
+		CurrentSlowRatio = Ratio;
 	}
 	else
 	{
-		// 장판 퇴장 - 복구 로직
-		if (CachedWalkSpeed > 0.0f)
-		{
-			// 1순위: 들어오기 직전 속도로 복구
-			TargetSpeed = CachedWalkSpeed;
-		}
-		else
-		{
-			// 2순위 (비상용)
-			float ClassDefaultSpeed = 550.0f; // 기본값(혹시 실패시)
-			// 현재 내 클래스의 원본 세팅값을 가져옴
-			if (ACharacter* DefaultChar = GetClass()->GetDefaultObject<ACharacter>())
-			{
-				if (UCharacterMovementComponent* DefMove = Cast<UCharacterMovementComponent>(DefaultChar->GetCharacterMovement()))
-				{
-					ClassDefaultSpeed = DefMove->MaxWalkSpeed;
-				}
-			}
-			TargetSpeed = ClassDefaultSpeed;
-		}
-		// 복구했으니 캐시 초기화
-		CachedWalkSpeed = 0.0f;
+		// [장판 퇴장]
+		CurrentSlowRatio = 1.0f; // 비율 초기화
+		CachedWalkSpeed = 0.0f;  // 캐시 초기화
 	}
+
+	// 하드코딩(550.0f) 대신 DefaultMaxWalkSpeed를 사용하여 목표 속도 계산
+	float TargetSpeed = DefaultMaxWalkSpeed * CurrentSlowRatio;
+
 	// 서버와 클라이언트 모두 속도 변경
+	MoveComp->MaxWalkSpeed = TargetSpeed;
 	Multicast_SetMaxWalkSpeed(TargetSpeed);
 }
 
@@ -563,42 +540,65 @@ void ABaseCharacter::SetWindResistance(bool bEnable)
 void ABaseCharacter::ApplySlopeSlide(float DeltaTime)
 {
 	UCharacterMovementComponent* MoveComp = GetCharacterMovement();
-	if (!MoveComp || !MoveComp->IsWalking() || !MoveComp->CurrentFloor.IsWalkableFloor())
+	if (!MoveComp) return;
+
+	// [1] 장판 감속 반영 기준 속도 (하드코딩 제거)
+	float NormalSpeed = 550.0f * CurrentSlowRatio;
+
+	// [2] 시소 덜컥거림 해결 핵심: IsWalking() 체크를 제거한다.
+	// 대신 바닥에 '충돌(bBlockingHit)' 중인지만 확인해서, 시소 끝에서 살짝 떠도 속도가 550으로 튀지 않게 함.
+	if (!MoveComp->CurrentFloor.bBlockingHit)
 	{
-		MoveComp->MaxWalkSpeed = 550.0f;
-		MoveComp->GroundFriction = 8.0f; // 평지 기본 마찰력 복구
+		// 완전 공중일 때는 물리 수치만 초기화하고 리턴 (속도 대입 금지)
+		MoveComp->GroundFriction = 8.0f;
 		return;
 	}
 
 	FVector FloorNormal = MoveComp->CurrentFloor.HitResult.Normal;
 	float SlopeAngle = FMath::RadiansToDegrees(FMath::Acos(FloorNormal.Z));
 
+	// 경사 아래 방향 계산
+	FVector GravityDir = FVector(0, 0, -1);
+	FVector SlideDir = GravityDir - (FloorNormal * FVector::DotProduct(GravityDir, FloorNormal));
+	SlideDir.Normalize();
+
+	// [3] 내리막길 판단 (계단 문제 해결용)
+	FVector MoveDir = GetVelocity().GetSafeNormal();
+	if (MoveDir.IsNearlyZero()) MoveDir = MoveComp->GetLastInputVector().GetSafeNormal();
+	bool bIsDownhill = FVector::DotProduct(MoveDir, SlideDir) > 0.2f;
+
+	// [네 코드의 30~50도 로직 그대로 유지]
 	if (SlopeAngle >= 30.0f)
 	{
-		// 30~50도 사이의 비율 (0.0 ~ 1.0)
 		float Alpha = FMath::GetMappedRangeValueClamped(FVector2D(30.f, 50.f), FVector2D(0.f, 1.f), SlopeAngle);
 		float CurveAlpha = FMath::Sqrt(Alpha);
 		float CurrentAccel = CurveAlpha * MaxSlideAccel;
 
-		// 1. 마찰력 및 제동력 제거
+		// [네 코드 수치 유지] 마찰력 및 제동력 (40~50도)
 		float FrictionAlpha = FMath::GetMappedRangeValueClamped(FVector2D(40.f, 50.f), FVector2D(0.f, 1.f), SlopeAngle);
 		MoveComp->GroundFriction = FMath::Lerp(2.0f, 0.5f, FrictionAlpha);
 		MoveComp->BrakingDecelerationWalking = FMath::Lerp(500.0f, 0.0f, FrictionAlpha);
 
-		// 2.  걷기 속도 추가 제한
-		MoveComp->MaxWalkSpeed = FMath::Lerp(550.0f, 200.0f, Alpha);
+		// [내리막 예외 처리 + 장판 비율 반영]
+		if (bIsDownhill)
+		{
+			MoveComp->MaxWalkSpeed = NormalSpeed;
+		}
+		else
+		{
+			// [네 코드 수치 유지] 550 -> 200 감속 로직 (장판 비율 적용)
+			float TargetMinSpeed = 200.0f * CurrentSlowRatio;
+			MoveComp->MaxWalkSpeed = FMath::Lerp(NormalSpeed, TargetMinSpeed, Alpha);
+		}
 
-		// 3. 경사 아래 방향 계산 및 힘 적용
-		FVector GravityDir = FVector(0, 0, -1);
-		FVector SlideDir = GravityDir - (FloorNormal * FVector::DotProduct(GravityDir, FloorNormal));
-		SlideDir.Normalize();
-
-		// 가속도 적용
+		// [네 코드 수치 유지] 가속도 적용 (12.0f 배율)
 		MoveComp->Velocity += SlideDir * CurrentAccel * DeltaTime * 12.0f;
 	}
 	else
 	{
-		MoveComp->MaxWalkSpeed = 550.0f;
+		// 평지 복구 (장판 속도 반영)
+		MoveComp->MaxWalkSpeed = NormalSpeed;
 		MoveComp->GroundFriction = 8.0f;
+		MoveComp->BrakingDecelerationWalking = 2048.0f;
 	}
 }
