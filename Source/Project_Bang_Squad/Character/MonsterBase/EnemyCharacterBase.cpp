@@ -6,6 +6,7 @@
 #include "Components/CapsuleComponent.h"
 #include "Project_Bang_Squad/Character/Component/HealthComponent.h"
 #include "Project_Bang_Squad/Core/BSGameInstance.h"
+#include "Project_Bang_Squad/Projectile/SlashProjectile.h"
 
 AEnemyCharacterBase::AEnemyCharacterBase()
 {
@@ -294,4 +295,34 @@ void AEnemyCharacterBase::GenerateUniqueID()
 	uint32 ClassHash = GetTypeHash(GetClass()->GetName());
 
 	MyUniqueID = HashCombine(LocationHash, ClassHash);
+}
+
+void AEnemyCharacterBase::AnimNotify_SpawnSlash()
+{
+    // [원칙 1] 서버에서만 실행
+    if (!HasAuthority() || !SlashClass) return;
+
+    // 1. 기준점: 캡슐의 정중앙 (보통 허리 위치)
+    FVector SpawnLocation = GetActorLocation();
+
+    // 2. [기존 방식 복구] 앞방향으로 일정 거리 띄우기 (ForwardVector 활용)
+    SpawnLocation += GetActorForwardVector() * SlashForwardOffset;
+
+    // 3. [높이 조절] 블루프린트에서 설정한 값만큼 위아래로 이동
+    SpawnLocation.Z += SlashZOffset;
+
+    FActorSpawnParameters SpawnParams;
+    SpawnParams.Owner = this;
+    SpawnParams.Instigator = this;
+
+    // 2. 스폰 후 데미지 전달
+    ASlashProjectile* Projectile = GetWorld()->SpawnActor<ASlashProjectile>(
+        SlashClass, SpawnLocation, GetActorRotation(), SpawnParams);
+
+    if (Projectile)
+    {
+        // [핵심] 보스의 SlashDamage 변수값을 프로젝타일의 Damage 변수에 복사!
+        Projectile->Damage = SlashDamage;
+    }
+
 }

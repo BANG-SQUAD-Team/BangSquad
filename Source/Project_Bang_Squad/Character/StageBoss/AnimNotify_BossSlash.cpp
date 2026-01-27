@@ -1,5 +1,5 @@
 #include "AnimNotify_BossSlash.h"
-#include "Project_Bang_Squad/Character/StageBoss/Stage1Boss.h" // 보스 헤더 참조
+#include "Project_Bang_Squad/Character/MonsterBase/EnemyCharacterBase.h" // 부모 클래스 헤더 참조
 
 UAnimNotify_BossSlash::UAnimNotify_BossSlash()
 {
@@ -15,10 +15,9 @@ void UAnimNotify_BossSlash::Notify(USkeletalMeshComponent* MeshComp, UAnimSequen
 
     if (!MeshComp || !MeshComp->GetOwner()) return;
 
-    // 1. 이 몽타주를 재생 중인 액터가 'Stage1Boss'인지 확인
-    if (AStage1Boss* Boss = Cast<AStage1Boss>(MeshComp->GetOwner()))
+    // Stage1Boss 대신 공통 부모인 EnemyCharacterBase로 캐스팅
+    if (AEnemyCharacterBase* Boss = Cast<AEnemyCharacterBase>(MeshComp->GetOwner()))
     {
-        // 2. 보스의 발사 함수 호출 (보스 헤더에서 public이어야 가능)
-        Boss->AnimNotify_SpawnSlash();
+        Boss->AnimNotify_SpawnSlash(); // 부모에 정의된 함수 호출
     }
 }

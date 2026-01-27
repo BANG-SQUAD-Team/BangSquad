@@ -117,4 +117,26 @@ protected:
     uint32 MyUniqueID = 0;
 
     void GenerateUniqueID();
+
+protected:
+    // 어떤 투사체를 쏠지 (블루프린트에서 할당)
+    UPROPERTY(EditAnywhere, Category = "Combat|Slash")
+    TSubclassOf<class ASlashProjectile> SlashClass;
+
+    // [중요] 발사 높이 오프셋 (0이면 몸통 정중앙, +면 머리쪽, -면 다리쪽)
+    UPROPERTY(EditAnywhere, Category = "Combat|Slash")
+    float SlashZOffset = 0.0f;
+
+    // [중요] 몸에서 얼마나 앞에서 생성할지 (기존 150.f 유지용)
+    UPROPERTY(EditAnywhere, Category = "Combat|Slash")
+    float SlashForwardOffset = 150.0f;
+
+    /** [찾으시는 것!] 참격 데미지 수치 */
+    UPROPERTY(EditAnywhere, Category = "Combat|Slash")
+    float SlashDamage = 30.0f; // <-- 이게 디테일 창에 다시 나타납니다.
+
+public:
+    // 노티파이에서 호출할 공통 함수
+    UFUNCTION(BlueprintCallable, Category = "Combat")
+    void AnimNotify_SpawnSlash();
 };

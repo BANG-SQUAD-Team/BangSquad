@@ -55,7 +55,7 @@ void ASlashProjectile::BeginPlay()
 void ASlashProjectile::OnOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
 	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-	if (!HasAuthority()) return;
+	if (!HasAuthority()) return; //서버에서만 데미지 처리
 	if (!OtherActor || OtherActor == this || OtherActor == GetOwner()) return;
 
 	// [추가] 같은 몬스터 팀이면 충돌 처리 자체를 안 하고 리턴 (성능 절약)
