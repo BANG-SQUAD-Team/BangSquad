@@ -34,12 +34,22 @@ void AStrikerCharacter::BeginPlay()
 
 void AStrikerCharacter::Landed(const FHitResult& Hit)
 {
-	Super::Landed(Hit);
-	if (bIsSlamming)
-	{
-		bIsSlamming = false;
-		Server_Skill2Impact();
-	}
+    Super::Landed(Hit);
+
+    // 타이머 정리 (혹시 켜져있으면)
+    GetWorldTimerManager().ClearTimer(GroundCheckTimerHandle);
+
+    if (bIsSlamming)
+    {
+        bIsSlamming = false;
+
+        if (!bHasTriggeredLandAnim)
+        {
+            Multicast_Skill2();
+        }
+
+        Server_Skill2Impact(); // 데미지 처리
+    }
 }
 
 void AStrikerCharacter::OnDeath()
@@ -382,9 +392,9 @@ void AStrikerCharacter::Skill2()
 
 void AStrikerCharacter::Server_StartSkill2_Implementation()
 {
+    // 1. 쿨타임 로직 (기존 동일)
     float CurrentTime = GetWorld()->GetTimeSeconds();
     float ActualCooldown = 0.0f;
-
     if (SkillDataTable)
     {
         static const FString ContextString(TEXT("StrikerSkill2Cooldown"));
@@ -393,11 +403,57 @@ void AStrikerCharacter::Server_StartSkill2_Implementation()
     }
     Skill2ReadyTime = CurrentTime + ActualCooldown;
 
-    Multicast_Skill2();
-
-    FVector SlamVelocity = FVector(0.f, 0.f, -3000.f);
-    LaunchCharacter(SlamVelocity, true, true);
+    // 2. [중요] 여기서 Multicast_Skill2()를 부르지 않습니다! (아직 구르면 안됨)
+    // 대신 그냥 떨어지는 힘만 가합니다.
     bIsSlamming = true;
+    bHasTriggeredLandAnim = false; // 애니메이션 플래그 초기화
+
+    // 3. 강력하게 하강
+    FVector SlamVelocity = FVector(0.f, 0.f, -3500.f);
+    LaunchCharacter(SlamVelocity, true, true);
+
+    // 4. [추가] 0.02초마다 바닥과의 거리를 체크 시작
+    GetWorldTimerManager().SetTimer(GroundCheckTimerHandle, this, &AStrikerCharacter::CheckGroundDistanceForSkill2, 0.02f, true);
+}
+
+// 이 함수가 떨어지는 내내 실행되면서 바닥을 감시합니다.
+void AStrikerCharacter::CheckGroundDistanceForSkill2()
+{
+    if (!bIsSlamming)
+    {
+        // 스킬이 끝났으면 타이머 종료
+        GetWorldTimerManager().ClearTimer(GroundCheckTimerHandle);
+        return;
+    }
+
+    FVector Start = GetActorLocation();
+    FVector End = Start + (FVector::DownVector * 3000.0f); // 내 발밑 600 unit (약 6미터) 감지
+
+    FHitResult HitResult;
+    FCollisionQueryParams Params;
+    Params.AddIgnoredActor(this);
+
+    // 바닥으로 레이저 발사
+    bool bHit = GetWorld()->LineTraceSingleByChannel(
+        HitResult,
+        Start,
+        End,
+        ECC_Visibility, // 혹은 ECC_WorldStatic
+        Params
+    );
+
+    // 바닥이 감지되었고 + 아직 애니메이션을 안 틀었다면
+    if (bHit && !bHasTriggeredLandAnim)
+    {
+        bHasTriggeredLandAnim = true;
+
+        // [핵심] 땅에 닿기 직전! 이제 구르기 몽타주를 틉니다.
+        // 몽타주의 앞부분(준비 동작)이 재생되면서 땅에 닿게 됩니다.
+        Multicast_Skill2();
+
+        // 더 이상 체크할 필요 없으니 타이머 끔
+        GetWorldTimerManager().ClearTimer(GroundCheckTimerHandle);
+    }
 }
 
 void AStrikerCharacter::Server_Skill2Impact_Implementation()
@@ -449,7 +505,30 @@ void AStrikerCharacter::Server_Skill2Impact_Implementation()
 
 void AStrikerCharacter::Multicast_Skill2_Implementation()
 {
-	ProcessSkill(TEXT("Skill2"));
+    if (!SkillDataTable) return;
+
+    static const FString ContextString(TEXT("Skill2 Montage Skip"));
+    FSkillData* Data = SkillDataTable->FindRow<FSkillData>(TEXT("Skill2"), ContextString);
+
+    if (Data && Data->SkillMontage)
+    {
+        UAnimInstance* AnimInstance = (GetMesh()) ? GetMesh()->GetAnimInstance() : nullptr;
+        if (AnimInstance)
+        {
+            // 1. 몽타주 재생
+            float PlayDuration = AnimInstance->Montage_Play(Data->SkillMontage, 1.0f);
+
+            // 2. [핵심] 0.2초나 0.3초 뒤로 강제 점프 (앞부분 스킵)
+            // 이 수치를 늘릴수록 구르기 동작이 더 빨리 나옵니다.
+            float SkipTime = 0.2f;
+
+            // 몽타주가 시작되자마자 해당 시간 위치로 건너뜁니다.
+            if (PlayDuration > 0.f)
+            {
+                AnimInstance->Montage_SetPosition(Data->SkillMontage, SkipTime);
+            }
+        }
+    }
 }
 
 void AStrikerCharacter::Multicast_PlaySlamFX_Implementation()

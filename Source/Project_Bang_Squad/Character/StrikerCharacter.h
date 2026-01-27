@@ -111,6 +111,12 @@ protected:
 	UFUNCTION(NetMulticast, Unreliable)
 	void Multicast_PlaySlamFX();
 
+	FTimerHandle GroundCheckTimerHandle;
+
+	void CheckGroundDistanceForSkill2();
+
+	bool bHasTriggeredLandAnim = false;
+
 	// =================================================================
 	// [네트워크: 직업 스킬 (범위 공격)]
 	// =================================================================
