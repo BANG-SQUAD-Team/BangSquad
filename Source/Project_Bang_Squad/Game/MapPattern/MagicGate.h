@@ -1,5 +1,3 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
 #pragma once
 
 #include "CoreMinimal.h"
@@ -10,27 +8,29 @@ UCLASS()
 class PROJECT_BANG_SQUAD_API AMagicGate : public AActor
 {
 	GENERATED_BODY()
-	
-public:	
+    
+public: 
 	AMagicGate();
 	virtual void Tick(float DeltaTime) override;
-	
-	// 외부(솥)에서 호출할 함수
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override; // 필수 추가
+    
 	UFUNCTION(BlueprintCallable)
 	void OpenGate();
 
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	UStaticMeshComponent* MeshComp;
-	
-	// 문이 열렸는지 상태 확인
+    
+	// 🔥변수 값이 바뀌면 모든 클라이언트에게 알림 (RepNotify)
+	UPROPERTY(ReplicatedUsing = OnRep_IsOpen) 
 	bool bIsOpen = false;
-	
-	// 문이 이동할 목표 높이 (Z축)
+
+	// ] bIsOpen이 바뀌면 자동으로 호출되는 함수
+	UFUNCTION()
+	void OnRep_IsOpen();
+    
 	float TargetZ;
-	
-	// 문이 열릴때 이동할 거리 
+    
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gate Setting")
 	float OpenDistance = 400.0f;
-
 };

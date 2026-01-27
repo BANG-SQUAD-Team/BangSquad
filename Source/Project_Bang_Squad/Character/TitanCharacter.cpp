@@ -10,6 +10,7 @@
 #include "AIController.h"
 #include "BrainComponent.h"
 #include "Net/UnrealNetwork.h"
+#include "GameFramework/SpringArmComponent.h"
 #include "Project_Bang_Squad/Character/Enemy/EnemyNormal.h"
 #include "Project_Bang_Squad/Character/Player/Titan/TitanRock.h"
 #include "Project_Bang_Squad/Character/Player/Titan/TitanThrowableActor.h"
@@ -37,6 +38,13 @@ ATitanCharacter::ATitanCharacter()
 
 	// 타이탄 판정 박스 크기
 	HitBoxSize = FVector(80.0f, 80.0f, 80.0f);
+	
+	// 스플라인 컴포넌트 생성
+	TrajectorySpline = CreateDefaultSubobject<USplineComponent>(TEXT("TrajectorySpline"));
+	TrajectorySpline->SetupAttachment(RootComponent);
+    
+	// 초기에는 아무것도 안 보이게 설정
+	TrajectorySpline->SetVisibility(false);
 }
 
 void ATitanCharacter::BeginPlay()
@@ -45,15 +53,53 @@ void ATitanCharacter::BeginPlay()
 
 	GetCapsuleComponent()->OnComponentBeginOverlap.AddDynamic(this, &ATitanCharacter::OnChargeOverlap);
 	GetCapsuleComponent()->OnComponentHit.AddDynamic(this, &ATitanCharacter::OnChargeHit);
+	
+	if (SpringArm) 
+	{
+		DefaultSocketOffset = SpringArm->SocketOffset;
+	}
 }
 
 void ATitanCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	if (IsLocallyControlled() && !bIsGrabbing)
+	if (IsLocallyControlled())
 	{
-		UpdateHoverHighlight();
+		if (SpringArm)
+		{
+			// 1. 목표 위치 결정 (잡고 있으면 -> AimingOffset, 아니면 -> DefaultOffset)
+			FVector TargetOffset = bIsGrabbing ? AimingSocketOffset : DefaultSocketOffset;
+
+			// 2. 현재 위치 가져오기
+			FVector CurrentOffset = SpringArm->SocketOffset;
+
+			// 3. 부드럽게 이동
+			FVector NewOffset = FMath::VInterpTo(CurrentOffset, TargetOffset, DeltaTime, CameraInterpSpeed);
+
+			// 4. 적용
+			SpringArm->SocketOffset = NewOffset;
+		}
+		
+		// =================================================================
+		//  잡은 대상이 사라졌는데, 잡고 있는 상태로 남아있는 경우 복구
+		// =================================================================
+		if (bIsGrabbing && !GrabbedActor)
+		{
+			bIsGrabbing = false;
+			ShowTrajectory(false);
+		}
+
+		if (!bIsGrabbing) 
+		{
+			UpdateHoverHighlight();
+			ShowTrajectory(false);
+		}
+		else
+		{
+			ShowTrajectory(true);
+			UpdateTrajectory();
+		}
 	}
 }
 
@@ -94,6 +140,28 @@ void ATitanCharacter::OnDeath()
 	GetWorldTimerManager().ClearTimer(AttackHitTimerHandle);
 	GetWorldTimerManager().ClearTimer(HitLoopTimerHandle);
 
+	// 1. 잡기 상태 초기화
+	bIsGrabbing = false;
+	GrabbedActor = nullptr;
+	ShowTrajectory(false); // 궤적도 끄기
+
+	// 2. 쿨타임 플래그 초기화
+	bIsCooldown = false;          // 잡기 쿨타임
+	bIsSkill1Cooldown = false;    // 스킬1 쿨타임
+	bIsSkill2Cooldown = false;    // 스킬2 쿨타임
+	bIsCharging = false;          // 돌진 상태
+
+	// 3. 타이머 싹 다 끄기
+	GetWorldTimerManager().ClearAllTimersForObject(this);
+
+	// 4. 공격 판정 데이터 초기화
+	SwingDamagedActors.Empty();
+	HitVictims.Empty();
+
+	StopAnimMontage();
+	Super::OnDeath();
+	
+	
 	StopAnimMontage();
 	Super::OnDeath();
 }
@@ -104,6 +172,7 @@ void ATitanCharacter::OnDeath()
 
 void ATitanCharacter::Attack()
 {
+	if (bIsDead) return;
 	if (!CanAttack()) return;
 
 	FName SkillRowName = bIsNextAttackA ? TEXT("Attack_A") : TEXT("Attack_B");
@@ -664,87 +733,101 @@ void ATitanCharacter::Multicast_PlayJobMontage_Implementation(FName SectionName)
 void ATitanCharacter::Server_ThrowTarget_Implementation(FVector ThrowStartLocation)
 {
     if (!bIsGrabbing || !GrabbedActor) return;
-    // 타이머 및 몽타주 정리
+
+    // ... (타이머, 몽타주, 쿨타임 처리 기존 동일) ...
     GetWorldTimerManager().ClearTimer(GrabTimerHandle);
-    if (SkillDataTable)
-    {
-       static const FString ContextString(TEXT("TitanThrowContext"));
-       FSkillData* Row = SkillDataTable->FindRow<FSkillData>(TEXT("JobAbility"), ContextString);
-       if (Row && Row->Cooldown > 0.0f) ThrowCooldownTime = Row->Cooldown;
-    }
     Multicast_PlayJobMontage(TEXT("Throw"));
 
-    // 방향 및 힘 계산
+    // -----------------------------------------------------------------
+    // [1] 궤적 계산과 100% 동일한 힘과 방향 계산
+    // -----------------------------------------------------------------
     FRotator ThrowRotation = GetControlRotation();
     FVector ThrowDir = ThrowRotation.Vector();
     if (ThrowDir.Z < -0.1f) { ThrowDir.Z = -0.1f; ThrowDir.Normalize(); }
     
-    // 약간 위쪽으로 보정된 최종 방향
-    FVector FinalThrowDir = (ThrowDir + FVector(0.f, 0.f, 0.3f)).GetSafeNormal();
+    // 궤적(UpdateTrajectory)과 똑같이 0.2f 보정
+    FVector FinalThrowDir = ThrowDir; 
     FVector LaunchVelocity = FinalThrowDir * ThrowForce;
-	
-    // (캐릭터가 타이탄 몸에 끼는 것을 방지하기 위해 각 조건문 안으로 이동)
 
-    // =========================================================
-    // [A] 캐릭터(몬스터/플레이어)를 던질 때
-    // =========================================================
+    // -----------------------------------------------------------------
+    // [2] 시작 위치 보정 (궤적 시작점과 일치시키기)
+    // -----------------------------------------------------------------
+    FVector ExactStartLoc = GetActorLocation(); 
+    FName SocketName = TEXT("Hand_R_Socket");
+    if (GetMesh() && GetMesh()->DoesSocketExist(SocketName))
+    {
+        // 손 위치 + 앞쪽 30cm (궤적 코드와 동일)
+        ExactStartLoc = GetMesh()->GetSocketLocation(SocketName) + (GetActorForwardVector() * 30.0f);
+    }
+
+
+    // =================================================================
+    // [CASE A] 캐릭터 (몬스터 / 플레이어)
+    // =================================================================
     if (ACharacter* Victim = Cast<ACharacter>(GrabbedActor))
     {
-       // 1. [위치 보정 먼저!] 
-       // 충돌 검사(bSweep)를 끄고 강제로 타이탄 앞쪽으로 텔레포트 시킵니다.
-       // 그래야 콜리전이 켜졌을 때 타이탄 몸속에 끼지 않습니다.
-       FVector SafeLoc = GetActorLocation() + (GetActorForwardVector() * 80.0f);
-       SafeLoc.Z = GetActorLocation().Z; // 높이는 유지
-       Victim->SetActorLocation(SafeLoc, false, nullptr, ETeleportType::TeleportPhysics);
-
-       // 2. [상태 초기화]
-       // 이제 안전한 위치로 왔으니, 멀티캐스트를 불러서 "손에서 떼고 콜리전 켜라"고 명령합니다.
+       // 1. 위치 강제 동기화
+       Victim->SetActorLocation(ExactStartLoc, false, nullptr, ETeleportType::TeleportPhysics);
+       
+       // 2. 물리/충돌 상태 정리 (멀티캐스트)
        Multicast_ForceThrowCleanup(Victim, LaunchVelocity);
 
-       // 3. [서버에서 날리기]
+       // 🔥 [핵심] 캐릭터의 "공중 제동 장치"를 모두 끕니다!
+       if (Victim->GetCharacterMovement())
+       {
+           // 공기 저항(브레이크) 제거 -> 버섯처럼 쭉 날아감
+           Victim->GetCharacterMovement()->BrakingDecelerationFalling = 0.0f; 
+           // 중력 배율 1.0 고정 (궤적 계산이 기본 중력을 쓰므로)
+           Victim->GetCharacterMovement()->GravityScale = 1.0f;
+           // 공중 제어(발버둥) 차단
+           Victim->GetCharacterMovement()->AirControl = 0.0f; 
+       }
+
+       // 3. 발사!
        Victim->LaunchCharacter(LaunchVelocity, true, true);
        
-       // 충돌 델리게이트 연결
+       // 4. 후처리 델리게이트
        Victim->OnActorHit.RemoveDynamic(this, &ATitanCharacter::OnThrownActorHit);
        Victim->OnActorHit.AddDynamic(this, &ATitanCharacter::OnThrownActorHit);
        
-       // 복구 타이머
        FTimerHandle RecoveryHandle;
        FTimerDelegate Delegate;
        Delegate.BindUFunction(this, TEXT("RecoverCharacter"), Victim);
        GetWorldTimerManager().SetTimer(RecoveryHandle, Delegate, 2.0f, false);
     }
-    // =========================================================
-    // [B] 사물(버섯) 던지기
-    // =========================================================
+    // =================================================================
+    // [CASE B] 사물 (버섯 등)
+    // =================================================================
     else if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(GrabbedActor->GetRootComponent()))
     {
-       // 1. [상태 초기화]
-       // 사물은 위치 보정이 필요 없으므로 바로 멀티캐스트를 호출합니다.
-       Multicast_ForceThrowCleanup(GrabbedActor, LaunchVelocity);
-       
-       // 2. [서버 물리 설정]
-       GrabbedActor->SetReplicateMovement(true); 
+       // 1. 위치 강제 동기화
+       GrabbedActor->SetActorLocation(ExactStartLoc, false, nullptr, ETeleportType::TeleportPhysics);
 
+       // 2. 물리 상태 정리
+       Multicast_ForceThrowCleanup(GrabbedActor, LaunchVelocity);
+       GrabbedActor->SetReplicateMovement(true); 
+       
        RootComp->SetCollisionProfileName(TEXT("PhysicsActor"));
        RootComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
        RootComp->SetSimulatePhysics(true);
        RootComp->WakeAllRigidBodies();
+       
+       // 🔥 [핵심] 사물의 "공기 저항" 제거
+       RootComp->SetLinearDamping(0.0f); // 저항 0
+       RootComp->SetAngularDamping(0.05f); // 회전 저항은 살짝 남김 (자연스러움 위해)
 
-       // 충돌 무시 (던지자마자 터짐 방지)
+       // 3. 내 몸과 충돌 무시
        if (GetCapsuleComponent())
        {
           GetCapsuleComponent()->IgnoreComponentWhenMoving(RootComp, true);
           RootComp->IgnoreComponentWhenMoving(GetCapsuleComponent(), true);
        }
-    	// (SetLifeSpan을 호출하면 엔진이 알아서 5초 뒤에 Destroy를 실행해줍니다.)
-    	GrabbedActor->SetLifeSpan(5.0f);
-    	
-    	
-       // 3. [힘 가하기]
-       RootComp->AddImpulse(LaunchVelocity * 2.0f, NAME_None, true);
+       if (GrabbedActor->ActorHasTag("Mushroom")) GrabbedActor->SetLifeSpan(5.0f);
 
-       // 델리게이트 연결
+       // 4. 발사! (강제 속도 설정)
+       RootComp->SetPhysicsLinearVelocity(LaunchVelocity); 
+
+       // 5. 후처리
        GrabbedActor->OnActorHit.RemoveDynamic(this, &ATitanCharacter::OnThrownActorHit);
        GrabbedActor->OnActorHit.AddDynamic(this, &ATitanCharacter::OnThrownActorHit);
 
@@ -1104,41 +1187,32 @@ void ATitanCharacter::RecoverCharacter(ACharacter* Victim)
 {
 	if (!Victim || !Victim->IsValidLowLevel()) return;
 
-	// 1. [중요] 메쉬 위치/회전 강제 정렬 (땅속으로 꺼져 보이는 시각적 문제 해결)
+	// ... (기존 메쉬/콜리전 복구 코드 유지) ...
 	Multicast_FixMesh(Victim);
-
-	// 2. 캡슐 콜리전 다시 켜기
-	if (Victim->GetCapsuleComponent())
-	{
+	if (Victim->GetCapsuleComponent()) 
 		Victim->GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-	}
 
-	// 3. [핵심 수정] 물리 엔진 상태 강제 초기화
 	if (Victim->GetCharacterMovement())
 	{
-		// 가속도/속도 즉시 제거 (미끄러짐 방지)
 		Victim->GetCharacterMovement()->StopMovementImmediately();
 		Victim->GetCharacterMovement()->Velocity = FVector::ZeroVector;
 
-		// [땅꺼짐 해결] 현재 위치가 땅속일 수 있으므로, 아주 살짝(5cm) 위로 올려줍니다.
-		// 이렇게 하면 "땅에 박힘" 판정이 사라지고 "땅 위에 있음" 판정이 성공합니다.
+		// 🔥 [복구] 던져질 때 껐던 기능들을 다시 켭니다.
+		// (원래 값이 있다면 그 값을 저장해뒀다 쓰는 게 좋지만, 하드코딩으로도 충분합니다)
+		Victim->GetCharacterMovement()->BrakingDecelerationFalling = 1500.0f; // 기본 제동력
+		Victim->GetCharacterMovement()->GravityScale = 1.0f; // 기본 중력
+		Victim->GetCharacterMovement()->AirControl = 0.05f;  // 기본 공중 제어
+
+		// 땅 파고듦 방지 후 걷기 모드 전환
 		FVector FixLoc = Victim->GetActorLocation() + FVector(0.f, 0.f, 5.0f);
 		Victim->SetActorLocation(FixLoc, false, nullptr, ETeleportType::TeleportPhysics);
-
-		// [Falling 문제 해결] 바닥 체크고 뭐고 일단 "너는 걷는 상태야"라고 강제 변경
-		// SetMovementMode를 Walking으로 하면 엔진이 알아서 바닥을 스냅(Snap) 잡습니다.
 		Victim->GetCharacterMovement()->SetMovementMode(MOVE_Walking);
 	}
 
-	// 4. 위치 강제 동기화 (서버->클라)
 	Victim->ForceNetUpdate();
-
-	// 5. AI 재시작
+	// AI 재시작
 	AAIController* AIC = Cast<AAIController>(Victim->GetController());
-	if (AIC && AIC->GetBrainComponent())
-	{
-		AIC->GetBrainComponent()->RestartLogic();
-	}
+	if (AIC && AIC->GetBrainComponent()) AIC->GetBrainComponent()->RestartLogic();
 }
 
 void ATitanCharacter::SetHeldState(ACharacter* Target, bool bIsHeld)
@@ -1185,4 +1259,127 @@ void ATitanCharacter::ResetSkill1Cooldown()
 void ATitanCharacter::ResetSkill2Cooldown()
 {
 	bIsSkill2Cooldown = false;
+}
+
+void ATitanCharacter::ShowTrajectory(bool bShow)
+{
+	// 스플라인 자체 끄기
+	if (TrajectorySpline) TrajectorySpline->SetVisibility(bShow);
+
+	// [수정] 변수명 Mesh -> SplineMesh로 변경 (ACharacter의 Mesh 변수와 이름 충돌 방지)
+	for (USplineMeshComponent* SplineMesh : SplineMeshes)
+	{
+		if (SplineMesh) SplineMesh->SetVisibility(bShow);
+	}
+}
+
+void ATitanCharacter::UpdateTrajectory()
+{
+    if (!TrajectorySpline || !GrabbedActor) return;
+
+    // 1. [물리 예측 계산]
+    FPredictProjectilePathParams PredictParams;
+
+    FName SocketName = TEXT("Hand_R_Socket");
+
+    if (GetMesh() && GetMesh()->DoesSocketExist(SocketName))
+    {
+        // 🔥 [보정 1] 시작 위치를 손보다 살짝(30cm) 앞으로 당김
+        // (실제 물체는 던져질 때 충돌 방지를 위해 몸 밖으로 밀려나는데, 궤적도 이걸 맞춰줘야 함)
+        FVector HandLoc = GetMesh()->GetSocketLocation(SocketName);
+        FVector ForwardOffset = GetActorForwardVector() * 30.0f; 
+        PredictParams.StartLocation = HandLoc + ForwardOffset; 
+    }
+    else
+    {
+        PredictParams.StartLocation = ThrowSpawnPoint->GetComponentLocation();
+    }
+
+    // 나 자신 무시 (필수)
+    PredictParams.ActorsToIgnore.Add(this);
+    
+    // 던지는 힘과 방향 계산 (기존과 동일)
+    FRotator ThrowRotation = GetControlRotation();
+    FVector ThrowDir = ThrowRotation.Vector();
+    
+    // 바닥 패대기 방지
+    if (ThrowDir.Z < -0.1f) { ThrowDir.Z = -0.1f; ThrowDir.Normalize(); }
+    
+	FVector FinalThrowDir = (ThrowDir + FVector(0.f, 0.f, TrajectoryZBias)).GetSafeNormal();
+    
+	PredictParams.LaunchVelocity = FinalThrowDir * ThrowForce;
+    
+    //  시간 늘리기 (2초 -> 5초)
+    // 높게 던지면 2초 넘게 날아가는데, 궤적이 중간에 끊기는 걸 방지합니다.
+    PredictParams.MaxSimTime = 5.0f;       
+    
+    //  판정 크기 축소 (10.0 -> 2.0)
+    // 이게 너무 크면 땅에 닿지도 않았는데 "어? 바닥이네" 하고 궤적을 끊어버립니다.
+    // 아주 얇게 해서 땅속 깊이 꽂히게 해야 실제 낙하 지점과 맞습니다.
+    PredictParams.ProjectileRadius = 2.0f;      
+
+    // 🔥 [보정 4] 계산 빈도 증가 (15.0 -> 30.0)
+    // 계산을 2배 더 촘촘하게 해서 곡선을 부드럽고 정확하게 만듭니다.
+    PredictParams.SimFrequency = 30.0f;    
+
+    // =================================================================
+
+    PredictParams.bTraceWithCollision = true; 
+    PredictParams.bTraceWithChannel = true;
+    PredictParams.TraceChannel = ECC_WorldStatic; 
+    PredictParams.DrawDebugType = EDrawDebugTrace::None; 
+
+    FPredictProjectilePathResult PredictResult;
+    UGameplayStatics::PredictProjectilePath(this, PredictParams, PredictResult);
+
+
+    // 2. [스플라인 업데이트]
+    TrajectorySpline->ClearSplinePoints(false);
+    
+    for (const FPredictProjectilePathPointData& PointData : PredictResult.PathData)
+    {
+        TrajectorySpline->AddSplinePoint(PointData.Location, ESplineCoordinateSpace::World, false);
+    }
+    TrajectorySpline->UpdateSpline();
+
+
+    // 3. [시각화: 스플라인 메쉬 배치]
+    const int32 PointCount = TrajectorySpline->GetNumberOfSplinePoints();
+    
+    for (int32 i = 0; i < PointCount - 1; i++)
+    {
+        // 풀링(Pooling) 로직
+        if (SplineMeshes.Num() <= i)
+        {
+            USplineMeshComponent* NewMesh = NewObject<USplineMeshComponent>(this);
+            NewMesh->SetMobility(EComponentMobility::Movable);
+            NewMesh->SetupAttachment(TrajectorySpline);
+            
+            if (TrajectoryMesh) NewMesh->SetStaticMesh(TrajectoryMesh);
+            if (TrajectoryMaterial) NewMesh->SetMaterial(0, TrajectoryMaterial);
+            
+            NewMesh->RegisterComponent();
+            SplineMeshes.Add(NewMesh);
+        }
+
+        USplineMeshComponent* CurrentMesh = SplineMeshes[i];
+        CurrentMesh->SetVisibility(true);
+
+        FVector StartLoc, StartTan, EndLoc, EndTan;
+        TrajectorySpline->GetLocationAndTangentAtSplinePoint(i, StartLoc, StartTan, ESplineCoordinateSpace::Local);
+        TrajectorySpline->GetLocationAndTangentAtSplinePoint(i + 1, EndLoc, EndTan, ESplineCoordinateSpace::Local);
+
+        // 선 두께 얇게 (0.04f)
+        FVector2D ScaleValue = FVector2D(0.04f, 0.04f); 
+        CurrentMesh->SetStartScale(ScaleValue);
+        CurrentMesh->SetEndScale(ScaleValue);
+
+        CurrentMesh->SetStartAndEnd(StartLoc, StartTan, EndLoc, EndTan, true);
+    }
+    
+    // 남은 메쉬 숨기기
+    for (int32 i = PointCount - 1; i < SplineMeshes.Num(); i++)
+    {
+        SplineMeshes[i]->SetVisibility(false);
+    }
 }

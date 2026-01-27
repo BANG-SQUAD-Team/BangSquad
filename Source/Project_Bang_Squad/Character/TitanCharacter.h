@@ -3,6 +3,9 @@
 #include "CoreMinimal.h"
 #include "Project_Bang_Squad/Character/Base/BaseCharacter.h"
 #include "Components/ArrowComponent.h"
+#include "Components/SplineComponent.h"
+#include "Components/SplineMeshComponent.h"
+#include "Kismet/GameplayStatics.h"
 #include "TitanCharacter.generated.h"
 
 class ATitanRock;
@@ -51,6 +54,55 @@ public:
 	void ExecuteThrowRock();
 
 protected:
+	
+	// =================================================================
+	// [카메라 연출 변수]
+	// =================================================================
+    
+	// 잡기 모드일 때 목표 카메라 오프셋 (Y값을 양수로 하면 캐릭터가 왼쪽으로 감)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Aiming")
+	FVector AimingSocketOffset = FVector(0.0f, 70.0f, 30.0f); 
+
+	// 평소 카메라 오프셋 (시작할 때 자동 저장됨)
+	FVector DefaultSocketOffset;
+
+	// 카메라 이동 속도 (높을수록 빠름)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Aiming")
+	float CameraInterpSpeed = 5.0f;
+	
+	// 궤적 계산 및 시각화 업데이트 함수
+	void UpdateTrajectory();
+
+	// 궤적을 끄고 켜는 함수
+	void ShowTrajectory(bool bShow);
+
+	// =================================================================
+	// [궤적 시스템 변수]
+	// =================================================================
+    
+	// 1. 궤적 경로 데이터를 담을 스플라인
+	UPROPERTY(VisibleAnywhere, Category = "Trajectory")
+	USplineComponent* TrajectorySpline;
+
+	// 2. 점선(메쉬)들을 관리할 배열 (매 프레임 생성하면 느리므로 풀링 사용)
+	UPROPERTY()
+	TArray<USplineMeshComponent*> SplineMeshes;
+
+	// 3. 궤적에 사용할 메쉬 (에디터에서 설정: 큐브나 원기둥)
+	UPROPERTY(EditDefaultsOnly, Category = "Trajectory")
+	UStaticMesh* TrajectoryMesh;
+
+	// 4. 궤적 메쉬에 입힐 재질 (에디터에서 설정: 형광색 등)
+	UPROPERTY(EditDefaultsOnly, Category = "Trajectory")
+	UMaterialInterface* TrajectoryMaterial;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Trajectory")
+	float TrajectoryZBias = 0.0f; // 기본값 0
+
+	// 던지는 힘 (이것도 에디터에서 보게 설정)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Trajectory")
+	float ThrowForce = 800.0f;
+	
 	// =================================================================
 	// [공격 판정 (Trace/Sweep) 변수]
 	// =================================================================
@@ -180,8 +232,7 @@ private:
 
 	FTimerHandle GrabTimerHandle;
 	FTimerHandle CooldownTimerHandle;
-
-	float ThrowForce = 800.f;
+	
 	float GrabMaxDuration = 5.0f;
 	float ThrowCooldownTime = 3.0f;
 

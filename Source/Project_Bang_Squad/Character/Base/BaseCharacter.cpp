@@ -208,6 +208,10 @@ void ABaseCharacter::OnDeath()
 	GetWorldTimerManager().ClearTimer(RegenDelayTimer);
 	GetWorldTimerManager().ClearTimer(RegenTickTimer);
 	
+	GetWorldTimerManager().ClearTimer(AttackCooldownTimerHandle);
+	bIsAttackCoolingDown = false;
+	bIsAttacking = false;
+	
 }
 
 void ABaseCharacter::Multicast_Death_Implementation()
