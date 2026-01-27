@@ -138,7 +138,7 @@ void ATitanCharacter::OnDeath()
 	GetWorldTimerManager().ClearTimer(Skill1CooldownTimerHandle);
 	GetWorldTimerManager().ClearTimer(RockThrowTimerHandle);
 
-	// [추가] 공격 판정 타이머 정리
+	//  공격 판정 타이머 정리
 	GetWorldTimerManager().ClearTimer(AttackHitTimerHandle);
 	GetWorldTimerManager().ClearTimer(HitLoopTimerHandle);
 
@@ -163,9 +163,6 @@ void ATitanCharacter::OnDeath()
 	StopAnimMontage();
 	Super::OnDeath();
 	
-	
-	StopAnimMontage();
-	Super::OnDeath();
 }
 
 // =================================================================
@@ -744,32 +741,36 @@ void ATitanCharacter::Server_ThrowTarget_Implementation(FVector ThrowStartLocati
 {
     if (!bIsGrabbing || !GrabbedActor) return;
 
-    // ... (타이머, 몽타주, 쿨타임 처리 기존 동일) ...
+    // 1. 타이머 및 몽타주 처리 (기존 유지)
     GetWorldTimerManager().ClearTimer(GrabTimerHandle);
     Multicast_PlayJobMontage(TEXT("Throw"));
 
-    // -----------------------------------------------------------------
-    // [1] 궤적 계산과 100% 동일한 힘과 방향 계산
-    // -----------------------------------------------------------------
+    // =================================================================
+    // [1] 던지는 힘과 방향 계산 (궤적 시스템과 싱크 맞추기)
+    // =================================================================
     FRotator ThrowRotation = GetControlRotation();
     FVector ThrowDir = ThrowRotation.Vector();
+    
+    // 바닥 패대기 방지 (기존 유지)
     if (ThrowDir.Z < -0.1f) { ThrowDir.Z = -0.1f; ThrowDir.Normalize(); }
     
-    // 궤적(UpdateTrajectory)과 똑같이 0.2f 보정
-    FVector FinalThrowDir = ThrowDir; 
-    FVector LaunchVelocity = FinalThrowDir * ThrowForce;
+    // 🔥 [수정 1] 궤적(UpdateTrajectory)에서 썼던 'TrajectoryZBias'를 여기서도 더해야 함!
+    // 그래야 빨간 선이랑 똑같은 각도로 날아갑니다.
+    FVector FinalThrowDir = (ThrowDir + FVector(0.f, 0.f, TrajectoryZBias)).GetSafeNormal();
+    
+    // 기본 속도 계산
+    FVector BaseVelocity = FinalThrowDir * ThrowForce;
 
-    // -----------------------------------------------------------------
-    // [2] 시작 위치 보정 (궤적 시작점과 일치시키기)
-    // -----------------------------------------------------------------
+    // =================================================================
+    // [2] 시작 위치 보정 (기존 유지)
+    // =================================================================
     FVector ExactStartLoc = GetActorLocation(); 
     FName SocketName = TEXT("Hand_R_Socket");
     if (GetMesh() && GetMesh()->DoesSocketExist(SocketName))
     {
-        // 손 위치 + 앞쪽 30cm (궤적 코드와 동일)
+        // 손 위치 + 앞쪽 30cm
         ExactStartLoc = GetMesh()->GetSocketLocation(SocketName) + (GetActorForwardVector() * 30.0f);
     }
-
 
     // =================================================================
     // [CASE A] 캐릭터 (몬스터 / 플레이어)
@@ -780,23 +781,30 @@ void ATitanCharacter::Server_ThrowTarget_Implementation(FVector ThrowStartLocati
        Victim->SetActorLocation(ExactStartLoc, false, nullptr, ETeleportType::TeleportPhysics);
        
        // 2. 물리/충돌 상태 정리 (멀티캐스트)
-       Multicast_ForceThrowCleanup(Victim, LaunchVelocity);
+       Multicast_ForceThrowCleanup(Victim, BaseVelocity);
 
-       // 🔥 [핵심] 캐릭터의 "공중 제동 장치"를 모두 끕니다!
+       // 3. 무브먼트 세팅 (공기 저항 제거)
        if (Victim->GetCharacterMovement())
        {
-           // 공기 저항(브레이크) 제거 -> 버섯처럼 쭉 날아감
+           // 공기 저항(브레이크) 제거
            Victim->GetCharacterMovement()->BrakingDecelerationFalling = 0.0f; 
-           // 중력 배율 1.0 고정 (궤적 계산이 기본 중력을 쓰므로)
+           // 중력 배율 1.0 고정
            Victim->GetCharacterMovement()->GravityScale = 1.0f;
-           // 공중 제어(발버둥) 차단
+           // 공중 제어 차단
            Victim->GetCharacterMovement()->AirControl = 0.0f; 
+           
+           // 🔥 [수정 2] 측면 마찰력 제거 (이게 있으면 공중에서 비비적대며 덜 날아감)
+           Victim->GetCharacterMovement()->FallingLateralFriction = 0.0f;
        }
 
-       // 3. 발사!
-       Victim->LaunchCharacter(LaunchVelocity, true, true);
+       // 🔥 [수정 3] 캐릭터용 힘 보정 (1.3배)
+       // 캐릭터 무브먼트는 물리 엔진보다 저항이 심해서, 버섯과 똑같이 날리려면 힘을 더 줘야 합니다.
+       float CharMultiplier = 1.3f; 
+
+       // 4. 발사!
+       Victim->LaunchCharacter(BaseVelocity * ThrowCharacterMultiplier, true, true);
        
-       // 4. 후처리 델리게이트
+       // 5. 후처리 델리게이트
        Victim->OnActorHit.RemoveDynamic(this, &ATitanCharacter::OnThrownActorHit);
        Victim->OnActorHit.AddDynamic(this, &ATitanCharacter::OnThrownActorHit);
        
@@ -814,7 +822,7 @@ void ATitanCharacter::Server_ThrowTarget_Implementation(FVector ThrowStartLocati
        GrabbedActor->SetActorLocation(ExactStartLoc, false, nullptr, ETeleportType::TeleportPhysics);
 
        // 2. 물리 상태 정리
-       Multicast_ForceThrowCleanup(GrabbedActor, LaunchVelocity);
+       Multicast_ForceThrowCleanup(GrabbedActor, BaseVelocity);
        GrabbedActor->SetReplicateMovement(true); 
        
        RootComp->SetCollisionProfileName(TEXT("PhysicsActor"));
@@ -822,11 +830,11 @@ void ATitanCharacter::Server_ThrowTarget_Implementation(FVector ThrowStartLocati
        RootComp->SetSimulatePhysics(true);
        RootComp->WakeAllRigidBodies();
        
-       // 🔥 [핵심] 사물의 "공기 저항" 제거
-       RootComp->SetLinearDamping(0.0f); // 저항 0
-       RootComp->SetAngularDamping(0.05f); // 회전 저항은 살짝 남김 (자연스러움 위해)
+       // 3. 공기 저항 제거
+       RootComp->SetLinearDamping(0.0f); 
+       RootComp->SetAngularDamping(0.05f); 
 
-       // 3. 내 몸과 충돌 무시
+       // 4. 충돌 무시 설정
        if (GetCapsuleComponent())
        {
           GetCapsuleComponent()->IgnoreComponentWhenMoving(RootComp, true);
@@ -834,10 +842,10 @@ void ATitanCharacter::Server_ThrowTarget_Implementation(FVector ThrowStartLocati
        }
        if (GrabbedActor->ActorHasTag("Mushroom")) GrabbedActor->SetLifeSpan(5.0f);
 
-       // 4. 발사! (강제 속도 설정)
-       RootComp->SetPhysicsLinearVelocity(LaunchVelocity); 
+       // 5. 발사! (버섯은 원래 힘 그대로)
+       RootComp->SetPhysicsLinearVelocity(BaseVelocity); 
 
-       // 5. 후처리
+       // 6. 후처리
        GrabbedActor->OnActorHit.RemoveDynamic(this, &ATitanCharacter::OnThrownActorHit);
        GrabbedActor->OnActorHit.AddDynamic(this, &ATitanCharacter::OnThrownActorHit);
 
@@ -847,6 +855,7 @@ void ATitanCharacter::Server_ThrowTarget_Implementation(FVector ThrowStartLocati
        }
     }
 
+    // 상태 초기화
     GrabbedActor = nullptr;
     bIsGrabbing = false;
     bIsCooldown = true;
@@ -1305,14 +1314,13 @@ void ATitanCharacter::UpdateTrajectory()
     {
         PredictParams.StartLocation = ThrowSpawnPoint->GetComponentLocation();
     }
-
     // 나 자신 무시 (필수)
     PredictParams.ActorsToIgnore.Add(this);
-    
+	PredictParams.ActorsToIgnore.Add(GrabbedActor); // 잡은 몬스터 버섯 무시
+	
     // 던지는 힘과 방향 계산 (기존과 동일)
     FRotator ThrowRotation = GetControlRotation();
     FVector ThrowDir = ThrowRotation.Vector();
-    
     // 바닥 패대기 방지
     if (ThrowDir.Z < -0.1f) { ThrowDir.Z = -0.1f; ThrowDir.Normalize(); }
     
@@ -1327,14 +1335,15 @@ void ATitanCharacter::UpdateTrajectory()
     //  판정 크기 축소 (10.0 -> 2.0)
     // 이게 너무 크면 땅에 닿지도 않았는데 "어? 바닥이네" 하고 궤적을 끊어버립니다.
     // 아주 얇게 해서 땅속 깊이 꽂히게 해야 실제 낙하 지점과 맞습니다.
-    PredictParams.ProjectileRadius = 2.0f;      
+    PredictParams.ProjectileRadius = 30.0f;      
 
-    // 🔥 [보정 4] 계산 빈도 증가 (15.0 -> 30.0)
-    // 계산을 2배 더 촘촘하게 해서 곡선을 부드럽고 정확하게 만듭니다.
-    PredictParams.SimFrequency = 30.0f;    
+    //  [보정 4] 계산 빈도 증가 
+    PredictParams.SimFrequency = 60.0f;    
 
     // =================================================================
 
+	PredictParams.OverrideGravityZ = GetWorld()->GetGravityZ() * TrajectoryGravityScale;
+	
     PredictParams.bTraceWithCollision = true; 
     PredictParams.bTraceWithChannel = true;
     PredictParams.TraceChannel = ECC_WorldStatic; 

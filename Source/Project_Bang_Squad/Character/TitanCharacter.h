@@ -99,9 +99,16 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Trajectory")
 	float TrajectoryZBias = 0.0f; // 기본값 0
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Trajectory")
+	float TrajectoryGravityScale = 1.0f;
+	
 	// 던지는 힘 (이것도 에디터에서 보게 설정)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Trajectory")
 	float ThrowForce = 800.0f;
+	
+	// 캐릭터 던지기 힘 보정 배율
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Trajectory")
+	float ThrowCharacterMultiplier = 1.3f;
 	
 	// =================================================================
 	// [공격 판정 (Trace/Sweep) 변수]
