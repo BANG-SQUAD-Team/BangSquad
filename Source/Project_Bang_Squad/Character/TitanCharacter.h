@@ -117,10 +117,10 @@ protected:
 	// 던져진 대상이 어딘가 부딪혔을 때 호출될 함수 (델리게이트용)
 	UFUNCTION()
 	void OnThrownActorHit(AActor* SelfActor, AActor* OtherActor, FVector NormalImpulse, const FHitResult& Hit);
-
+	
 	UFUNCTION(NetMulticast, Reliable)
-	void Multicast_ForceThrowCleanup(ACharacter* Victim, FVector Velocity);
-
+	void Multicast_ForceThrowCleanup(AActor* TargetActor, FVector Velocity);
+	
 	// =================================================================
 	// [네트워크: 스킬 1 (Rock Throw)]
 	// =================================================================
