@@ -13,6 +13,8 @@
 #include "Project_Bang_Squad/Character/Enemy/EnemyNormal.h"
 #include "Project_Bang_Squad/Character/Player/Titan/TitanRock.h"
 #include "Project_Bang_Squad/Character/Player/Titan/TitanThrowableActor.h"
+#include "Enemy/EnemyMidBoss.h"
+#include "StageBoss/StageBossBase.h"
 
 ATitanCharacter::ATitanCharacter()
 {
@@ -385,6 +387,14 @@ void ATitanCharacter::ExecuteGrab() { if (GEngine) GEngine->AddOnScreenDebugMess
 void ATitanCharacter::Server_TryGrab_Implementation(AActor* TargetToGrab)
 {
 	if (!TargetToGrab || bIsGrabbing) return;
+
+	if (TargetToGrab->IsA(AEnemyMidBoss::StaticClass()) ||
+		TargetToGrab->IsA(AStageBossBase::StaticClass()) ||
+		TargetToGrab->ActorHasTag("Boss") ||
+		TargetToGrab->ActorHasTag("MidBoss"))
+	{
+		return;
+	}
 
 	float DistSq = FVector::DistSquared(GetActorLocation(), TargetToGrab->GetActorLocation());
 	if (DistSq > 1000.f * 1000.f) return;
@@ -1052,26 +1062,27 @@ void ATitanCharacter::UpdateHoverHighlight()
 	   Params
 	);
 
-	// 🛠️ [디버깅용] 눈으로 확인하기 (빨간 선)
-	// 문제가 해결되면 나중에 주석 처리하세요.
-	// DrawDebugLine(GetWorld(), Start, End, FColor::Red, false, -1.0f, 0, 1.0f);
-	// if (bHit)
-	// {
-	//    DrawDebugPoint(GetWorld(), HitResult.ImpactPoint, 10.0f, FColor::Green, false, -1.0f);
-	//    UE_LOG(LogTemp, Warning, TEXT("레이저가 맞은 것: %s"), *HitResult.GetActor()->GetName());
-	// }
-
+	
 	AActor* NewTarget = nullptr;
 
 	if (bHit && HitResult.GetActor())
 	{
 		AActor* HitActor = HitResult.GetActor();
 
+		// 1. 기본 체크 (캐릭터여부, 던질수있는 액터여부, 버섯 태그)
 		bool bIsTargetChar = (Cast<ACharacter>(HitActor) != nullptr);
 		bool bIsThrowable = (Cast<ATitanThrowableActor>(HitActor) != nullptr);
 		bool bIsMushroom = HitActor->ActorHasTag("Mushroom");
 
-		if ((bIsTargetChar || bIsThrowable || bIsMushroom) && !HitActor->ActorHasTag("Boss") && !HitActor->ActorHasTag("MidBoss"))
+		// 2. [추가] 보스 클래스 체크 (헤더에 해당 보스 클래스들이 include 되어 있어야 합니다)
+		bool bIsMidBoss = HitActor->IsA(AEnemyMidBoss::StaticClass());
+		bool bIsStageBoss = HitActor->IsA(AStageBossBase::StaticClass());
+
+		// 3. 태그 체크 (기존 유지)
+		bool bHasBossTag = HitActor->ActorHasTag("Boss") || HitActor->ActorHasTag("MidBoss");
+
+		// 보스나 중간보스가 아닐 때만 타겟으로 지정
+		if ((bIsTargetChar || bIsThrowable || bIsMushroom) && !bIsMidBoss && !bIsStageBoss && !bHasBossTag)
 		{
 			NewTarget = HitActor;
 		}
