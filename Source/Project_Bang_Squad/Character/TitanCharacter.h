@@ -197,6 +197,9 @@ protected:
     UFUNCTION(Server, Reliable)
     void Server_ThrowRock();
 
+    UFUNCTION(NetMulticast, Unreliable)
+    void Multicast_SpawnRockEffects(FVector SpawnLocation);
+
     // =================================================================
     // [네트워크: 스킬 2 (돌진)]
     // =================================================================
@@ -250,6 +253,9 @@ private:
     // 스킬 1 (바위) 데이터
     UPROPERTY(EditDefaultsOnly, Category = "Skill|Rock")
     TSubclassOf<ATitanRock> RockClass;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Skill|FX")
+    UMaterialInterface* GroundCrackDecal;
 
     UPROPERTY()
     ATitanRock* HeldRock = nullptr;
