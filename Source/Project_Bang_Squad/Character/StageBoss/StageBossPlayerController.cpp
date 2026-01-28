@@ -1,21 +1,33 @@
 // Source/Project_Bang_Squad/Character/StageBoss/StageBossPlayerController.cpp
+
 #include "StageBossPlayerController.h"
-#include "Project_Bang_Squad/Character/StageBoss/Stage1Boss.h" // 보스 클래스 참조
-#include "Kismet/GameplayStatics.h"
+#include "StageBossGameMode.h" // [핵심] 게임모드 헤더 포함
 
-void AStageBossPlayerController::SendBossQTEInput()
+void AStageBossPlayerController::SetupInputComponent()
 {
-	// 현재 월드에 존재하는 보스 액터를 찾습니다.
-	// (보스전 맵에는 보스가 1명만 존재한다고 가정)
-	AActor* BossActor = UGameplayStatics::GetActorOfClass(GetWorld(), AStage1Boss::StaticClass());
+	Super::SetupInputComponent();
 
-	if (AStage1Boss* Boss = Cast<AStage1Boss>(BossActor))
+	// "Interact" 혹은 "G" 키 바인딩 (프로젝트 세팅에 맞게 이름 수정하세요)
+	// 예: InputComponent->BindAction("Interact", IE_Pressed, this, &AStageBossPlayerController::Input_QTEInteract);
+	// 만약 Enhanced Input을 쓰신다면 그에 맞게 작성해야 합니다.
+
+	// (임시) 예제용 레거시 바인딩
+	InputComponent->BindKey(EKeys::G, IE_Pressed, this, &AStageBossPlayerController::Input_QTEInteract);
+}
+
+void AStageBossPlayerController::Input_QTEInteract()
+{
+	// 로컬 클라이언트에서 입력 감지 -> 서버로 전송
+	Server_SubmitQTEInput();
+}
+
+void AStageBossPlayerController::Server_SubmitQTEInput_Implementation()
+{
+	// [서버 로직]
+	// 보스를 찾지 말고, 권한이 있는 GameMode(심판)를 찾아서 보고합니다.
+	if (AStageBossGameMode* GM = GetWorld()->GetAuthGameMode<AStageBossGameMode>())
 	{
-		// 보스에게 "QTE 입력 발생!" 신호를 보냅니다. (서버로 전송됨)
-		Boss->Server_SubmitQTEInput(this);
-
-		// 디버깅용 로그 (필요 시 주석 해제)
-		// UE_LOG(LogTemp, Log, TEXT("[BossPC] Sent QTE Input to Boss"));
+		// "심판님, 저(this) 버튼 눌렀습니다!"
+		GM->ProcessQTEInput(this);
 	}
-
-};
+}

@@ -55,6 +55,13 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Anim")
     TObjectPtr<UAnimMontage> DeathWallSummonMontage;
 
+    // [추가] QTE 패턴 시작 시 재생할 전조 동작 (예: 하늘을 가리키거나 포효)
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Montage|Gimmick")
+    TObjectPtr<UAnimMontage> QTE_TelegraphMontage;
+
     // (추후 확장)
+    // 
     // 보스 등장 몽타주, 전용 BGM 등은 여기에 추가하면 됩니다.
+
+
 };
