@@ -212,6 +212,17 @@ protected:
     UFUNCTION()
     void OnChargeHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
 
+    UPROPERTY(EditDefaultsOnly, Category = "Skill|FX")
+    class UNiagaraSystem* DashWindEffect; // UParticleSystem -> UNiagaraSystem 변경
+
+    // 2. 실제 몸에 붙을 나이아가라 컴포넌트
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Skill|FX")
+    class UNiagaraComponent* DashPSC;
+
+    // 3. 함수는 그대로 유지
+    UFUNCTION(NetMulticast, Reliable)
+    void Multicast_ToggleDashFX(bool bActive);
+
     // =================================================================
     // [헬퍼 함수 및 내부 로직]
     // =================================================================

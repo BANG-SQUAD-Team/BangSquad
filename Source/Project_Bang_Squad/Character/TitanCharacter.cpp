@@ -17,6 +17,9 @@
 #include "Enemy/EnemyMidBoss.h"
 #include "StageBoss/StageBossBase.h"
 #include "Engine/StaticMeshActor.h"
+#include "Particles/ParticleSystemComponent.h"
+#include "NiagaraFunctionLibrary.h" 
+#include "NiagaraComponent.h"
 
 ATitanCharacter::ATitanCharacter()
 {
@@ -48,6 +51,21 @@ ATitanCharacter::ATitanCharacter()
     TrajectorySpline = CreateDefaultSubobject<USplineComponent>(TEXT("TrajectorySpline"));
     TrajectorySpline->SetupAttachment(RootComponent);
     TrajectorySpline->SetVisibility(false);
+
+    DashPSC = CreateDefaultSubobject<UNiagaraComponent>(TEXT("DashFX"));
+
+    // 1. 캐릭터 등짝(spine_03)에 붙이기 (이게 없으면 발바닥에 생김)
+    if (GetMesh())
+    {
+        DashPSC->SetupAttachment(GetMesh(), TEXT("spine_03"));
+    }
+    else
+    {
+        DashPSC->SetupAttachment(RootComponent);
+    }
+
+    // 2. 게임 시작하자마자 켜지지 않게 꺼두기
+    DashPSC->bAutoActivate = false;
 }
 
 void ATitanCharacter::BeginPlay()
@@ -991,6 +1009,9 @@ void ATitanCharacter::Server_Skill2_Implementation()
     if (!bIsCharging)
     {
        bIsCharging = true;
+
+       Multicast_ToggleDashFX(true);
+
        HitVictims.Empty();
 
        DefaultGroundFriction = GetCharacterMovement()->GroundFriction;
@@ -1047,6 +1068,46 @@ void ATitanCharacter::OnChargeHit(UPrimitiveComponent* HitComp, AActor* OtherAct
     }
 }
 
+void ATitanCharacter::Multicast_ToggleDashFX_Implementation(bool bActive)
+{
+    // 1. 나이아가라 컴포넌트가 없으면 생성
+    if (!DashPSC && DashWindEffect)
+    {
+        DashPSC = UNiagaraFunctionLibrary::SpawnSystemAttached(
+            DashWindEffect,
+            GetMesh(),
+            TEXT("spine_03"), // 등짝에 붙이기
+            FVector::ZeroVector,
+            FRotator::ZeroRotator,
+            EAttachLocation::SnapToTarget,
+            false // AutoDestroy (계속 껐다 켰다 할 거라 false)
+        );
+
+        // 처음엔 꺼둠
+        if (DashPSC) DashPSC->Deactivate();
+    }
+
+    // 2. 켜고 끄기
+    if (DashPSC)
+    {
+        if (bActive)
+        {
+            DashPSC->Activate(); // 켜기
+        }
+        else
+        {
+            DashPSC->Deactivate(); // 끄기
+        }
+    }
+
+    // 3. 카메라 줌 아웃 (변수 이름 확인: Camera vs FollowCamera)
+    if (IsLocallyControlled() && Camera)
+    {
+        if (bActive) Camera->SetFieldOfView(105.0f);
+        else Camera->SetFieldOfView(90.0f);
+    }
+}
+
 void ATitanCharacter::ProcessSkill(FName SkillRowName, FName StartSectionName)
 {
     if (!SkillDataTable) return;
@@ -1084,6 +1145,8 @@ void ATitanCharacter::StopCharge()
     GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
     GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Block);
     GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_PhysicsBody, ECR_Block);
+
+    Multicast_ToggleDashFX(false);
 
     for (AActor* IgnoredActor : HitVictims)
     {
