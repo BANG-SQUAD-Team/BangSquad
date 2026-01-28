@@ -44,7 +44,8 @@ void AWindZone::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
     
-    // [수정 1] 특정 클래스(ABaseCharacter)만 찾던 것을 -> 모든 액터(AActor)로 변경
+    if (!HasAuthority()) return;
+
     TArray<AActor*> OverlappingActors;
     WindBox->GetOverlappingActors(OverlappingActors); 
     
@@ -52,85 +53,87 @@ void AWindZone::Tick(float DeltaTime)
     
     for (AActor* Actor : OverlappingActors)
     {
-        if (!Actor || Actor == this) continue;
+        ABaseCharacter* TargetChar = Cast<ABaseCharacter>(Actor);
+        if (!TargetChar || !TargetChar->ActorHasTag("Player") || TargetChar->IsDead()) continue;
 
-        // =========================================================
-        // [CASE A] 캐릭터 처리 (기존 로직 유지)
-        // =========================================================
-        if (ABaseCharacter* TargetChar = Cast<ABaseCharacter>(Actor))
+        bool bIsProtected = false;
+
+        // [Step 1] 보호 판정 (방패 및 차폐물)
+        if (APaladinCharacter* Paladin = Cast<APaladinCharacter>(TargetChar))
         {
-            // 플레이어 태그 체크 (기존 유지)
-            if (!TargetChar->ActorHasTag("Player")) continue; 
-
-            bool bIsProtected = false;
-
-            // 1. 팔라딘 방어 체크
-            if (APaladinCharacter* Paladin = Cast<APaladinCharacter>(TargetChar))
+            if (Paladin->IsBlockingDirection(WindDir))
             {
-                if (Paladin->IsBlockingDirection(WindDir))
+                bIsProtected = true; 
+                Paladin->ConsumeShield(DeltaTime * ShieldDamagePerSec); 
+            }
+        }
+        
+        if (!bIsProtected)
+        {
+            FVector TraceStart = TargetChar->GetActorLocation() + FVector(0.f, 0.f, 120.f);
+            FVector TraceEnd = TraceStart - (WindDir * 250.0f);
+            FHitResult HitResult;
+            if (GetWorld()->LineTraceSingleByChannel(HitResult, TraceStart, TraceEnd, BlockChannel, FCollisionQueryParams::DefaultQueryParam))
+            {
+                bIsProtected = true;
+            }
+        }
+
+        // [Step 2] 물리 적용
+        if (UCharacterMovementComponent* CMC = TargetChar->GetCharacterMovement())
+        {
+            if (bIsProtected)
+            {
+                TargetChar->bIsWindFloating = false;
+                // ✅ 방패 안: 즉시 정상화 (툭 떨어짐)
+                CMC->GravityScale = 1.0f;
+                CMC->MaxWalkSpeed = TargetChar->GetDefaultWalkSpeed();
+                
+                // 조작 제한 해제 (속도가 0으로 고정되었다면 다시 입력을 받도록 함)
+                if (CMC->MovementMode == MOVE_Falling && !CMC->IsFalling())
                 {
-                    bIsProtected = true; 
-                    Paladin->ConsumeShield(DeltaTime * ShieldDamagePerSec); 
+                    CMC->SetMovementMode(MOVE_Walking);
                 }
             }
-
-            // 2. 차폐물(LineTrace) 체크
-            if (!bIsProtected)
+            else
             {
-                FVector TraceEnd = TargetChar->GetActorLocation();
-                FVector TraceStart = TraceEnd - (WindDir * 800.0f); 
                 
-                FHitResult HitResult;
-                FCollisionQueryParams Params;
-                Params.AddIgnoredActor(this);
-                Params.AddIgnoredActor(TargetChar); 
-                
-                bool bHit = GetWorld()->LineTraceSingleByChannel(
-                    HitResult, TraceStart, TraceEnd, BlockChannel, Params
-                );
-                
-                if (bHit) bIsProtected = true; 
-            }
+                // 1. 앞으로 나가지 못하게 속도 고정
+                // XY(수평) 속도를 매 프레임 0으로 죽여서 조작 입력을 무시합니다.
+                CMC->Velocity.X = 0.0f;
+                CMC->Velocity.Y = 0.0f;
+                CMC->MaxWalkSpeed = 0.0f; // 입력에 의한 가속 차단
 
-            // 3. 물리 적용 (캐릭터 무브먼트)
-            if (UCharacterMovementComponent* CMC = TargetChar->GetCharacterMovement())
-            {
-                if (bIsProtected)
+                // 2. 부유 높이 체크
+                FVector Start = TargetChar->GetActorLocation();
+                FVector End = Start - FVector(0, 0, 200.f);
+                FHitResult FloorHit;
+                GetWorld()->LineTraceSingleByChannel(FloorHit, Start, End, ECC_Visibility);
+                float CurrentHeight = FloorHit.bBlockingHit ? FloorHit.Distance : 200.f;
+
+                // 3. 부유 상태 설정
+                if (CMC->MovementMode != MOVE_Falling) 
                 {
-                    CMC->GroundFriction = 8.0f; 
-                    CMC->BrakingDecelerationWalking = 2048.0f;
-                    CMC->MaxWalkSpeed = TargetChar->GetDefaultWalkSpeed(); 
+                    CMC->SetMovementMode(MOVE_Falling);
+                    // 땅에서 걷다가 뜰 때, 아주 살짝 위로 튕겨주어 '바닥 충돌'을 강제로 끊어줍니다.
+                    TargetChar->LaunchCharacter(FVector(0, 0, 10.f), false, false); 
+                }
+                TargetChar->bIsWindFloating = true;
+                CMC->GravityScale = 0.0f;
+
+                // 4. 특정 높이(MaxHoverHeight) 유지 로직
+                // 지정된 높이보다 낮으면 살짝 위로, 높으면 서서히 멈춤
+                float TargetHoverHeight = 80.0f; 
+                if (CurrentHeight < TargetHoverHeight)
+                {
+                    // 위로 슬슬 떠오르는 속도 주입
+                    CMC->Velocity.Z = FMath::Lerp(CMC->Velocity.Z, 150.0f, DeltaTime * 5.0f);
                 }
                 else
                 {
-                    CMC->MaxWalkSpeed = 200.0f; 
-                    CMC->GroundFriction = 2.0f; 
-                    CMC->BrakingDecelerationWalking = 0.0f;
-
-                    float FinalStrength = WindStrength;
-                    if (CMC->IsMovingOnGround())
-                    {
-                        FinalStrength *= GroundFrictionMultiplier;
-                    }
-                    CMC->AddForce(WindDir * FinalStrength);
+                    // 목표 높이에 도달하면 수직 속도를 서서히 줄여서 제자리에 고정
+                    CMC->Velocity.Z = FMath::Lerp(CMC->Velocity.Z, 0.0f, DeltaTime * 3.0f);
                 }
-            }
-        }
-        // =========================================================
-        // [CASE B] 물리 액터 처리 (버섯 등) -> 새로 추가된 부분
-        // =========================================================
-        else if (UPrimitiveComponent* PrimComp = Cast<UPrimitiveComponent>(Actor->GetRootComponent()))
-        {
-            // "Simulate Physics"가 켜진 물체만 바람에 날아감
-            if (PrimComp->IsSimulatingPhysics())
-            {
-                // 버섯은 가벼우니까 캐릭터보다 바람을 더 잘 타야 함
-                // DeltaTime을 곱하지 않고 AddForce를 계속 주면 가속도가 붙어서 자연스럽게 날아감
-                // 필요하다면 여기서 힘 조절 
-                PrimComp->AddForce(WindDir * WindStrength);
-                
-                //  바람에 날릴 때 약간의 회전(Torque)을 주면 더 리얼함
-                PrimComp->AddTorqueInRadians(FVector(0, 0, 100.0f));
             }
         }
     }

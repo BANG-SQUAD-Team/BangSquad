@@ -4,6 +4,7 @@
 #include "GameFramework/Character.h"
 #include "Engine/DataTable.h"
 #include "InputActionValue.h"
+#include "Net/UnrealNetwork.h"
 #include "BaseCharacter.generated.h"
 
 // 전방 선언
@@ -91,6 +92,15 @@ public:
 	
 	// 원래 속도를 반환하는 함수 (WindZone에서 사용)
 	float GetDefaultWalkSpeed() const { return DefaultMaxWalkSpeed; }
+	
+	// 네트워크 동기화
+	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Wind")
+	bool bIsWindFloating = false;
+	
+	UFUNCTION()
+	void OnRep_WindFloating();
+	
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 protected:
 	virtual void BeginPlay() override;
 	
@@ -99,6 +109,7 @@ protected:
 
 	// 현재 적용 중인 감속 비율 (기본값 1.0 = 감속 없음)
 	float CurrentSlowRatio = 1.0f;
+	
 	
 	// =========================================================
 	//  체력 자동 재생 (Health Regen)

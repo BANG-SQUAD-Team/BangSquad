@@ -8,6 +8,7 @@
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "TimerManager.h"
+#include "Net/UnrealNetwork.h"
 #include "InputActionValue.h"
 #include "Kismet/GameplayStatics.h" // [필수] 데미지 처리를 위해 필요
 #include "Project_Bang_Squad/Game/Stage/StagePlayerController.h"
@@ -63,6 +64,19 @@ void ABaseCharacter::BeginPlay()
 	if (GetCharacterMovement())
 	{
 		DefaultMaxWalkSpeed = GetCharacterMovement()->MaxWalkSpeed;
+		
+		// 서버의 위치 보정을 클라이언트에서 더 부드럽게 받아들이도록 설정
+		GetCharacterMovement()->NetworkSmoothingMode = ENetworkSmoothingMode::Exponential;
+        
+		// 가속도 변화에 따른 애니메이션 튐 현상을 방지하기 위해 보정치 강화
+		GetCharacterMovement()->bNetworkSkipProxyPredictionOnNetUpdate = false;
+	}
+	
+	if (GetMesh())
+	{
+		// 서버에서 위치가 보정되어 튈 때 메시가 부드럽게 따라오도록 설정
+		GetMesh()->SetGenerateOverlapEvents(false); // 성능 최적화
+		GetMesh()->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
 	}
 	
 	
@@ -105,6 +119,9 @@ void ABaseCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 	ApplySlopeSlide(DeltaTime);
+	
+	GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Yellow, 
+	FString::Printf(TEXT("WindFloating Status: %s"), bIsWindFloating ? TEXT("True") : TEXT("False")));
 }
 
 float ABaseCharacter::TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser)
@@ -600,5 +617,34 @@ void ABaseCharacter::ApplySlopeSlide(float DeltaTime)
 		MoveComp->MaxWalkSpeed = NormalSpeed;
 		MoveComp->GroundFriction = 8.0f;
 		MoveComp->BrakingDecelerationWalking = 2048.0f;
+	}
+}
+
+void ABaseCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	// 여기서 Super 뒤의 인자 이름도 OutLifetimeProps여야 합니다.
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	// DOREPLIFETIME(클래스이름, 변수이름);
+	// 세 번째 인자로 OutLifetimeProps를 명시적으로 넣지 않아도 매크로가 내부적으로 찾습니다.
+	DOREPLIFETIME(ABaseCharacter, bIsWindFloating);
+	
+}
+
+void ABaseCharacter::OnRep_WindFloating()
+{
+	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+	{
+		if (bIsWindFloating)
+		{
+			// 걷다가 떴을 때 클라이언트에서도 즉시 발을 떼게 만듭니다.
+			MoveComp->SetMovementMode(MOVE_Falling);
+			MoveComp->GravityScale = 0.0f;
+		}
+		else
+		{
+			MoveComp->SetMovementMode(MOVE_Walking);
+			MoveComp->GravityScale = 1.0f;
+		}
 	}
 }
