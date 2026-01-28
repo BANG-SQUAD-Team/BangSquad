@@ -32,6 +32,7 @@ ABaseCharacter::ABaseCharacter()
 	MoveComp->JumpZVelocity = 500.f;
 	MoveComp->AirControl = 0.5f;
 	MoveComp->SetWalkableFloorAngle(60.f);
+	MoveComp->LedgeCheckThreshold = 4.f;
 	MoveComp->bMaintainHorizontalGroundVelocity = true;
 	
 	JumpCooldownTimer = 1.2f;
