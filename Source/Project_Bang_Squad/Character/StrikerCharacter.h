@@ -117,11 +117,26 @@ protected:
 
 	bool bHasTriggeredLandAnim = false;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat|VFX")
+	UMaterialInterface* Skill2DecalMaterial; // 데칼 머티리얼 (BP에서 할당)
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat|VFX")
+	FVector Skill2DecalSize = FVector(200.0f, 200.0f, 200.0f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat|VFX")
+	float Skill2DecalLifeSpan = 2.0f; 
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat|VFX")
+	TSubclassOf<class UCameraShakeBase> Skill2CameraShakeClass;
+
 	// =================================================================
 	// [네트워크: 직업 스킬 (범위 공격)]
 	// =================================================================
 	UFUNCTION(Server, Reliable)
 	void Server_UseJobAbility();
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat|VFX")
+	TSubclassOf<AActor> JobAbilityEffectClass;
 
 	// =================================================================
 	// [헬퍼 함수]

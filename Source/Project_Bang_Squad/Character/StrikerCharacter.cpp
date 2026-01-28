@@ -8,8 +8,6 @@
 #include "Project_Bang_Squad/Character/Enemy/EnemyNormal.h"
 #include "Project_Bang_Squad/Character/Enemy/EnemyMidBoss.h"
 
-// [주의] BoxComponent 삭제됨
-
 AStrikerCharacter::AStrikerCharacter()
 {
 	bIsSlamming = false;
@@ -248,12 +246,32 @@ void AStrikerCharacter::ApplyAttackForwardForce()
 
 void AStrikerCharacter::ApplyJobAbilityHit()
 {
-    // 1. 서버인지 확인 (서버에서만 동작해야 함)
+    if (JobAbilityEffectClass)
+    {
+        // 머리 위 3미터(300) 정도 위치
+        FVector SpawnLocation = GetActorLocation() + FVector(0.0f, 0.0f, 300.0f);
+        FRotator SpawnRotation = FRotator::ZeroRotator;
+
+        FActorSpawnParameters SpawnParams;
+        SpawnParams.Owner = this;
+        SpawnParams.Instigator = this;
+
+        // 월드에 액터 소환
+        GetWorld()->SpawnActor<AActor>(
+            JobAbilityEffectClass,
+            SpawnLocation,
+            SpawnRotation,
+            SpawnParams
+        );
+    }
+
+    // =================================================================
+    // 2. [GameLogic] 데미지 및 물리 처리 (서버만 실행)
+    // =================================================================
+    // 데미지나 물리력(Launch)은 서버에서만 계산해야 합니다.
     if (!HasAuthority()) return;
 
-    // [디버그] 서버에서 함수가 불렸는지 로그로 확인
-    // UE_LOG(LogTemp, Warning, TEXT("Server: ApplyJobAbilityHit Called!"));
-
+    // --- 기존 데미지 로직 시작 ---
     float AbilityDamage = 50.f;
 
     if (SkillDataTable)
@@ -311,6 +329,7 @@ void AStrikerCharacter::ApplyJobAbilityHit()
         }
     }
 }
+
 void AStrikerCharacter::Server_ApplyAttackForwardForce_Implementation()
 {
 	FVector ForwardDir = GetActorForwardVector();
@@ -465,7 +484,10 @@ void AStrikerCharacter::Server_Skill2Impact_Implementation()
     TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;
     ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_Pawn));
 
-    UKismetSystemLibrary::SphereOverlapActors(GetWorld(), MyLoc, 600.f, ObjectTypes, ACharacter::StaticClass(), { this }, OverlappingActors);
+    // [변경] 공격 반경: 600.f -> 300.f (지름 6m, 일반적인 광역기 범위)
+    float AttackRadius = 300.0f;
+
+    UKismetSystemLibrary::SphereOverlapActors(GetWorld(), MyLoc, AttackRadius, ObjectTypes, ACharacter::StaticClass(), { this }, OverlappingActors);
 
     float SlamDamage = 50.f;
     if (SkillDataTable)
@@ -479,7 +501,6 @@ void AStrikerCharacter::Server_Skill2Impact_Implementation()
     {
         ACharacter* TargetChar = Cast<ACharacter>(Actor);
         if (!TargetChar || TargetChar == this) continue;
-    	
 
         bool bIsNormal = Actor->IsA(AEnemyNormal::StaticClass());
         bool bIsBaseChar = Actor->IsA(ABaseCharacter::StaticClass());
@@ -500,6 +521,46 @@ void AStrikerCharacter::Server_Skill2Impact_Implementation()
             FVector PushVel = (PushDir * 800.f) + FVector(0.f, 0.f, 200.f);
             TargetChar->LaunchCharacter(PushVel, true, true);
         }
+    }
+}
+
+// [변경] 이펙트 재생 함수
+void AStrikerCharacter::Multicast_PlaySlamFX_Implementation()
+{
+    // [기존 디버그 메시지]
+    if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Purple, TEXT("SLAM IMPACT!!"));
+
+    // 1. 데칼 생성
+    if (Skill2DecalMaterial)
+    {
+        FVector SpawnLocation = GetActorLocation();
+        SpawnLocation.Z -= 20.0f;
+
+        FRotator DecalRotation = FRotator(-90.0f, 0.0f, 0.0f);
+        DecalRotation.Roll = FMath::RandRange(0.0f, 360.0f);
+
+        UGameplayStatics::SpawnDecalAtLocation(
+            GetWorld(),
+            Skill2DecalMaterial,
+            Skill2DecalSize, // 헤더에서 200으로 설정한 값 사용
+            SpawnLocation,
+            DecalRotation,
+            Skill2DecalLifeSpan
+        );
+    }
+
+    // 2. 카메라 흔들림 (범위 조정)
+    if (Skill2CameraShakeClass)
+    {
+        UGameplayStatics::PlayWorldCameraShake(
+            GetWorld(),
+            Skill2CameraShakeClass,
+            GetActorLocation(),
+            300.0f,   // [변경] Inner Radius: 공격 범위(300) 안에서는 최대 강도
+            1500.0f,  // [변경] Outer Radius: 15미터 밖에서는 흔들림 없음 (기존 2000보다 줄임)
+            1.0f,
+            false
+        );
     }
 }
 
@@ -531,11 +592,6 @@ void AStrikerCharacter::Multicast_Skill2_Implementation()
     }
 }
 
-void AStrikerCharacter::Multicast_PlaySlamFX_Implementation()
-{
-    if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Purple, TEXT("SLAM IMPACT!!"));
-}
-
 // ============================================================================
 // 직업 스킬 (Job Ability - 범위 내 적 띄우기)
 // ============================================================================
@@ -563,9 +619,11 @@ void AStrikerCharacter::Server_UseJobAbility_Implementation()
     // 몽타주 재생 명령만 내림 (노티파이가 타점 잡음)
     Multicast_JobAbility();
 }
+
 void AStrikerCharacter::Multicast_JobAbility_Implementation()
 {
-	ProcessSkill(TEXT("JobAbility"));
+    // 1. 스킬 로직 (기존 유지)
+    ProcessSkill(TEXT("JobAbility"));
 }
 
 // ============================================================================
