@@ -16,15 +16,33 @@ AMageProjectile::AMageProjectile()
     // 1. 구체 충돌체 설정
     SphereComp = CreateDefaultSubobject<USphereComponent>(TEXT("SphereComp"));
     SphereComp->InitSphereRadius(15.0f);
+
+    //  프로필 이름을 쓰지 않고 직접 채널을 설정합니다.
+    // SphereComp->SetCollisionProfileName(TEXT("Custom")); 
+
+    // -------------------------------------------------------------------------
+    //  충돌 전략 변경: "일단 무시(Ignore)하고 필요한 것만 설정"
+    // -------------------------------------------------------------------------
+    SphereComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
     
-    // 충돌 프로필: 일단 다 막고(Block), 필요한 것만 뚫기
-    SphereComp->SetCollisionProfileName(TEXT("Custom")); // 커스텀 설정 시작
-    
-    SphereComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics); // 물리 충돌(Block)도 가능하게 변경
-    SphereComp->SetCollisionResponseToAllChannels(ECR_Block);            // 기본: 다 막힘 (벽, 바닥 등)
-    SphereComp->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);    // 적(Pawn): 뚫고 지나가며 Overlap 발생
-    SphereComp->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);   // 카메라: 무시
-    
+    // 1. 기본값: 모든 채널 무시 (Ignore)
+    SphereComp->SetCollisionResponseToAllChannels(ECR_Ignore);
+
+    // 2. 벽, 바닥 등 뚫으면 안 되는 정적 물체는 막음 (Block -> NotifyHit 호출됨)
+    SphereComp->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
+    SphereComp->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Block); // 움직이는 문/플랫폼 등
+    SphereComp->SetCollisionResponseToChannel(ECC_Destructible, ECR_Block);
+
+    // 3. 캐릭터(Pawn), 몬스터, 그리고 **캐릭터의 메시(PhysicsBody)**는 뚫고 지나감 (Overlap -> OnOverlap 호출됨)
+    SphereComp->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);        // 캡슐 컴포넌트
+    SphereComp->SetCollisionResponseToChannel(ECC_PhysicsBody, ECR_Overlap); // [중요] 캐릭터의 팔다리(Mesh)
+    SphereComp->SetCollisionResponseToChannel(ECC_Vehicle, ECR_Overlap);
+
+    // 4. 카메라와 시야 체크용 채널은 무시
+    SphereComp->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+    SphereComp->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
+    // -------------------------------------------------------------------------
+
     SphereComp->SetGenerateOverlapEvents(true);
     RootComponent = SphereComp;
 
@@ -37,7 +55,6 @@ AMageProjectile::AMageProjectile()
     // 3. 나이아가라
     NiagaraComp = CreateDefaultSubobject<UNiagaraComponent>(TEXT("NiagaraComp"));
     NiagaraComp->SetupAttachment(RootComponent);
-  
 
     // 4. 이동 설정
     ProjectileMovement = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("ProjectileMovement"));
@@ -120,8 +137,8 @@ void AMageProjectile::NotifyHit(UPrimitiveComponent* MyComp, AActor* Other, UPri
 
 void AMageProjectile::Multicast_SpawnHitVFX_Implementation(FVector Location, FRotator Rotation)
 {
-    // 이 코드는 서버와 클라이언트 모두에서 실행됩니다!
-    if (FireImpactVFX) // 변수명이 FireImpactVFX 인지 확인하세요!
+    
+    if (FireImpactVFX) 
     {
         UNiagaraFunctionLibrary::SpawnSystemAtLocation(
             GetWorld(),
@@ -137,6 +154,6 @@ void AMageProjectile::Multicast_SpawnHitVFX_Implementation(FVector Location, FRo
     // 3. 충돌 끄기 (더 이상 안 맞게)
     if (SphereComp) SphereComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
-    // 4. 이동 멈추기
+    // // 4. 이동 멈추기
     if (ProjectileMovement) ProjectileMovement->StopMovementImmediately();
 }
