@@ -9,7 +9,7 @@ APillarRotate::APillarRotate()
 {
 	PrimaryActorTick.bCanEverTick = true;
 	bReplicates = true;
-	SetReplicateMovement(false); // 직접 계산하므로 엔진의 기본 복제는 끕니다.
+	SetReplicateMovement(false);
 
 	SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
 	RootComponent = SceneRoot;
@@ -64,6 +64,12 @@ void APillarRotate::ProcessMageInput(FVector Direction)
 			// DirectionHelper의 방향을 기준으로 회전축을 서버에서 확정합니다.
 			ReplicatedRotationAxis = DirectionHelper->GetRightVector();
 		}
+		else
+		{
+			ReplicatedRotationAxis = GetActorRightVector();
+		}
+
+		ReplicatedRotationAxis = ReplicatedRotationAxis.GetSafeNormal();
 
 		bIsFalling = true;
 		SetActorTickEnabled(true);

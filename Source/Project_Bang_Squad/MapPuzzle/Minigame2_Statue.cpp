@@ -92,9 +92,11 @@ void AMinigame2_Statue::Tick(float DeltaTime)
 
 void AMinigame2_Statue::UpdateFallProgress(float Alpha)
 {
-	// 쿼터니언 보간으로 정확하게 회전
 	FQuat StartQuat = ReplicatedInitialRotation.Quaternion();
-	FQuat TargetQuat = StartQuat * FQuat(FallRotationAmount);
+
+	FQuat DeltaQuat = FQuat(FallRotationAmount);
+	FQuat TargetQuat = DeltaQuat * StartQuat;
+
 	SetActorRotation(FQuat::Slerp(StartQuat, TargetQuat, Alpha));
 
 	FVector TargetLoc = ReplicatedInitialLocation + ReplicatedInitialRotation.RotateVector(FallLocationOffset);
