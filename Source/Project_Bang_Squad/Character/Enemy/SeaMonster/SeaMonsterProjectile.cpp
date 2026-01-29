@@ -7,34 +7,35 @@
 
 ASeaMonsterProjectile::ASeaMonsterProjectile()
 {
-	PrimaryActorTick.bCanEverTick = false;
+    PrimaryActorTick.bCanEverTick = false;
 
-	CollisionComp = CreateDefaultSubobject<USphereComponent>(TEXT("SphereComp"));
-	CollisionComp->InitSphereRadius(25.0f);
+    // 1. 충돌체 생성 및 루트 설정
+    CollisionComp = CreateDefaultSubobject<USphereComponent>(TEXT("SphereComp"));
+    CollisionComp->InitSphereRadius(25.0f);
+    RootComponent = CollisionComp;
 
-	// [핵심 1] 팔라딘 방패가 Block 하도록 설정된 'GameTraceChannel2'를 내 타입으로 설정
-	CollisionComp->SetCollisionObjectType(ECC_GameTraceChannel2);
+    // 2. 콜리전 설정 (월드 다이나믹으로 변경)
+    CollisionComp->SetCollisionProfileName(TEXT("Projectile")); // 기본 프로필 먼저 적용
+    CollisionComp->SetCollisionObjectType(ECC_WorldDynamic);
 
-	// [핵심 2] 히트 이벤트가 발생하도록 물리 충돌 활성화 및 히트 통지 켜기
-	CollisionComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-	CollisionComp->SetNotifyRigidBodyCollision(true); // "Simulation Generates Hit Events" 체크와 동일
+    // 물리 충돌(OnHit)이 발생하도록 설정
+    CollisionComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    CollisionComp->SetNotifyRigidBodyCollision(true);
 
-	CollisionComp->SetCollisionProfileName(TEXT("Projectile"));
-	CollisionComp->OnComponentHit.AddDynamic(this, &ASeaMonsterProjectile::OnHit);
-	RootComponent = CollisionComp;
+    CollisionComp->OnComponentHit.AddDynamic(this, &ASeaMonsterProjectile::OnHit);
 
-	/** 2. 메쉬 설정 (충돌체에 부착) */
-	MeshComp = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MeshComp"));
-	MeshComp->SetupAttachment(CollisionComp); // 충돌체를 따라다니게 설정
-	MeshComp->SetCollisionEnabled(ECollisionEnabled::NoCollision); // 충돌은 구체(CollisionComp)가 담당하니 메쉬는 끔
+    /** 3. 메쉬 설정 (충돌체에 부착) */
+    MeshComp = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MeshComp"));
+    MeshComp->SetupAttachment(CollisionComp);
+    MeshComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
-	// 3. 이동 컴포넌트
-	ProjectileMovement = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("ProjectileComp"));
-	ProjectileMovement->UpdatedComponent = CollisionComp;
-	ProjectileMovement->InitialSpeed = 0.0f;
-	ProjectileMovement->MaxSpeed = 5000.0f;
-	ProjectileMovement->bRotationFollowsVelocity = true;
-	ProjectileMovement->ProjectileGravityScale = 1.0f;
+    // 4. 이동 컴포넌트
+    ProjectileMovement = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("ProjectileComp"));
+    ProjectileMovement->UpdatedComponent = CollisionComp;
+    ProjectileMovement->InitialSpeed = 0.0f;
+    ProjectileMovement->MaxSpeed = 5000.0f;
+    ProjectileMovement->bRotationFollowsVelocity = true;
+    ProjectileMovement->ProjectileGravityScale = 1.0f;
 }
 
 void ASeaMonsterProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
