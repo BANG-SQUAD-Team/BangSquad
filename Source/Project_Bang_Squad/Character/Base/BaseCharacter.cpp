@@ -121,8 +121,6 @@ void ABaseCharacter::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 	ApplySlopeSlide(DeltaTime);
 	
-	GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Yellow, 
-	FString::Printf(TEXT("WindFloating Status: %s"), bIsWindFloating ? TEXT("True") : TEXT("False")));
 }
 
 float ABaseCharacter::TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser)
