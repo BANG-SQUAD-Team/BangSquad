@@ -9,10 +9,17 @@ ASeaMonsterProjectile::ASeaMonsterProjectile()
 {
 	PrimaryActorTick.bCanEverTick = false;
 
-	// 1. 충돌체 설정 (Root)
 	CollisionComp = CreateDefaultSubobject<USphereComponent>(TEXT("SphereComp"));
 	CollisionComp->InitSphereRadius(25.0f);
-	CollisionComp->BodyInstance.SetCollisionProfileName("Projectile");
+
+	// [핵심 1] 팔라딘 방패가 Block 하도록 설정된 'GameTraceChannel2'를 내 타입으로 설정
+	CollisionComp->SetCollisionObjectType(ECC_GameTraceChannel2);
+
+	// [핵심 2] 히트 이벤트가 발생하도록 물리 충돌 활성화 및 히트 통지 켜기
+	CollisionComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	CollisionComp->SetNotifyRigidBodyCollision(true); // "Simulation Generates Hit Events" 체크와 동일
+
+	CollisionComp->SetCollisionProfileName(TEXT("Projectile"));
 	CollisionComp->OnComponentHit.AddDynamic(this, &ASeaMonsterProjectile::OnHit);
 	RootComponent = CollisionComp;
 
@@ -32,36 +39,35 @@ ASeaMonsterProjectile::ASeaMonsterProjectile()
 
 void ASeaMonsterProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
-	if (OtherActor && OtherActor != this)
-	{
-		// 1. 먼저 팔라딘인지 확인합니다.
-		APaladinCharacter* Paladin = Cast<APaladinCharacter>(OtherActor);
-		if (Paladin)
-		{
-			// 투사체가 날아가는 방향을 계산합니다.
-			FVector ProjectileDir = GetVelocity().GetSafeNormal();
+    if (OtherActor && OtherActor != this)
+    {
+        // 1. 일단 팔라딘인지 확인
+        APaladinCharacter* Paladin = Cast<APaladinCharacter>(OtherActor);
 
-			// 2. 팔라딘이 이 방향의 공격을 방패로 막고 있는지 검사합니다.
-			if (Paladin->IsBlockingDirection(ProjectileDir))
-			{
-				// [방어 성공] 방패 체력을 일정량 깎고 투사체만 없앱니다.
-				// 넉백(LaunchCharacter)을 호출하지 않고 return 하므로 무효화됩니다.
-				Paladin->ConsumeShield(10.0f); // 원하는 데미지 양 설정
+        if (Paladin)
+        {
+            // 2. [핵심] 부딪힌 컴포넌트(OtherComp)가 팔라딘의 '방패 메쉬'랑 똑같은 놈인지 확인
+            if (OtherComp == Paladin->GetShieldMesh())
+            {
+                // 방패에 맞았으니 방패 체력 깎고 투사체는 즉시 소멸
+                Paladin->ConsumeShield(10.0f);
+                Destroy();
+                return; // 여기서 끝! 아래 넉백 로직으로 안 내려감
+            }
+        }
 
-				// 방패에 막히는 이펙트나 사운드를 여기서 재생하면 더 좋습니다.
-				Destroy();
-				return;
-			}
-		}
+        // 3. 방패가 아니라 몸에 맞았거나 다른 캐릭터인 경우
+        if (ABaseCharacter* Victim = Cast<ABaseCharacter>(OtherActor))
+        {
+            // 이미 죽은 시체는 밀지 않음
+            if (Victim->IsDead()) return;
 
-		// 3. 방어에 실패했거나 팔라딘이 아닌 일반 캐릭터일 경우 (기존 넉백 로직)
-		if (ACharacter* Victim = Cast<ACharacter>(OtherActor))
-		{
-			FVector LaunchDir = GetActorForwardVector();
-			LaunchDir.Z = 0.5f;
-			Victim->LaunchCharacter(LaunchDir.GetSafeNormal() * KnockbackForce, true, true);
-		}
+            FVector LaunchDir = GetActorForwardVector();
+            LaunchDir.Z = 0.5f;
+            // 가차 없이 넉백
+            Victim->LaunchCharacter(LaunchDir.GetSafeNormal() * KnockbackForce, true, true);
+        }
 
-		Destroy();
-	}
+        Destroy();
+    }
 }

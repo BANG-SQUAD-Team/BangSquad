@@ -44,6 +44,8 @@ public:
     // [ 외부(기믹)에서 방패 체력을 깎기 위한 함수
     void ConsumeShield(float Amount);
 
+    FORCEINLINE class UStaticMeshComponent* GetShieldMesh() const { return ShieldMeshComp; }
+
 protected:
     
     // ====================================================================================
