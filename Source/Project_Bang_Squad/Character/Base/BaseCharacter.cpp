@@ -115,6 +115,11 @@ void ABaseCharacter::BeginPlay()
 			bIsMiniGameMode = true;
 			UnlockedStageLevel = 0;
 		}
+		
+		if (MapName.Contains(TEXT("LobbyMap")))
+		{
+			UnlockedStageLevel = 3;
+		}
 	}
 }
 
