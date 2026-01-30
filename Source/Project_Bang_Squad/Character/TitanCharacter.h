@@ -257,6 +257,8 @@ private:
 
     FTimerHandle GrabTimerHandle;
     FTimerHandle CooldownTimerHandle;
+
+    FTimerHandle MeleeStopTimerHandle;
     
     float GrabMaxDuration = 5.0f;
     float ThrowCooldownTime = 3.0f;

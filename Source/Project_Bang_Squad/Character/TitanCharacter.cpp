@@ -156,6 +156,7 @@ void ATitanCharacter::OnDeath()
     GetWorldTimerManager().ClearTimer(RockThrowTimerHandle);
     GetWorldTimerManager().ClearTimer(AttackHitTimerHandle);
     GetWorldTimerManager().ClearTimer(HitLoopTimerHandle);
+    GetWorldTimerManager().ClearTimer(MeleeStopTimerHandle);
 
     // 상태 플래그 초기화
     bIsGrabbing = false;
@@ -231,16 +232,20 @@ void ATitanCharacter::Server_Attack_Implementation(FName SkillName)
     StartAttackCooldown();
     Multicast_Attack(SkillName);
 
+    // 기존 타이머 정리
     GetWorldTimerManager().ClearTimer(AttackHitTimerHandle);
     GetWorldTimerManager().ClearTimer(HitLoopTimerHandle);
 
+    // ★ 추가된 부분: 이전 공격의 종료 예약 타이머가 살아있다면 죽이기 ★
+    GetWorldTimerManager().ClearTimer(MeleeStopTimerHandle);
+
     if (ActionDelay > 0.0f)
     {
-       GetWorldTimerManager().SetTimer(AttackHitTimerHandle, this, &ATitanCharacter::StartMeleeTrace, ActionDelay, false);
+        GetWorldTimerManager().SetTimer(AttackHitTimerHandle, this, &ATitanCharacter::StartMeleeTrace, ActionDelay, false);
     }
     else
     {
-       StartMeleeTrace();
+        StartMeleeTrace();
     }
 }
 
@@ -259,19 +264,18 @@ void ATitanCharacter::StartMeleeTrace()
 
     if (GetMesh() && GetMesh()->DoesSocketExist(MyAttackSocket))
     {
-       LastHandLocation = GetMesh()->GetSocketLocation(MyAttackSocket);
+        LastHandLocation = GetMesh()->GetSocketLocation(MyAttackSocket);
     }
     else
     {
-       LastHandLocation = GetActorLocation() + GetActorForwardVector() * 100.f;
+        LastHandLocation = GetActorLocation() + GetActorForwardVector() * 100.f;
     }
 
     // 판정 루프 시작
     GetWorldTimerManager().SetTimer(HitLoopTimerHandle, this, &ATitanCharacter::PerformMeleeTrace, 0.015f, true);
-    
-    // 판정 종료 예약
-    FTimerHandle StopTimer;
-    GetWorldTimerManager().SetTimer(StopTimer, this, &ATitanCharacter::StopMeleeTrace, HitDuration, false);
+
+    // ★ 수정된 부분: 지역 변수 삭제하고 멤버 변수 사용 ★
+    GetWorldTimerManager().SetTimer(MeleeStopTimerHandle, this, &ATitanCharacter::StopMeleeTrace, HitDuration, false);
 }
 
 void ATitanCharacter::PerformMeleeTrace()
@@ -334,6 +338,8 @@ void ATitanCharacter::PerformMeleeTrace()
 void ATitanCharacter::StopMeleeTrace()
 {
     GetWorldTimerManager().ClearTimer(HitLoopTimerHandle);
+    // ★ 추가: 자기 자신(종료 타이머)도 명시적으로 클리어 (이미 만료되었겠지만 안전하게)
+    GetWorldTimerManager().ClearTimer(MeleeStopTimerHandle);
     SwingDamagedActors.Empty();
 }
 
@@ -694,6 +700,17 @@ void ATitanCharacter::Multicast_PlayJobMontage_Implementation(FName SectionName)
 void ATitanCharacter::Server_ThrowTarget_Implementation(FVector ThrowStartLocation)
 {
     if (!bIsGrabbing || !GrabbedActor) return;
+
+    // 1. 애니메이션 강제 정지 (이래야 '공격 종료' 노티파이가 씹혀도 상태가 리셋됨)
+    StopAnimMontage();
+
+    // 2. 공격 판정 타이머들 싹 다 취소 (지난번 답변의 MeleeStopTimerHandle도 있다면 포함)
+    GetWorldTimerManager().ClearTimer(HitLoopTimerHandle);
+    GetWorldTimerManager().ClearTimer(AttackHitTimerHandle);
+    GetWorldTimerManager().ClearTimer(MeleeStopTimerHandle); 
+
+    // 3. 공격 판정 데이터 초기화
+    SwingDamagedActors.Empty();
 
     GetWorldTimerManager().ClearTimer(GrabTimerHandle);
     Multicast_PlayJobMontage(TEXT("Throw"));
