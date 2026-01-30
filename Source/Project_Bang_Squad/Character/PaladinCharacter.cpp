@@ -633,7 +633,7 @@ void APaladinCharacter::SetShieldActive(bool bActive)
         ShieldMeshComp->SetCollisionObjectType(ECC_WorldDynamic);
         ShieldMeshComp->SetCollisionProfileName(TEXT("Custom")); 
 
-        ShieldMeshComp->SetCollisionResponseToAllChannels(ECR_Block);
+        ShieldMeshComp->SetCollisionResponseToAllChannels(ECR_Ignore);
         ShieldMeshComp->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
         ShieldMeshComp->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);   
 
