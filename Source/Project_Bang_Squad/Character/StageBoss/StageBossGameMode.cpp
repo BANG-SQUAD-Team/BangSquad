@@ -1,6 +1,7 @@
 #include "Project_Bang_Squad/Character/StageBoss/StageBossGameMode.h"
 #include "Project_Bang_Squad/Character/StageBoss/Stage1Boss.h"
 #include "GameFramework/PlayerController.h"
+#include "GameFramework/PlayerState.h"
 #include "TimerManager.h"
 #include "Kismet/GameplayStatics.h"
 
@@ -18,24 +19,40 @@ void AStageBossGameMode::BeginPlay()
 
 void AStageBossGameMode::TriggerSpearQTE(AStage1Boss* BossActor)
 {
-	// 권한 확인 및 유효성 검사
 	if (!HasAuthority() || !IsValid(BossActor)) return;
 
 	CurrentBoss = BossActor;
 	AccumulatedInputCount = 0;
 
-	// 타이머 시작 (Tick 사용 안함)
+	// [신규] 점수판 초기화
+	PlayerTapCounts.Empty();
+
+	CurrentBoss->PlayQTEVisuals(QTEDuration);
+
 	GetWorldTimerManager().SetTimer(QTETimerHandle, this, &AStageBossGameMode::OnQTETimeout, QTEDuration, false);
 	UE_LOG(LogTemp, Warning, TEXT("[BossGameMode] QTE Started!"));
 }
-
 void AStageBossGameMode::ProcessQTEInput(AController* PlayerController)
 {
 	if (!GetWorldTimerManager().IsTimerActive(QTETimerHandle)) return;
 
+	// 1. 전체 카운트 증가
 	AccumulatedInputCount++;
 
-	// 목표치 달성 시 성공 처리
+	// 2. [신규] 개인 기록 갱신
+	if (PlayerController)
+	{
+		if (PlayerTapCounts.Contains(PlayerController))
+		{
+			PlayerTapCounts[PlayerController]++;
+		}
+		else
+		{
+			PlayerTapCounts.Add(PlayerController, 1);
+		}
+	}
+
+	// 목표치 달성
 	if (AccumulatedInputCount >= GoalQTECount)
 	{
 		EndSpearQTE(true);
@@ -51,13 +68,53 @@ void AStageBossGameMode::EndSpearQTE(bool bSuccess)
 {
 	GetWorldTimerManager().ClearTimer(QTETimerHandle);
 
-	if (IsValid(CurrentBoss))
+	// --- [신규] 통계 데이터 가공 (TMap -> TArray) ---
+	TArray<FPlayerQTEStat> FinalStats;
+	
+	// 맵에 기록된 플레이어들 추가
+	for (auto& Pair : PlayerTapCounts)
 	{
-		// 보스에게 결과 전달 (보스 클래스에 해당 함수가 없다면 주석 처리하거나 추가 구현 필요)
-		// CurrentBoss->OnQTEFinished(bSuccess);
+		FPlayerQTEStat Stat;
+		// PlayerState가 유효하면 닉네임 사용, 없으면 기본값
+		if (Pair.Key && Pair.Key->PlayerState)
+		{
+			Stat.PlayerName = Pair.Key->PlayerState->GetPlayerName();
+		}
+		else
+		{
+			Stat.PlayerName = TEXT("Unknown Player");
+		}
+		Stat.TapCount = Pair.Value;
+		FinalStats.Add(Stat);
 	}
 
-	UE_LOG(LogTemp, Warning, TEXT("QTE Finished. Success: %d"), bSuccess);
+	// --- 승패 처리 ---
+	if (bSuccess)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("QTE Success! Stage Clear!"));
+		
+		// 1. 보스에게 성공 전달 (사망 몽타주 재생)
+		if (IsValid(CurrentBoss))
+		{
+			CurrentBoss->HandleQTEResult(true);
+		}
+
+		// 2. 클리어 UI 호출 (BP에서 구현)
+		ShowGameClearUI(FinalStats);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("QTE Failed! Retry Required."));
+
+		// 1. 보스에게 실패 전달 (비웃거나 가만히 있음)
+		if (IsValid(CurrentBoss))
+		{
+			CurrentBoss->HandleQTEResult(false);
+		}
+		
+		// 2. 리트라이 UI 호출 (BP에서 구현)
+		ShowRetryUI(FinalStats);
+	}
 }
 
 // --- [부활 및 전멸 시스템] ---

@@ -4,12 +4,9 @@
 #include "JobCrystal.h"
 #include "DeathWall.h"
 #include "BossSpikeTrap.h"
-#include "AQTEObject.h" // [QTE] 기믹 오브젝트 헤더
-
-// [QTE] 아키텍처 연동 헤더
+#include "AQTEObject.h" 
 #include "StageBossGameMode.h"
 #include "StageBossGameState.h"
-
 #include "Project_Bang_Squad/BossPattern/Boss1_Rampart.h"
 #include "Project_Bang_Squad/Projectile/SlashProjectile.h"
 #include "Project_Bang_Squad/Core/TrueDamageType.h"
@@ -38,13 +35,20 @@ void AStage1Boss::BeginPlay()
 
 	if (HasAuthority())
 	{
-		SetPhase(EBossPhase::Gimmick);
+		// [수정] 조우 즉시(100) 크리스탈 기믹 실행
+		// 시작하자마자 SetPhase(Gimmick)을 호출하여 무적 상태로 만들고 수정을 소환합니다.
+		if (!bHasTriggeredCrystal_100)
+		{
+			bHasTriggeredCrystal_100 = true;
+			SetPhase(EBossPhase::Gimmick); // 내부적으로 SpawnCrystals() 호출됨
+			UE_LOG(LogTemp, Warning, TEXT("[BOSS] Encounter: 100%% Crystal Gimmick Started"));
+		}
+
 		if (UHealthComponent* HC = FindComponentByClass<UHealthComponent>())
 		{
 			HC->OnHealthChanged.AddDynamic(this, &AStage1Boss::OnHealthChanged);
 		}
 
-		// 이름 충돌 방지: MeleeCollisionBox 변수에 블루프린트의 BoxComponent를 찾아 연결
 		if (!IsValid(MeleeCollisionBox))
 		{
 			MeleeCollisionBox = Cast<UBoxComponent>(GetComponentByClass(UBoxComponent::StaticClass()));
@@ -53,63 +57,105 @@ void AStage1Boss::BeginPlay()
 }
 
 // ==============================================================================
-// [1] 데미지 처리 및 페이즈 전환 (QTE 연동)
+// [1] 데미지 처리 및 기믹(100, 50, 10) 발동 로직
 // ==============================================================================
+
+// Source/Project_Bang_Squad/Character/StageBoss/Stage1Boss.cpp
 
 float AStage1Boss::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
-	// [무적 처리 1] 기존 패턴(성벽) 중일 때
-	if (!HasAuthority() || bIsDeathWallSequenceActive) return 0.0f;
+	// 1. [방어 로직] 서버 권한, 성벽 패턴 중, 무적, QTE 중이면 데미지 무시
+	// 주의: 70% 패턴(DeathWall) 중에는 데미지를 안 입어야 패턴이 안 꼬입니다.
+	if (!HasAuthority() || bIsDeathWallSequenceActive || bIsInvincible) return 0.0f;
 
-	// [무적 처리 2] QTE 패턴(창 떨어지기) 중일 때 (GameState 확인)
-	if (AStageBossGameState* GS = GetWorld()->GetGameState<AStageBossGameState>())
-	{
-		if (GS->bIsQTEActive) return 0.0f;
-	}
+	AStageBossGameState* GS = GetWorld()->GetGameState<AStageBossGameState>();
+	if (GS && GS->bIsQTEActive) return 0.0f;
 
-	// 팀킬 방지
+	// 2. [팀킬 방지]
 	AActor* Attacker = DamageCauser;
 	if (EventInstigator && EventInstigator->GetPawn()) Attacker = EventInstigator->GetPawn();
 	if (Attacker && (Attacker == this || Attacker->IsA(AEnemyCharacterBase::StaticClass()))) return 0.0f;
 
+	// ==============================================================================
+	// [수정 핵심 1] 중복 데미지 제거
+	// Super::TakeDamage를 호출하면 내부적으로 ApplyDamage가 실행됩니다.
+	// 따라서 반환받은 ActualDamage를 또 ApplyDamage 하면 안 됩니다.
+	// ==============================================================================
 	float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
 	if (ActualDamage <= 0.0f) return 0.0f;
 
-	// 페이즈 전환 및 기믹 발동 체크
+	// 3. 체력 및 기믹 체크
 	if (UHealthComponent* HC = FindComponentByClass<UHealthComponent>())
 	{
-		HC->ApplyDamage(ActualDamage);
+		float CurrentHP = HC->GetHealth();
+		float MaxHP = HC->MaxHealth;
+		float HpRatio = CurrentHP / MaxHP;
 
-		// [UI 동기화] 보스 체력 바 갱신을 위해 GameState에 알림
-		if (AStageBossGameState* GS = GetWorld()->GetGameState<AStageBossGameState>())
+		// [디버그] 체력 상황 모니터링
+		// UE_LOG(LogTemp, Log, TEXT("[BOSS] HP: %.0f / %.0f (Ratio: %.2f)"), CurrentHP, MaxHP, HpRatio);
+
+		if (GS) GS->UpdateBossHealth(CurrentHP, MaxHP);
+
+		// ==========================================================================
+		// [수정 핵심 2] 패턴 충돌 방지 (70% vs 50%)
+		// 70% 패턴은 OnHealthChanged에서 발동되므로 여기서는 신경 쓰지 않아도 되지만,
+		// 만약 데미지가 너무 커서 70%를 건너뛰고 50%가 되었다면?
+		// -> 우선순위에 따라 '성벽'을 무시하고 '크리스탈'을 가거나, 순차적으로 처리해야 함.
+		// -> 여기서는 50%가 더 중요하므로, 50% 조건 만족 시 즉시 기믹으로 전환합니다.
+		// ==========================================================================
+
+		// --- [기믹 1] 체력 50% 이하: 크리스탈 재소환 ---
+		if (!bHasTriggeredCrystal_50 && HpRatio <= 0.5f)
 		{
-			GS->UpdateBossHealth(HC->GetHealth(), HC->MaxHealth);
+			// 혹시 70% 패턴이 켜져있다면 강제 종료 시키고 전환
+			if (bIsDeathWallSequenceActive)
+			{
+				FinishDeathWallPattern();
+				UE_LOG(LogTemp, Warning, TEXT("[BOSS] Force Stopping DeathWall for 50%% Gimmick"));
+			}
+
+			// 페이즈 확인 (Phase1일 때만 발동)
+			if (CurrentPhase == EBossPhase::Phase1)
+			{
+				bHasTriggeredCrystal_50 = true;
+				SetPhase(EBossPhase::Gimmick); // -> SpawnCrystals() 호출됨
+				UE_LOG(LogTemp, Warning, TEXT("[BOSS] 50%% HP Reached: Starting Crystal Gimmick!"));
+
+				// 기믹 페이즈로 가면 무적이 되므로, 추가 데미지 로직 방지
+				return ActualDamage;
+			}
 		}
 
-		float HpRatio = HC->GetHealth() / HC->MaxHealth;
-		float Threshold = (BossData ? BossData->GimmickThresholdRatio : 0.5f);
-
-		// [핵심 변경] 체력 조건 만족 시 -> 바로 2페이즈가 아니라 'QTE 기믹' 시작
-		if (HasAuthority() && !bHasTriggeredGimmick && HpRatio <= Threshold && CurrentPhase == EBossPhase::Phase1)
+		// --- [기믹 2] 체력 0 도달: 피니시 QTE 발동 ---
+		if (CurrentHP <= 0.0f && !bHasTriggeredQTE_10)
 		{
-			bHasTriggeredGimmick = true;
+			// 1. 죽음 유예 (데미지 롤백 느낌으로 체력 1 설정)
+			// 참고: 이미 Super에서 깎였으므로 ApplyDamage가 아닌 SetHealth 개념이 필요하지만,
+			// HealthComponent 수정 없이 하려면 다음 프레임에 회복하거나, 
+			// 여기서 그냥 로직적으로만 처리하고 GameMode에 넘깁니다.
+			// (가장 깔끔한 건 아까 알려드린 'DamageAmount 조절' 방식이지만, 
+			//  지금은 Super가 이미 불렸으므로 로직만 실행합니다.)
 
-			// GameMode에게 "심판을 시작해달라"고 요청
+			bHasTriggeredQTE_10 = true;
+
+			// QTE 시작 요청
 			if (AStageBossGameMode* GM = GetWorld()->GetAuthGameMode<AStageBossGameMode>())
 			{
 				GM->TriggerSpearQTE(this);
+				UE_LOG(LogTemp, Warning, TEXT("[BOSS] HP 0 Reached! Finale QTE Triggered!"));
 			}
 		}
 	}
+
 	return ActualDamage;
 }
 
-// GameMode가 호출: 비주얼 연출 시작
+// GameMode 호출: 비주얼 연출
 void AStage1Boss::PlayQTEVisuals(float Duration)
 {
 	if (!HasAuthority()) return;
 
-	// 1. 전조 동작 몽타주 재생 (멀티캐스트) - [추가된 부분]
+	// 1. 전조 동작 몽타주 재생
 	if (BossData && BossData->QTE_TelegraphMontage)
 	{
 		Multicast_PlayAttackMontage(BossData->QTE_TelegraphMontage);
@@ -128,20 +174,20 @@ void AStage1Boss::PlayQTEVisuals(float Duration)
 	}
 }
 
-// GameMode가 호출: 결과 처리
+// GameMode 호출: 결과 처리
 void AStage1Boss::HandleQTEResult(bool bSuccess)
 {
 	if (!HasAuthority()) return;
 
 	if (bSuccess)
 	{
-		// 성공 -> 창 폭발 연출 -> 2페이즈 진입
+		// 성공 -> 창 폭발 -> 2페이즈(광폭화)
 		if (ActiveQTEObject) ActiveQTEObject->TriggerSuccess();
 		EnterPhase2();
 	}
 	else
 	{
-		// 실패 -> 창 충돌 연출 -> 전멸기
+		// 실패 -> 전멸기
 		if (ActiveQTEObject) ActiveQTEObject->TriggerFailure();
 		PerformWipeAttack();
 	}
@@ -151,22 +197,20 @@ void AStage1Boss::EnterPhase2()
 {
 	if (!HasAuthority()) return;
 
-	UE_LOG(LogTemp, Warning, TEXT(">>> [BOSS] Enter Phase 2 <<<"));
+	UE_LOG(LogTemp, Warning, TEXT(">>> [BOSS] Enter Phase 2 (Enraged) <<<"));
 
 	bPhase2Started = true;
 	SetPhase(EBossPhase::Phase2);
+	bIsInvincible = false; // 2페이즈 전투 시작 시 무적 해제 (필요 시 조정)
 
-	// 페이즈 전환 시 잠깐 무적 해제 (또는 기획에 따라 유지)
-	bIsInvincible = true;
-
-	SpawnCrystals(); // 2페이즈 시작 시 수정 소환
+	// 기획에 따라 2페이즈 시작 시 수정을 또 소환할지 결정 (현재는 생략)
+	// SpawnCrystals(); 
 }
 
 void AStage1Boss::PerformWipeAttack()
 {
 	UE_LOG(LogTemp, Error, TEXT(">>> [BOSS] WIPE ATTACK TRIGGERED! <<<"));
 
-	// 모든 플레이어에게 즉사급 데미지
 	TArray<AActor*> Players;
 	UGameplayStatics::GetAllActorsOfClass(GetWorld(), ACharacter::StaticClass(), Players);
 
@@ -174,7 +218,6 @@ void AStage1Boss::PerformWipeAttack()
 	{
 		if (P && P != this)
 		{
-			// TrueDamageType을 사용하여 방어 무시 데미지 적용
 			UGameplayStatics::ApplyDamage(P, 99999.f, GetController(), this, UTrueDamageType::StaticClass());
 		}
 	}
@@ -183,13 +226,21 @@ void AStage1Boss::PerformWipeAttack()
 void AStage1Boss::OnPhaseChanged(EBossPhase NewPhase)
 {
 	Super::OnPhaseChanged(NewPhase);
-	if (NewPhase == EBossPhase::Gimmick) { bIsInvincible = true; SpawnCrystals(); }
-	else if (NewPhase == EBossPhase::Phase1) bIsInvincible = false;
+	// Gimmick 페이즈일 때만 무적 및 수정 소환
+	if (NewPhase == EBossPhase::Gimmick)
+	{
+		bIsInvincible = true;
+		SpawnCrystals();
+	}
+	else if (NewPhase == EBossPhase::Phase1)
+	{
+		bIsInvincible = false;
+	}
 }
 
 void AStage1Boss::OnHealthChanged(float CH, float MH)
 {
-	// 체력 70% 이하 & 아직 벽 패턴 안 썼으면 발동
+	// 체력 70 이하 & 벽 패턴 미발동 시 실행
 	if (HasAuthority() && !bHasTriggeredDeathWall && CH > 0 && (CH / MH) <= 0.7f)
 	{
 		bHasTriggeredDeathWall = true;
@@ -198,15 +249,13 @@ void AStage1Boss::OnHealthChanged(float CH, float MH)
 }
 
 // ==============================================================================
-// [2] 일반 공격 (Melee & Animation Control)
+// [2] 일반 공격 (Melee)
 // ==============================================================================
 
-// 1. 1.5초간 멈추기
 void AStage1Boss::AnimNotify_StartMeleeHold()
 {
 	if (!HasAuthority()) return;
 
-	// AI 이동 금지
 	if (AAIController* AIC = Cast<AAIController>(GetController()))
 	{
 		AIC->StopMovement();
@@ -215,23 +264,16 @@ void AStage1Boss::AnimNotify_StartMeleeHold()
 			Brain->StopLogic(TEXT("HoldLogic"));
 		}
 	}
-
-	// 0.01f로 설정하여 애니메이션이 완전히 멈추지 않게 함
 	Multicast_SetAttackPlayRate(0.01f);
-
-	// 1.5초 뒤 재개
 	GetWorldTimerManager().SetTimer(MeleeAttackTimerHandle, this, &AStage1Boss::ReleaseMeleeAttackHold, 1.5f, false);
 }
 
-// 2. 1.5초 뒤 재개
 void AStage1Boss::ReleaseMeleeAttackHold()
 {
 	if (!HasAuthority()) return;
 
-	// 정상 속도로 복구
 	Multicast_SetAttackPlayRate(1.0f);
 
-	// AI 다시 켜기
 	if (AAIController* AIC = Cast<AAIController>(GetController()))
 	{
 		if (UBrainComponent* Brain = AIC->GetBrainComponent())
@@ -241,7 +283,6 @@ void AStage1Boss::ReleaseMeleeAttackHold()
 	}
 }
 
-// 3. 멀티캐스트 (속도 조절)
 void AStage1Boss::Multicast_SetAttackPlayRate_Implementation(float NewRate)
 {
 	UAnimInstance* AnimInst = GetMesh()->GetAnimInstance();
@@ -251,23 +292,14 @@ void AStage1Boss::Multicast_SetAttackPlayRate_Implementation(float NewRate)
 	if (CurrentMontage)
 	{
 		AnimInst->Montage_SetPlayRate(CurrentMontage, NewRate);
-
 		if (FAnimMontageInstance* MontageInst = AnimInst->GetActiveInstanceForMontage(CurrentMontage))
 		{
-			// 속도가 느릴 때는 블렌드 아웃 방지
-			if (NewRate < 0.5f)
-			{
-				MontageInst->bEnableAutoBlendOut = false;
-			}
-			else
-			{
-				MontageInst->bEnableAutoBlendOut = true;
-			}
+			if (NewRate < 0.5f) MontageInst->bEnableAutoBlendOut = false;
+			else MontageInst->bEnableAutoBlendOut = true;
 		}
 	}
 }
 
-// [노티파이 2] 실제 타격 지점
 void AStage1Boss::AnimNotify_ExecuteMeleeHit()
 {
 	if (!HasAuthority()) return;
@@ -285,18 +317,11 @@ void AStage1Boss::AnimNotify_ExecuteMeleeHit()
 	{
 		if (Target && Target != this)
 		{
-			UGameplayStatics::ApplyDamage(
-				Target,
-				MeleeDamageAmount,
-				GetController(),
-				this,
-				UDamageType::StaticClass()
-			);
+			UGameplayStatics::ApplyDamage(Target, MeleeDamageAmount, GetController(), this, UDamageType::StaticClass());
 		}
 	}
 }
 
-// AI Controller 호출용 함수
 void AStage1Boss::DoAttack_Slash()
 {
 	if (HasAuthority() && BossData && BossData->SlashAttackMontage)
@@ -339,7 +364,7 @@ void AStage1Boss::OnMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 }
 
 // ==============================================================================
-// [3] 죽음의 성벽 (Death Wall) & Rampart
+// [3] 죽음의 성벽 (Death Wall)
 // ==============================================================================
 
 void AStage1Boss::StartDeathWallSequence()
@@ -463,27 +488,45 @@ void AStage1Boss::OnArrivedAtCastLocation(FAIRequestID RID, EPathFollowingResult
 }
 
 // ==============================================================================
-// [4] 기믹: Job Crystal Spawn
+// [4] 기믹: Job Crystal Spawn (안전장치 추가)
 // ==============================================================================
 
 void AStage1Boss::SpawnCrystals()
 {
 	if (!HasAuthority()) return;
+
+	// [크래쉬 방지] 스폰 포인트가 설정되지 않았으면 중단
+	if (CrystalSpawnPoints.Num() == 0)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[BOSS] CrystalSpawnPoints is EMPTY! Please check Blueprint/Level settings."));
+		return;
+	}
+
 	TArray<EJobType> JobOrder = { EJobType::Titan, EJobType::Striker, EJobType::Mage, EJobType::Paladin };
 	RemainingGimmickCount = 0;
 
 	for (int32 i = 0; i < CrystalSpawnPoints.Num(); ++i)
 	{
 		if (i >= JobOrder.Num()) break;
-		if (!JobCrystalClasses.Contains(JobOrder[i]) || !CrystalSpawnPoints[i]) continue;
+		if (!CrystalSpawnPoints[i] || !JobCrystalClasses.Contains(JobOrder[i])) continue;
 
-		if (AJobCrystal* NC = GetWorld()->SpawnActor<AJobCrystal>(JobCrystalClasses[JobOrder[i]], CrystalSpawnPoints[i]->GetActorLocation(), FRotator::ZeroRotator))
+		FActorSpawnParameters Params;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+		AJobCrystal* NC = GetWorld()->SpawnActor<AJobCrystal>(
+			JobCrystalClasses[JobOrder[i]],
+			CrystalSpawnPoints[i]->GetActorLocation(),
+			FRotator::ZeroRotator,
+			Params);
+
+		if (NC)
 		{
 			NC->TargetBoss = this;
 			NC->RequiredJobType = JobOrder[i];
 			RemainingGimmickCount++;
 		}
 	}
+	UE_LOG(LogTemp, Log, TEXT("[BOSS] Spawned %d Job Crystals"), RemainingGimmickCount);
 }
 
 void AStage1Boss::OnGimmickResolved(int32 GimmickID)
@@ -491,13 +534,14 @@ void AStage1Boss::OnGimmickResolved(int32 GimmickID)
 	if (!HasAuthority()) return;
 	if (--RemainingGimmickCount <= 0)
 	{
+		// 2페이즈 진행 중이면 다시 2페이즈 상태(무적해제)로, 아니면 1페이즈 상태로 복귀
 		if (bPhase2Started) { SetPhase(EBossPhase::Phase2); bIsInvincible = false; }
 		else SetPhase(EBossPhase::Phase1);
 	}
 }
 
 // ==============================================================================
-// [5] 기타 스킬 (Spike Pattern)
+// [5] 스파이크 패턴
 // ==============================================================================
 
 void AStage1Boss::StartSpikePattern()
