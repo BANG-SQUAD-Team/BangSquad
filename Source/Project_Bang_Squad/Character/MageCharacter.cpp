@@ -1,5 +1,6 @@
 #include "Project_Bang_Squad/Character/MageCharacter.h"
 #include "Project_Bang_Squad/Projectile/MageProjectile.h"
+#include "Project_Bang_Squad/Character/Player/Mage/MageSkill2Rock.h"
 #include "Project_Bang_Squad/Character/Pillar.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Camera/CameraComponent.h"
@@ -12,7 +13,10 @@
 #include "Components/TimelineComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "Curves/CurveFloat.h"
+#include "NiagaraFunctionLibrary.h" 
+#include "NiagaraComponent.h"
 #include "Net/UnrealNetwork.h"
+#include "Player/Mage/MageSkill2Rock.h"
 #include "Player/Mage/MagicBoat.h"
 
 // ====================================================================================
@@ -449,17 +453,51 @@ void AMageCharacter::ProcessSkill(FName SkillRowName)
 		{
 			if (Data->SkillMontage) Server_PlayMontage(Data->SkillMontage);
 
-			if (Data->ProjectileClass)
+			if (SkillRowName == TEXT("Skill2")) // 데이터 테이블 RowName과 일치해야함
 			{
-				float SkillDamage = Data->Damage;
-				FTimerDelegate TimerDel;
-				TimerDel.BindUObject(this, &AMageCharacter::SpawnDelayedProjectile, Data->ProjectileClass.Get(),
-				                     SkillDamage);
+				// 지팡이 끝(Weapon_Root_R)에 이펙트 부착해서 재생
+				UNiagaraFunctionLibrary::SpawnSystemAttached(
+					Skill2CastEffect,
+					GetMesh(),
+					TEXT("Weapon_Root_R"), // 소켓 이름 (지팡이 끝)
+					FVector::ZeroVector,
+					FRotator::ZeroRotator,
+					EAttachLocation::SnapToTarget,
+					true
+				);
+				
+				// 바위 소환
+				if (Data->ProjectileClass)
+				{
+					float Dmg = Data->Damage;
+					FTimerDelegate TimerDel;
+					// 바위 소환 함수 연결
+					TimerDel.BindUObject(this, &AMageCharacter::SpawnSkill2Rock, Data->ProjectileClass.Get(),Dmg);
+					
+					// 딜레이(손 동작) 후 소환
+					if (Data->ActionDelay > 0.0f)
+						GetWorldTimerManager().SetTimer(RockSpawnTimerHandle, TimerDel, Data->ActionDelay, false);
 
-				if (Data->ActionDelay > 0.0f)
-					GetWorldTimerManager().SetTimer(ProjectileTimerHandle, TimerDel, Data->ActionDelay, false);
-				else
-					SpawnDelayedProjectile(Data->ProjectileClass, SkillDamage);
+					else
+					{
+						SpawnSkill2Rock(Data->ProjectileClass,Dmg);
+					}
+				}
+			}
+			else
+			{
+				if (Data->ProjectileClass)
+				{
+					float Dmg = Data->Damage;
+					FTimerDelegate TimerDel;
+					TimerDel.BindUObject(this, &AMageCharacter::SpawnDelayedProjectile, Data->ProjectileClass.Get(),
+										 Dmg);
+
+					if (Data->ActionDelay > 0.0f)
+						GetWorldTimerManager().SetTimer(ProjectileTimerHandle, TimerDel, Data->ActionDelay, false);
+					else
+						SpawnDelayedProjectile(Data->ProjectileClass, Dmg);
+				}
 			}
 		}
 		else
@@ -524,7 +562,7 @@ void AMageCharacter::SpawnDelayedProjectile(UClass* ProjectileClass, float Damag
 }
 
 // ====================================================================================
-//  섹션 5: 직업 능력 (Job Ability - Telekinesis/Boat)
+//  섹션 5: 직업 능력 (Job Ability - Telekinesis/Boat) 및 스킬
 // ====================================================================================
 
 void AMageCharacter::JobAbility()
@@ -661,6 +699,58 @@ void AMageCharacter::EndJobAbility()
 		SpringArm->bInheritPitch = true;
 		SpringArm->bInheritYaw = true;
 		SpringArm->bInheritRoll = true;
+	}
+}
+
+void AMageCharacter::SpawnSkill2Rock(UClass* RockClass, float DamageAmount)
+{
+	// 서버만 실행 & 클래스 체크
+	if (!HasAuthority() || !RockClass) return;
+	
+	// 1. 소환 거리
+	float SpawnDistance = 600.0f;
+	
+	// 2. 위치 계산 : (내 위치) + (앞쪽 방향 * 거리) + (위로 살짝 띄움)
+	FVector ActorLoc = GetActorLocation();
+	FVector ForwardDir = GetActorForwardVector();
+	
+	// 레이저 시작점 (플레이어 전방 6m 지점의 공중)
+	FVector TraceStart = ActorLoc + (ForwardDir * SpawnDistance) + FVector (0.f,0.f, 200.f);
+	// 레이저 끝점 (바닥을 찾기 위해 아래로 쏨)
+	FVector TraceEnd = TraceStart - FVector (0.f,0.f, 1000.f);
+	
+	FHitResult HitResult;
+	FCollisionQueryParams Params;
+	Params.AddIgnoredActor(this);
+	
+	FVector FinalSpawnLoc = TraceStart;
+	
+	// 3. 바닥 찾기
+	if (GetWorld()->LineTraceSingleByChannel(HitResult, TraceStart, TraceEnd, ECC_Visibility, Params))
+	{
+		FinalSpawnLoc = HitResult.ImpactPoint; // 바닥 위치 발견
+	}
+	else
+	{
+		// 바닥이 없으면(허공이면) 플레이어 높이 기준으로 설정
+		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red,TEXT("Skill Failed: No Ground Found!"));
+		return;
+	}
+	
+	FRotator SpawnRot = FRotator::ZeroRotator;
+	
+	// 4. 액터(바위) 생성
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.Owner = this;
+	SpawnParams.Instigator = this;
+	
+	AActor* SpawnedActor = GetWorld()->SpawnActor<AActor>(RockClass, FinalSpawnLoc,
+		SpawnRot, SpawnParams);
+	
+	// 5. 초기화
+	if (AMageSkill2Rock* Rock = Cast<AMageSkill2Rock>(SpawnedActor))
+	{
+		Rock-> InitializeRock(DamageAmount, this);
 	}
 }
 

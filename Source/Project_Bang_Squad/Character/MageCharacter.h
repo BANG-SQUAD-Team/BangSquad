@@ -13,6 +13,7 @@
 class UTimelineComponent;
 class APillar;
 class UCurveFloat; 
+class UNiagaraSystem;
 
 UCLASS()
 class PROJECT_BANG_SQUAD_API AMageCharacter : public ABaseCharacter
@@ -107,6 +108,14 @@ protected:
     // 데이터 테이블 캐싱 변수
     TMap<FName, FSkillData*> SkillDataCache;
 
+    // 스킬 2번 소환 타이머 핸들
+    FTimerHandle RockSpawnTimerHandle;
+    // 바위 소환 함수
+    void SpawnSkill2Rock(UClass* RockClass, float DamageAmount);
+    // 스킬 2번 이펙트
+    UPROPERTY(EditDefaultsOnly, Category = "VFX")
+    UNiagaraSystem* Skill2CastEffect;
+    
     // ====================================================================================
     //  섹션 5: 직업 능력 (Job Ability - Telekinesis/Boat)
     // ====================================================================================
