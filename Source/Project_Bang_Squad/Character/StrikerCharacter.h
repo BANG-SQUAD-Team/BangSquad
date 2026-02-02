@@ -102,6 +102,9 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat|Skill1")
 	TSubclassOf<AActor> SlashActorClass;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat|Skill1")
+	TSubclassOf<AActor> GhostActorClass;
+
 	FTimerHandle SlashLoopTimerHandle;
 
 	void SpawnRandomSlashFX();

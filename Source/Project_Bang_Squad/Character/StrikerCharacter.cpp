@@ -403,7 +403,7 @@ void AStrikerCharacter::Multicast_PlaySkill1FX_Implementation(AActor* Target)
 
 void AStrikerCharacter::SpawnRandomSlashFX()
 {
-    // 방어 코드
+    // 1. 안전장치: 타겟이 사라졌거나, 베기 이펙트(SlashActorClass)가 없으면 타이머 종료
     if (!CurrentComboTarget || !SlashActorClass)
     {
         GetWorldTimerManager().ClearTimer(SlashLoopTimerHandle);
@@ -412,31 +412,45 @@ void AStrikerCharacter::SpawnRandomSlashFX()
 
     FVector TargetLoc = CurrentComboTarget->GetActorLocation();
 
-    // 2개씩 생성
+    // 2. 한 번에 2세트씩 소환 (베기 + 잔상)
     for (int32 i = 0; i < 2; i++)
     {
-        // 1. 위치: 타겟 주변 랜덤
+        // [위치 계산] 타겟 주변 50~100 거리의 랜덤한 허공
         FVector RandomOffset = FMath::VRand() * FMath::RandRange(50.0f, 100.0f);
         FVector SpawnLoc = TargetLoc + RandomOffset;
 
-        // 2. 회전: 랜덤 (이것만 남김)
-        FRotator RandomRot = FRotator(FMath::RandRange(0.f, 360.f), FMath::RandRange(0.f, 360.f), FMath::RandRange(0.f, 360.f));
-
-        // 3. 액터 소환 (설정값 그대로!)
+        // [공통 옵션] 벽 속에 있어도 무조건 소환해라
         FActorSpawnParameters SpawnParams;
         SpawnParams.Owner = this;
         SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
-        // [수정] Scale이나 Transform 따위 안 씁니다. 그냥 위치와 회전만 주고 낳습니다.
-        // 이러면 BP_SlashEffect에 설정된 '기본 크기' 그대로 나옵니다.
-        AActor* SpawnedActor = GetWorld()->SpawnActor<AActor>(SlashActorClass, SpawnLoc, RandomRot, SpawnParams);
+        // ====================================================
+        // A. 베기 이펙트 (빨간 막대기) 소환
+        // ====================================================
+        // 막대기는 방향이 제멋대로여야 멋있음 (완전 랜덤 회전)
+        FRotator BeamRot = FRotator(FMath::RandRange(0.f, 360.f), FMath::RandRange(0.f, 360.f), FMath::RandRange(0.f, 360.f));
 
-        if (SpawnedActor)
+        AActor* SpawnedSlash = GetWorld()->SpawnActor<AActor>(SlashActorClass, SpawnLoc, BeamRot, SpawnParams);
+        if (SpawnedSlash)
         {
-            // 크기 조절 코드(SetActorScale3D) -> 전부 삭제했습니다.
+            // 크기 조절 안 함 (BP 설정 그대로 나옴)
+            SpawnedSlash->SetLifeSpan(0.1f); // 0.1초 뒤 삭제
+        }
 
-            // 수명만 0.1초로 설정 (안 사라지면 안 되니까)
-            SpawnedActor->SetLifeSpan(0.1f);
+        // ====================================================
+        // B. 유령 잔상 (캐릭터 분신) 소환
+        // ====================================================
+        if (GhostActorClass)
+        {
+            // 유령은 타겟을 쳐다보면서 소환되어야 공격하는 것 같음
+            FRotator LookAtRot = (TargetLoc - SpawnLoc).Rotation();
+            // (만약 유령도 랜덤으로 돌리고 싶으면 위 BeamRot을 넣으세요)
+
+            AActor* SpawnedGhost = GetWorld()->SpawnActor<AActor>(GhostActorClass, SpawnLoc, LookAtRot, SpawnParams);
+            if (SpawnedGhost)
+            {
+                SpawnedGhost->SetLifeSpan(0.1f); // 유령도 0.1초 뒤 삭제 (번쩍!)
+            }
         }
     }
 }
