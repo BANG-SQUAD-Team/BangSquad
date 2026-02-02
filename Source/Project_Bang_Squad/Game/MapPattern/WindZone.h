@@ -7,70 +7,86 @@
 class UBoxComponent;
 class UNiagaraComponent;
 class UArrowComponent;
-class UNiagaraSystem;
+class UUserWidget;
 
 UCLASS()
 class PROJECT_BANG_SQUAD_API AWindZone : public AActor
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
     
 public: 
-    AWindZone();
-    virtual void BeginPlay() override;
-    virtual void Tick(float DeltaTime) override;
-    virtual void NotifyActorBeginOverlap(AActor* OtherActor) override;
-    virtual void NotifyActorEndOverlap(AActor* OtherActor) override;
+	AWindZone();
+	virtual void BeginPlay() override;
+	virtual void Tick(float DeltaTime) override;
+	virtual void NotifyActorBeginOverlap(AActor* OtherActor) override;
+	virtual void NotifyActorEndOverlap(AActor* OtherActor) override;
+
+	// 리플리케이션(동기화) 필수 함수
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 protected:
-    // ==========================================
-    // [기존 변수 유지]
-    // ==========================================
-    UPROPERTY(EditAnywhere, Category = "Wind Settings")
-    float ShieldDamagePerSec = 5.0f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	UArrowComponent* ArrowComp;
     
-    UPROPERTY(EditAnywhere, Category = "VFX")
-    UNiagaraSystem* WindEffectTemplate;
-
-    UPROPERTY(EditAnywhere, Category = "VFX")
-    float SpawnInterval = 0.1f;
-
-    void SpawnRandomWindVFX();
-    FTimerHandle SpawnTimerHandle;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	UBoxComponent* WindBox;
     
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-    UArrowComponent* ArrowComp;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	UNiagaraComponent* WindVFX;
     
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-    UBoxComponent* WindBox;
+	// ==========================================
+	// 바람 사이클 설정
+	// ==========================================
+	UPROPERTY(EditAnywhere, Category = "Wind Cycle")
+	float WindStrength = 2000.0f; 
     
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-    UNiagaraComponent* WindVFX;
-
-    // ==========================================
-    // [부유 로직을 위해 이름 변경 및 추가된 변수]
-    // ==========================================
+	UPROPERTY(EditAnywhere, Category = "Wind Cycle")
+	float GustDuration = 1.0f;
     
-    // 바람의 수평 세기 (뒤로 밀리는 힘)
-    UPROPERTY(EditAnywhere, Category = "Wind Setting")
-    float WindStrength = 500.0f; // 부유 로직에선 수치를 200~800 정도로 낮게 씁니다.
-
-    // 캐릭터를 얼마나 높이 띄울지 (지면으로부터의 cm)
-    UPROPERTY(EditAnywhere, Category = "Wind Setting")
-    float MaxHoverHeight = 80.0f;
-
-    // 위로 띄워 올리는 힘의 세기
-    UPROPERTY(EditAnywhere, Category = "Wind Setting")
-    float HoverForce = 1200.0f;
-
-    // 바람에 노출되었을 때의 중력 배율 (0.0~0.5 추천, 낮을수록 둥실둥실함)
-    UPROPERTY(EditAnywhere, Category = "Wind Setting")
-    float WindGravityScale = 0.2f;
-
-    UPROPERTY(EditAnywhere, Category = "Wind Setting")
-    bool bPushForward = true;
+	UPROPERTY(EditAnywhere, Category = "Wind Cycle")
+	float WarningDuration = 3.0f; 
+	
+	UPROPERTY(EditAnywhere, Category = "Wind Cycle")
+	float CalmDuration = 5.0f;
     
-    UPROPERTY(EditAnywhere, Category = "Wind Setting")
-    TEnumAsByte<ECollisionChannel> BlockChannel = ECC_Visibility;
+	UPROPERTY(EditAnywhere, Category = "Wind Setting")
+	bool bPushForward = true;
+    
+	UPROPERTY(EditAnywhere, Category = "Wind Setting")
+	TEnumAsByte<ECollisionChannel> BlockChannel = ECC_Visibility;
 
-    // [삭제 추천]: GroundFrictionMultiplier는 이제 Falling 모드를 쓰므로 의미가 없어졌습니다.
+	// ==========================================
+	// UI 설정
+	// ==========================================
+	UPROPERTY(EditAnywhere, Category = "UI")
+	TSubclassOf<UUserWidget> WarningWidgetClass;
+	
+	UPROPERTY()
+	UUserWidget* WarningWidgetInstance;
+	
+	// ==========================================
+	// 네트워크 동기화 변수
+	// ==========================================
+    
+	// 서버에서 이 값이 바뀌면, 클라이언트의 OnRep 함수가 자동으로 실행됩니다.
+	UPROPERTY(ReplicatedUsing = OnRep_IsGusting)
+	bool bIsGusting = false;
+    
+	// 경고 상태 여부
+	UPROPERTY(ReplicatedUsing = OnRep_IsWarning)
+	bool bIsWarning = false;
+	
+	UFUNCTION()
+	void OnRep_IsGusting();
+	
+	UFUNCTION()
+	void OnRep_IsWarning();
+
+	FTimerHandle GustCycleTimer;
+
+	void StartWarning();
+	void StartGust();
+	void StopGust();
+	
+	void UpdateWarningUI(bool bShow);
 };
