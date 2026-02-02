@@ -7,6 +7,8 @@
 #include "Project_Bang_Squad/Character/Component/HealthComponent.h"
 #include "Project_Bang_Squad/Character/Enemy/EnemyNormal.h"
 #include "Project_Bang_Squad/Character/Enemy/EnemyMidBoss.h"
+#include "NiagaraFunctionLibrary.h"
+#include "NiagaraComponent.h"
 
 AStrikerCharacter::AStrikerCharacter()
 {
@@ -66,8 +68,7 @@ void AStrikerCharacter::OnDeath()
 		CurrentComboTarget = nullptr;
 	}
 	GetWorldTimerManager().ClearTimer(Skill1TimerHandle);
-
-	// [추가] 평타 판정 타이머 정리
+    GetWorldTimerManager().ClearTimer(SlashLoopTimerHandle);
 	GetWorldTimerManager().ClearTimer(AttackHitTimerHandle);
 	GetWorldTimerManager().ClearTimer(HitLoopTimerHandle);
 
@@ -77,7 +78,7 @@ void AStrikerCharacter::OnDeath()
 }
 
 // =================================================================
-// [입력 핸들러 및 평타 (팔라딘 스타일)]
+// [입력 핸들러 및 평타
 // =================================================================
 
 void AStrikerCharacter::Attack()
@@ -158,7 +159,7 @@ void AStrikerCharacter::Multicast_Attack_Implementation(FName SkillName)
 }
 
 // =========================================================
-// [팔라딘 스타일] 스윕(Trace) 판정 로직 구현
+//  스윕(Trace) 판정 로직 구현
 // =========================================================
 
 void AStrikerCharacter::StartMeleeTrace()
@@ -386,19 +387,66 @@ void AStrikerCharacter::Server_TrySkill1_Implementation(AActor* TargetActor)
 	CurrentComboTarget = TargetChar;
 	GetWorldTimerManager().SetTimer(Skill1TimerHandle, this, &AStrikerCharacter::EndSkill1, 1.0f, false);
 }
+
+void AStrikerCharacter::Multicast_PlaySkill1FX_Implementation(AActor* Target)
+{
+    // 1. 기존 몽타주 재생 (애니메이션)
+    ProcessSkill(TEXT("Skill1"));
+
+    // 2. 난도질 이펙트 루프 시작
+    // 0.12초마다 SpawnRandomSlashFX 함수를 실행하여 "슉..슉..슉!" 연출
+    if (Target && Skill1SlashVFX)
+    {
+        GetWorldTimerManager().SetTimer(SlashLoopTimerHandle, this, &AStrikerCharacter::SpawnRandomSlashFX, 0.12f, true);
+    }
+}
+
+// [추가] 랜덤 위치에 베기 이펙트 생성 (이게 '슉슉슉'의 핵심)
+void AStrikerCharacter::SpawnRandomSlashFX()
+{
+    // 타겟이 사라지면 중단
+    if (!CurrentComboTarget)
+    {
+        GetWorldTimerManager().ClearTimer(SlashLoopTimerHandle);
+        return;
+    }
+
+    FVector TargetLoc = CurrentComboTarget->GetActorLocation();
+
+    // 1. 위치 랜덤: 타겟 중심에서 30~80 정도 떨어진 구체 범위 내 랜덤 위치
+    FVector RandomOffset = FMath::VRand() * FMath::RandRange(30.0f, 80.0f);
+    FVector SpawnLoc = TargetLoc + RandomOffset;
+
+    // 2. 회전 랜덤: 칼선이 제각각이어야 난도질 느낌이 남
+    FRotator RandomRot = FRotator(FMath::RandRange(0.f, 360.f), FMath::RandRange(0.f, 360.f), 0.f);
+
+    if (Skill1SlashVFX)
+    {
+        UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+            GetWorld(),
+            Skill1SlashVFX,
+            SpawnLoc,
+            RandomRot,
+            FVector(1.2f)
+        );
+    }
+
+}
+
+// [수정] 스킬 종료 처리
 void AStrikerCharacter::EndSkill1()
 {
+    // 1. 난도질 타이머 종료 (더 이상 이펙트 안 나옴)
+    GetWorldTimerManager().ClearTimer(SlashLoopTimerHandle);
+
+    // 2. 중력 복구 (내려찍지 않고 그냥 놓아줌)
     GetCharacterMovement()->GravityScale = 1.0f;
+
     if (CurrentComboTarget)
     {
         ReleaseTarget(CurrentComboTarget);
         CurrentComboTarget = nullptr;
     }
-}
-
-void AStrikerCharacter::Multicast_PlaySkill1FX_Implementation(AActor* Target)
-{
-    ProcessSkill(TEXT("Skill1"));
 }
 
 // ============================================================================

@@ -99,6 +99,13 @@ protected:
 	UFUNCTION(NetMulticast, Unreliable)
 	void Multicast_PlaySkill1FX(AActor* Target);
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat|Skill1")
+    class UNiagaraSystem* Skill1SlashVFX;
+
+	FTimerHandle SlashLoopTimerHandle;
+
+	void SpawnRandomSlashFX();
+
 	// =================================================================
 	// [네트워크: 스킬 2 (내려찍기)]
 	// =================================================================
