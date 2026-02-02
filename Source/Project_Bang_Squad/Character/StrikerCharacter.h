@@ -100,7 +100,7 @@ protected:
 	void Multicast_PlaySkill1FX(AActor* Target);
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat|Skill1")
-    class UNiagaraSystem* Skill1SlashVFX;
+	TSubclassOf<AActor> SlashActorClass;
 
 	FTimerHandle SlashLoopTimerHandle;
 

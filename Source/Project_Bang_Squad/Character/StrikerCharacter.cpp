@@ -7,8 +7,7 @@
 #include "Project_Bang_Squad/Character/Component/HealthComponent.h"
 #include "Project_Bang_Squad/Character/Enemy/EnemyNormal.h"
 #include "Project_Bang_Squad/Character/Enemy/EnemyMidBoss.h"
-#include "NiagaraFunctionLibrary.h"
-#include "NiagaraComponent.h"
+
 
 AStrikerCharacter::AStrikerCharacter()
 {
@@ -386,22 +385,26 @@ void AStrikerCharacter::Server_TrySkill1_Implementation(AActor* TargetActor)
 
 void AStrikerCharacter::Multicast_PlaySkill1FX_Implementation(AActor* Target)
 {
+    GetMesh()->SetVisibility(false);
+
     // 1. 기존 몽타주 재생 (애니메이션)
     ProcessSkill(TEXT("Skill1"));
 
-    // 2. 난도질 이펙트 루프 시작
-    // 0.12초마다 SpawnRandomSlashFX 함수를 실행하여 "슉..슉..슉!" 연출
-    if (Target && Skill1SlashVFX)
+    // 혹시 켜져 있을지 모를 타이머 끄기 (중복 실행 방지)
+    GetWorldTimerManager().ClearTimer(SlashLoopTimerHandle);
+
+    // [수정] 이제 Niagara(Skill1SlashVFX)가 아니라 액터 클래스(SlashActorClass)를 확인해야 합니다.
+    if (Target && SlashActorClass)
     {
-        GetWorldTimerManager().SetTimer(SlashLoopTimerHandle, this, &AStrikerCharacter::SpawnRandomSlashFX, 0.12f, true);
+        // 0.05초마다 액터 소환 함수 실행
+        GetWorldTimerManager().SetTimer(SlashLoopTimerHandle, this, &AStrikerCharacter::SpawnRandomSlashFX, 0.05f, true);
     }
 }
 
-// [추가] 랜덤 위치에 베기 이펙트 생성 (이게 '슉슉슉'의 핵심)
 void AStrikerCharacter::SpawnRandomSlashFX()
 {
-    // 타겟이 사라지면 중단
-    if (!CurrentComboTarget)
+    // 방어 코드
+    if (!CurrentComboTarget || !SlashActorClass)
     {
         GetWorldTimerManager().ClearTimer(SlashLoopTimerHandle);
         return;
@@ -409,24 +412,33 @@ void AStrikerCharacter::SpawnRandomSlashFX()
 
     FVector TargetLoc = CurrentComboTarget->GetActorLocation();
 
-    // 1. 위치 랜덤: 타겟 중심에서 30~80 정도 떨어진 구체 범위 내 랜덤 위치
-    FVector RandomOffset = FMath::VRand() * FMath::RandRange(30.0f, 80.0f);
-    FVector SpawnLoc = TargetLoc + RandomOffset;
-
-    // 2. 회전 랜덤: 칼선이 제각각이어야 난도질 느낌이 남
-    FRotator RandomRot = FRotator(FMath::RandRange(0.f, 360.f), FMath::RandRange(0.f, 360.f), 0.f);
-
-    if (Skill1SlashVFX)
+    // 2개씩 생성
+    for (int32 i = 0; i < 2; i++)
     {
-        UNiagaraFunctionLibrary::SpawnSystemAtLocation(
-            GetWorld(),
-            Skill1SlashVFX,
-            SpawnLoc,
-            RandomRot,
-            FVector(1.2f)
-        );
-    }
+        // 1. 위치: 타겟 주변 랜덤
+        FVector RandomOffset = FMath::VRand() * FMath::RandRange(50.0f, 100.0f);
+        FVector SpawnLoc = TargetLoc + RandomOffset;
 
+        // 2. 회전: 랜덤 (이것만 남김)
+        FRotator RandomRot = FRotator(FMath::RandRange(0.f, 360.f), FMath::RandRange(0.f, 360.f), FMath::RandRange(0.f, 360.f));
+
+        // 3. 액터 소환 (설정값 그대로!)
+        FActorSpawnParameters SpawnParams;
+        SpawnParams.Owner = this;
+        SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+        // [수정] Scale이나 Transform 따위 안 씁니다. 그냥 위치와 회전만 주고 낳습니다.
+        // 이러면 BP_SlashEffect에 설정된 '기본 크기' 그대로 나옵니다.
+        AActor* SpawnedActor = GetWorld()->SpawnActor<AActor>(SlashActorClass, SpawnLoc, RandomRot, SpawnParams);
+
+        if (SpawnedActor)
+        {
+            // 크기 조절 코드(SetActorScale3D) -> 전부 삭제했습니다.
+
+            // 수명만 0.1초로 설정 (안 사라지면 안 되니까)
+            SpawnedActor->SetLifeSpan(0.1f);
+        }
+    }
 }
 
 // [수정] 스킬 종료 처리
@@ -435,8 +447,12 @@ void AStrikerCharacter::EndSkill1()
     // 1. 난도질 타이머 종료 (더 이상 이펙트 안 나옴)
     GetWorldTimerManager().ClearTimer(SlashLoopTimerHandle);
 
-    // 2. 중력 복구 (내려찍지 않고 그냥 놓아줌)
     GetCharacterMovement()->GravityScale = 1.0f;
+
+    GetWorldTimerManager().ClearTimer(SlashLoopTimerHandle);
+
+    // [추가] 캐릭터를 다시 짠! 하고 나타나게 합니다.
+    GetMesh()->SetVisibility(true);
 
     if (CurrentComboTarget)
     {
