@@ -35,10 +35,12 @@ protected:
 
 	/** 살짝 띄워주는 상단 힘 (이게 있어야 잘 날아감) */
 	UPROPERTY(EditAnywhere, Category = "Knockback Settings")
-	float UpwardForce = 500.0f;
+	float UpwardForce = 10.0f;
 
 	/** 충돌 감지를 위한 함수 */
 	UFUNCTION()
 	void OnMeshHit(UPrimitiveComponent* HitComponent, AActor* OtherActor,
 		UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
+
+	void PreventClipping();
 };
