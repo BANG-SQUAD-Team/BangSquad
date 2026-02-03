@@ -107,16 +107,6 @@ protected:
     // ====================================================================================
     //  섹션 4: 스킬 시스템 (Skill System - Smash)
     // ====================================================================================
-    virtual void Skill1() override; // 분쇄
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "VFX")
-    UNiagaraSystem* SmashImpactVFX;
-    
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "VFX")
-    FVector SmashVFXScale;
-    
-    UFUNCTION(NetMulticast, Unreliable)
-    void Multicast_PlaySmashVFX(FVector Location);
-    
     // 데이터 테이블 및 처리 로직
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Data")
     UDataTable* SkillDataTable;
@@ -127,7 +117,18 @@ protected:
 
     UFUNCTION(Server, Reliable)
     void Server_ProcessSkill(FName SkillRowName);
-
+    
+    // 스킬 1
+    virtual void Skill1() override; // 분쇄
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "VFX")
+    UNiagaraSystem* SmashImpactVFX;
+    
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "VFX")
+    FVector SmashVFXScale;
+    
+    UFUNCTION(NetMulticast, Unreliable)
+    void Multicast_PlaySmashVFX(FVector Location);
+    
     // 스킬 딜레이 및 데미지 변수
     float CurrentActionDelay = 0.0f;
     float CurrentSkillDamage = 0.0f;
@@ -136,7 +137,31 @@ protected:
     // 타이머가 끝나면 실제로 폭발 데미지를 주는 함수 (인자 추가됨)
     UFUNCTION()
     void PerformSmashDamage(float SmashingDamage);
-
+    
+    // 스킬 2
+    virtual void Skill2() override;
+    // 서버 RPC
+    UFUNCTION(Server, Reliable)
+    void Server_Skill2();
+    
+    // 스킬 2 시전 이펙트
+    UPROPERTY(EditAnywhere, Category= "VFX")
+    UNiagaraSystem* Skill2CastVFX;
+    
+    UFUNCTION(NetMulticast, Reliable)
+    void Multicast_PlaySkill2CastVFX();
+    
+    // 타이머가 끝나면 실제로 망치를 소환할 함수
+    UFUNCTION()
+    void SpawnSkill2Hammer(float FinalDamage);
+    
+    // 망치 액터 클래스
+    UPROPERTY(EditAnywhere, Category = "Combat|Skill")
+    TSubclassOf<class APaladinSkill2Hammer> Skill2HammerClass;
+    
+    // 쿨타임 체크용 변수
+    float Skill2ReadyTime = 0.0f;
+ 
     // ====================================================================================
     //  섹션 5: 방어 시스템 (Job Ability - Shield)
     // ====================================================================================

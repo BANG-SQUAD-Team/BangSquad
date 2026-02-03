@@ -11,6 +11,7 @@
 #include "Engine/DamageEvents.h"
 #include "DrawDebugHelpers.h" 
 #include "NiagaraFunctionLibrary.h"
+#include "Project_Bang_Squad/Character/Player/Paladin/PaladinSkill2Hammer.h"
 #include "Components/CapsuleComponent.h"
 
 // ====================================================================================
@@ -341,6 +342,53 @@ void APaladinCharacter::Skill1()
     ProcessSkill(FName("Skill1"));
 }
 
+void APaladinCharacter::Skill2()
+{
+    if (!CanAttack()) return;
+    if (bIsDead || bIsGuarding) return;
+    
+    // 로컬 쿨타임 체크
+    float CurrentTime = GetWorld()->GetTimeSeconds();
+    if (CurrentTime < Skill2ReadyTime) return;
+
+    // ================================================================
+    // 클라이언트(나)도 몽타주를 직접 재생해야 함!
+    // ================================================================
+    if (SkillDataTable)
+    {
+        static const FString ContextString(TEXT("PaladinSkill2_Client"));
+        FSkillData* Data = SkillDataTable->FindRow<FSkillData>(TEXT("Skill2"), ContextString);
+        
+        // 데이터가 있고, 몽타주가 있다면 즉시 재생
+        if (Data && IsSkillUnlocked(Data->RequiredStage))
+        {
+            if (Data->SkillMontage)
+            {
+                // BaseCharacter에 있는 함수 사용 (ProcessSkill과 동일하게)
+                PlayActionMontage(Data->SkillMontage); 
+            }
+        }
+    }
+    
+    if (Skill2CastVFX)
+    {
+        FVector SpawnLoc = GetActorLocation();
+        SpawnLoc.Z -= GetCapsuleComponent()->GetScaledCapsuleHalfHeight(); // 발밑
+
+        UNiagaraFunctionLibrary::SpawnSystemAttached(
+            Skill2CastVFX, 
+            GetMesh(),
+            TEXT("Hand_R_Root"),
+            FVector::ZeroVector,
+            FRotator::ZeroRotator, 
+            EAttachLocation::SnapToTarget,
+            true
+        );
+    }
+
+    // 서버에게 스킬 사용 요청 (여기서 망치 소환 및 다른 사람들에게 몽타주 전송)
+    Server_Skill2();
+}
 void APaladinCharacter::ProcessSkill(FName SkillRowName)
 {
     if (!CanAttack()) return;
@@ -374,7 +422,7 @@ void APaladinCharacter::ProcessSkill(FName SkillRowName)
             // ==============================================================
             int32 SkillIdx = 0;
             if (SkillRowName == FName("Skill1")) SkillIdx = 1; 
-            else if (SkillRowName == FName("Skill2")) SkillIdx = 2; 
+            // else if (SkillRowName == FName("Skill2")) SkillIdx = 2; 
             
             if (SkillIdx > 0)
             {
@@ -470,6 +518,127 @@ void APaladinCharacter::Server_ProcessSkill_Implementation(FName SkillRowName)
     ProcessSkill(SkillRowName);
 }
 
+void APaladinCharacter::SpawnSkill2Hammer(float FinalDamage)
+{
+    if (!HasAuthority()) return; // 서버만 실행 가능
+
+    if (Skill2HammerClass)
+    {
+        FVector MyLoc = GetActorLocation();
+        FVector Forward = GetActorForwardVector();
+        
+        // 1. 이상적인 위치
+        FVector IdealLoc = MyLoc + (Forward * 800.0f) + FVector(0.f, 0.f, 1000.f);
+        
+        // 2. 벽/천장 검사 
+        FHitResult HitResult;
+        FCollisionQueryParams QueryParams;
+        QueryParams.AddIgnoredActor(this);
+
+        bool bHit = GetWorld()->LineTraceSingleByChannel(
+            HitResult, MyLoc, IdealLoc, ECC_Visibility, QueryParams
+        );
+
+        FVector FinalSpawnLoc = bHit ? (HitResult.Location - (HitResult.ImpactNormal * 50.0f)) : IdealLoc;
+
+        // 3. 디버그 표시
+        DrawDebugSphere(GetWorld(), FinalSpawnLoc, 30.0f, 12, FColor::Red, false, 3.0f);
+
+        // 4. 회전 동기화
+        FRotator MyRot = GetActorRotation();
+        FRotator SpawnRot = FRotator(0.0f, MyRot.Yaw, 0.0f);
+
+        // 5. 진짜 소환
+        FActorSpawnParameters Params;
+        Params.Owner = this;
+        Params.Instigator = this;
+        Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+        APaladinSkill2Hammer* Hammer = GetWorld()->SpawnActor<APaladinSkill2Hammer>(
+            Skill2HammerClass, FinalSpawnLoc, SpawnRot, Params
+        );
+
+        if (Hammer)
+        {
+            Hammer->InitializeHammer(FinalDamage, this);
+        }
+    }
+}
+
+
+void APaladinCharacter::Server_Skill2_Implementation()
+{
+    // 1. 데이터 테이블 값 가져오기
+    float FinalCooldown = 10.0f;
+    float FinalDamage = 70.0f;
+    float DelayTime = 0.0f; // 딜레이 시간 변수 추가
+
+    if (SkillDataTable)
+    {
+        static const FString ContextString(TEXT("PaladinSkill2"));
+        FSkillData* Data = SkillDataTable->FindRow<FSkillData>(TEXT("Skill2"), ContextString);
+        if (Data)
+        {
+            if (!IsSkillUnlocked(Data->RequiredStage)) return;
+            
+            FinalDamage = Data->Damage; 
+            if (Data->Cooldown > 0.0f) FinalCooldown = Data->Cooldown;
+            DelayTime = Data->ActionDelay; // ✅ 여기서 딜레이 시간을 가져옵니다!
+            
+            // 서버에서도 몽타주 재생 (다른 클라들에게 보임)
+            if (Data->SkillMontage) Multicast_PlayMontage(Data->SkillMontage);
+        }
+    }
+
+    // 2. 쿨타임 적용 및 UI 알림
+    Skill2ReadyTime = GetWorld()->GetTimeSeconds() + FinalCooldown;
+    TriggerSkillCooldown(2, FinalCooldown); 
+
+    Multicast_PlaySkill2CastVFX();
+    
+    // 3. 타이머 설정 (ActionDelay 적용)
+    // 기존의 소환 로직을 다 지우고, 만들어둔 SpawnSkill2Hammer 함수를 타이머로 호출합니다.
+    if (DelayTime > 0.0f)
+    {
+        FTimerHandle SpawnTimerHandle;
+        FTimerDelegate TimerDel;
+        
+        // "SpawnSkill2Hammer 함수를 실행하되, 인자로 FinalDamage를 넘겨라"
+        TimerDel.BindUFunction(this, FName("SpawnSkill2Hammer"), FinalDamage);
+
+        // 딜레이 시간만큼 기다렸다가 발사!
+        GetWorldTimerManager().SetTimer(SpawnTimerHandle, TimerDel, DelayTime, false);
+    }
+    else
+    {
+        // 딜레이가 0이면 즉시 발사
+        SpawnSkill2Hammer(FinalDamage);
+    }
+}
+
+void APaladinCharacter::Multicast_PlaySkill2CastVFX_Implementation()
+{
+    // 주인(Local)은 Skill2() 함수에서 이미 틀었으니 중복 재생 방지
+    if (IsLocallyControlled()) return;
+
+    if (Skill2CastVFX)
+    {
+        // 발밑에 소환 (캡슐 높이만큼 빼줌)
+        FVector SpawnLoc = GetActorLocation();
+        SpawnLoc.Z -= GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+
+        UNiagaraFunctionLibrary::SpawnSystemAttached(
+            Skill2CastVFX,
+            GetMesh(),
+            TEXT("Hand_R_Root"),
+            FVector::ZeroVector,
+            FRotator::ZeroRotator,
+            EAttachLocation::SnapToTarget,
+            true
+        );
+    }
+}
+
 void APaladinCharacter::PerformSmashDamage(float SmashingDamage)
 {
     // 1. 서버 권한 체크
@@ -501,18 +670,42 @@ void APaladinCharacter::PerformSmashDamage(float SmashingDamage)
         for (const FHitResult& Hit : HitResults)
         {
             AActor* Victim = Hit.GetActor();
+            if (!Victim || Victim == this || HitActors.Contains(Victim)) continue;
             
-            if (Victim && Victim->ActorHasTag(TEXT("Player")))
+            HitActors.Add(Victim);
+            
+            // =========================================================
+            // 1. [물리] 넉백 효과 (적 & 아군 모두 적용)
+            // =========================================================
+            ACharacter* VictimChar = Cast<ACharacter>(Victim);
+            if (VictimChar)
             {
-                continue;
+                // 밀쳐낼 방향 계산 (중심-> 대상 방향)
+                FVector KnockbackDir = (Victim->GetActorLocation() - ImpactLocation).GetSafeNormal();
+                KnockbackDir.Z = 0.0f;// 수평 방향만 고려 (위로 뜨는건 별도)
+                KnockbackDir.Normalize();
+                
+                // 힘 조절 
+                FVector LaunchForce = (KnockbackDir * 1000.0f) + FVector (0.0f, 0.0f, 400.0f);
+                
+                // 확실하게 띄우기 위해 바닥 마찰력 무시
+                if (VictimChar->GetCharacterMovement())
+                {
+                    VictimChar->GetCharacterMovement()->StopMovementImmediately();
+                    VictimChar->GetCharacterMovement()->SetMovementMode(MOVE_Falling);
+                }
+                
+                VictimChar->LaunchCharacter(LaunchForce, true, true);
             }
             
-            // 중복되지 않은 대상에게만 데미지 적용
-            if (Victim && !HitActors.Contains(Victim) && Victim != this)
+            // =========================================================
+            // 2. [데미지] (적군만 적용!)
+            // =========================================================
+            // 플레이어 태그가 없는 경우에만 데미지
+            if (!Victim->ActorHasTag(TEXT("Player")))
             {
-                HitActors.Add(Victim);
-                // 파라미터로 받은 '고정된 데미지(SmashingDamage)' 사용
-                UGameplayStatics::ApplyDamage(Victim, SmashingDamage, GetController(), this, UDamageType::StaticClass());
+                UGameplayStatics::ApplyDamage(Victim, SmashingDamage, GetController(),
+                    this, UDamageType::StaticClass());
             }
         }
     }
