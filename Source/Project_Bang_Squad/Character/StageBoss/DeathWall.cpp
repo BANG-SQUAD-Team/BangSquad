@@ -13,28 +13,35 @@ ADeathWall::ADeathWall()
     bReplicates = true;
     SetReplicateMovement(true);
 
-    // [1] 루트 컴포넌트 생성 (기준점)
-    DefaultSceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("DefaultSceneRoot"));
-    RootComponent = DefaultSceneRoot;
+    // [1] 트리거 박스 생성 (이벤트 감지용 대장)
+    KillZoneTrigger = CreateDefaultSubobject<UBoxComponent>(TEXT("KillZoneTrigger"));
+    RootComponent = KillZoneTrigger;
 
-    // [2] 벽 메쉬 생성 및 루트에 부착
+    // ★ 트리거 박스 콜리전 설정 (여기가 핵심)
+    KillZoneTrigger->SetBoxExtent(FVector(50.0f, 1000.0f, 1000.0f));
+    KillZoneTrigger->SetCollisionProfileName(TEXT("Custom"));
+    KillZoneTrigger->SetCollisionEnabled(ECollisionEnabled::QueryOnly); // 물리 충돌 없음, 감지(Query)만 함
+    KillZoneTrigger->SetCollisionResponseToAllChannels(ECR_Ignore); // 일단 다 무시하고
+    KillZoneTrigger->SetCollisionResponseToChannel(ECC_KillZone, ECR_Overlap); // ★ 킬존만 Overlap 감지!
+    KillZoneTrigger->SetGenerateOverlapEvents(true); // 이벤트 켜기
+
+    // [2] 벽 메쉬 (보이는 용도 + 플레이어 밀기용)
     WallMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("WallMesh"));
-    WallMesh->SetupAttachment(DefaultSceneRoot); // 루트 밑에 자식으로 붙임
-    WallMesh->SetCollisionProfileName(TEXT("BlockAll"));
+    WallMesh->SetupAttachment(KillZoneTrigger);
+    WallMesh->SetCollisionProfileName(TEXT("BlockAll")); // 얘는 플레이어를 밀어야 하니 Block
 
-    // ★ 여기서 회전! (이제 루트는 가만히 있고 메쉬만 돌아갑니다)
-    // -90도로 해서 정면을 맞춥니다. 만약 반대면 90.0f로 바꾸세요.
-    WallMesh->SetRelativeRotation(FRotator(0.0f, -90.0f, 0.0f));
+    // 메쉬 회전값 초기화
+    MeshRotation = FRotator(0.0f, -90.0f, 0.0f);
+    WallMesh->SetRelativeRotation(MeshRotation);
 
-    // [3] 생성 범위 박스 (루트에 부착해서 이동 방향과 일치시킴)
+    // [3] 스폰 볼륨
     SpawnVolume = CreateDefaultSubobject<UBoxComponent>(TEXT("SpawnVolume"));
-    SpawnVolume->SetupAttachment(DefaultSceneRoot);
+    SpawnVolume->SetupAttachment(KillZoneTrigger);
     SpawnVolume->SetLineThickness(5.0f);
     SpawnVolume->ShapeColor = FColor::Red;
     SpawnVolume->SetCollisionProfileName(TEXT("NoCollision"));
     SpawnVolume->SetBoxExtent(FVector(100.0f, 1000.0f, 1000.0f));
 
-    // [설정값 초기화]
     FirstPlatformHeight = 60.0f;
     LayerHeight = 150.0f;
     BranchWidth = 120.0f;
@@ -46,21 +53,23 @@ void ADeathWall::BeginPlay()
 {
     Super::BeginPlay();
 
+    if (WallMesh)
+    {
+        WallMesh->SetRelativeRotation(MeshRotation);
+    }
+
     if (HasAuthority())
     {
         GeneratePlatforms();
-
-        // [핵심 1] 벽의 수명을 1분 40초(100초)로 설정
-        // 이 시간이 지나면 벽은 자동으로 Destroy 됩니다.
         SetLifeSpan(105.0f);
 
-        // (기존 코드: 다른 성벽 무시 로직 유지...)
         TArray<AActor*> FoundRamparts;
         UGameplayStatics::GetAllActorsOfClass(GetWorld(), ABoss1_Rampart::StaticClass(), FoundRamparts);
         for (AActor* Actor : FoundRamparts)
         {
             if (ABoss1_Rampart* Rampart = Cast<ABoss1_Rampart>(Actor))
             {
+                if (KillZoneTrigger) KillZoneTrigger->IgnoreActorWhenMoving(Rampart, true);
                 if (WallMesh) WallMesh->IgnoreActorWhenMoving(Rampart, true);
                 if (UPrimitiveComponent* RampartRoot = Cast<UPrimitiveComponent>(Rampart->GetRootComponent()))
                 {
@@ -81,12 +90,30 @@ void ADeathWall::Tick(float DeltaTime)
     }
 }
 
+void ADeathWall::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+    Super::EndPlay(EndPlayReason);
+
+    // 저장해둔 자식들(발판, 점프패드)을 전부 파괴합니다.
+    for (AActor* ChildActor : SpawnedActors)
+    {
+        // 아직 살아있는 놈들만 골라서 파괴
+        if (ChildActor && !ChildActor->IsPendingKillPending())
+        {
+            ChildActor->Destroy();
+        }
+    }
+
+    // 리스트 비우기
+    SpawnedActors.Empty();
+}
+
 void ADeathWall::GeneratePlatforms()
 {
     if (!PlatformClass || !JumpPadClass) return;
 
     // ====================================================
-    // 1. 기본 설정 (80% vs 20%)
+    // 1. 기본 설정 (80% vs 20%) -> 님 로직 그대로
     // ====================================================
     FVector BoxExtent = SpawnVolume->GetScaledBoxExtent();
     FVector BoxOrigin = SpawnVolume->GetComponentLocation();
@@ -98,12 +125,10 @@ void ADeathWall::GeneratePlatforms()
     float TotalWidth = BoxExtent.Y * 2.0f;
     float PadZoneWidth = TotalWidth * 0.2f;
 
-    // 회전값 (90도)
     FRotator BaseRot = GetActorRotation();
     FRotator PlatformRot = BaseRot;
     PlatformRot.Yaw += 90.0f;
 
-    // ★ [1] 방향 결정 (여기서 딱 한 번만 해야 함!)
     bool bStoneOnLeft = FMath::RandBool();
 
     float LeftWall = -BoxExtent.Y + 50.0f;
@@ -111,14 +136,13 @@ void ADeathWall::GeneratePlatforms()
 
     float DividerY = 0.0f;
     float StoneMinY, StoneMaxY, PadMinY, PadMaxY;
-    float StoneDir = 0.0f; // -1: 왼쪽, 1: 오른쪽
-    float PadDir = 0.0f;   // 돌과 반대
+    float StoneDir = 0.0f;
+    float PadDir = 0.0f;
 
-    // 구역 설정
     if (bStoneOnLeft)
     {
         StoneDir = -1.0f;
-        PadDir = 1.0f; // 패드는 오른쪽
+        PadDir = 1.0f;
         DividerY = RightWall - PadZoneWidth;
         StoneMinY = LeftWall;
         StoneMaxY = DividerY - 50.0f;
@@ -128,7 +152,7 @@ void ADeathWall::GeneratePlatforms()
     else
     {
         StoneDir = 1.0f;
-        PadDir = -1.0f; // 패드는 왼쪽
+        PadDir = -1.0f;
         DividerY = LeftWall + PadZoneWidth;
         PadMinY = LeftWall;
         PadMaxY = DividerY - 50.0f;
@@ -136,7 +160,6 @@ void ADeathWall::GeneratePlatforms()
         StoneMaxY = RightWall;
     }
 
-    // 설정값
     float MinStairGap = 220.0f;
     float MaxStairGap = 450.0f;
     float MinLongFlat = 560.0f;
@@ -152,16 +175,22 @@ void ADeathWall::GeneratePlatforms()
     // ----------------------------------------------------
     // [2] 공통 시작 구간 (Start)
     // ----------------------------------------------------
-    // ★ 높이: 바닥 + 20 (요청하신 대로 낮게)
     float CurrentZ = BoxBottomZ + 20.0f;
 
-    // 1번 발판: 완전 중앙 바닥
+    // 1번 발판
     FVector Pos1 = BoxOrigin;
     Pos1.Z = CurrentZ;
     Pos1 += FwdVec * StickOut;
-    GetWorld()->SpawnActor<AActor>(PlatformClass, Pos1, PlatformRot)->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepWorldTransform);
 
-    // 2번 발판: 돌 구역 시작점 (중앙에서 200만큼 옆으로)
+    // [수정됨] 변수에 담고 리스트에 추가
+    AActor* P1 = GetWorld()->SpawnActor<AActor>(PlatformClass, Pos1, PlatformRot);
+    if (P1)
+    {
+        P1->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepWorldTransform);
+        SpawnedActors.Add(P1); // ★ 추가
+    }
+
+    // 2번 발판
     float StoneStartZ = CurrentZ + GridHeight;
     float StartY = StoneDir * 200.0f;
 
@@ -169,12 +198,19 @@ void ADeathWall::GeneratePlatforms()
     Pos2.Z = StoneStartZ;
     Pos2 += FwdVec * StickOut;
     Pos2 += RightVec * StartY;
-    GetWorld()->SpawnActor<AActor>(PlatformClass, Pos2, PlatformRot)->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepWorldTransform);
+
+    // [수정됨] 변수에 담고 리스트에 추가
+    AActor* P2 = GetWorld()->SpawnActor<AActor>(PlatformClass, Pos2, PlatformRot);
+    if (P2)
+    {
+        P2->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepWorldTransform);
+        SpawnedActors.Add(P2); // ★ 추가
+    }
 
     float ForkZ = StoneStartZ;
 
     // ====================================================
-    // [3] 돌 발판 루프 (80% 구역)
+    // [3] 돌 발판 루프 -> 로직 그대로
     // ====================================================
     float StoneZ = ForkZ + GridHeight;
     float StoneY = StartY;
@@ -247,21 +283,24 @@ void ADeathWall::GeneratePlatforms()
         SpawnPos += FwdVec * StickOut;
         SpawnPos += RightVec * StoneY;
 
+        // [수정됨] 변수에 담고 리스트에 추가
         AActor* NewPlat = GetWorld()->SpawnActor<AActor>(PlatformClass, SpawnPos, PlatformRot);
-        if (NewPlat) NewPlat->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepWorldTransform);
+        if (NewPlat)
+        {
+            NewPlat->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepWorldTransform);
+            SpawnedActors.Add(NewPlat); // ★ 추가
+        }
 
         StoneZ += GridHeight;
         StepsInCurrentDir++;
     }
 
     // ====================================================
-    // [4] 점프 패드 루프 (20% 구역)
+    // [4] 점프 패드 루프 -> 로직 그대로
     // ====================================================
-    // 1번 발판(CurrentZ)보다 살짝 위(+20)에서 징검다리 시작
     float PadZ = CurrentZ + 20.0f;
     float PadZoneCenter = (PadMinY + PadMaxY) * 0.5f;
 
-    // 중앙(0) -> 패드 구역까지 이어주는 징검다리 4개
     int32 BridgeSteps = 4;
 
     for (int32 i = 1; i <= BridgeSteps; ++i)
@@ -274,13 +313,17 @@ void ADeathWall::GeneratePlatforms()
         StepPos += FwdVec * StickOut;
         StepPos += RightVec * BridgeY;
 
+        // [수정됨] 변수에 담고 리스트에 추가
         AActor* StepPlat = GetWorld()->SpawnActor<AActor>(PlatformClass, StepPos, PlatformRot);
-        if (StepPlat) StepPlat->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepWorldTransform);
+        if (StepPlat)
+        {
+            StepPlat->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepWorldTransform);
+            SpawnedActors.Add(StepPlat); // ★ 추가
+        }
 
-        PadZ += FMath::RandRange(30.0f, 80.0f); // 랜덤 높이 증가
+        PadZ += FMath::RandRange(30.0f, 80.0f);
     }
 
-    // 점프 패드 생성 시작
     float PadY = PadZoneCenter;
     int32 PadSkip = 0;
 
@@ -298,8 +341,13 @@ void ADeathWall::GeneratePlatforms()
             PadPos += FwdVec * StickOut;
             PadPos += RightVec * PadY;
 
+            // [수정됨] 변수에 담고 리스트에 추가
             AActor* NewPad = GetWorld()->SpawnActor<AActor>(JumpPadClass, PadPos, PlatformRot);
-            if (NewPad) NewPad->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepWorldTransform);
+            if (NewPad)
+            {
+                NewPad->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepWorldTransform);
+                SpawnedActors.Add(NewPad); // ★ 추가
+            }
 
             PadSkip = FMath::RandRange(5, 7);
         }
@@ -319,14 +367,45 @@ void ADeathWall::DeactivateWall()
 
 void ADeathWall::NotifyActorBeginOverlap(AActor* OtherActor)
 {
+    // [로그 1] 일단 부딪히긴 했는지 확인 (이게 안 뜨면 설정 문제)
+    if (OtherActor)
+    {
+        UE_LOG(LogTemp, Error, TEXT(">>> [1] EVENT FIRED! Something hit me: %s"), *OtherActor->GetName());
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT(">>> [1] EVENT FIRED! But OtherActor is NULL"));
+    }
+
     Super::NotifyActorBeginOverlap(OtherActor);
 
-    // 서버에서만 삭제 처리를 관리합니다.
-    if (!HasAuthority()) return;
-
-    if (OtherActor && OtherActor->ActorHasTag(FName("KillZone")))
+    if (!HasAuthority())
     {
-        UE_LOG(LogTemp, Warning, TEXT(">>> [DEATHWALL] Reached KillZone. Self-Destructing."));
+        UE_LOG(LogTemp, Warning, TEXT(">>> [2] Client ignored. (Server only)"));
+        return;
+    }
+
+    if (!OtherActor) return;
+
+    UPrimitiveComponent* OtherRoot = Cast<UPrimitiveComponent>(OtherActor->GetRootComponent());
+    if (!OtherRoot)
+    {
+        UE_LOG(LogTemp, Error, TEXT(">>> [3] FAIL: OtherActor has no RootComponent."));
+        return;
+    }
+
+    // 채널 확인
+    ECollisionChannel OtherChannel = OtherRoot->GetCollisionObjectType();
+    UE_LOG(LogTemp, Warning, TEXT(">>> [4] Hit Channel Info -> Name: %s / Channel Number: %d"), *OtherActor->GetName(), (int32)OtherChannel);
+
+    // 우리가 찾는 KillZone(3번)인지 확인
+    if (OtherChannel == ECC_KillZone)
+    {
+        UE_LOG(LogTemp, Error, TEXT(">>> [5] MATCH! KillZone Detected. DESTROYING WALL."));
         Destroy();
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT(">>> [5] MISMATCH: We hit something, but it's not KillZone."));
     }
 }

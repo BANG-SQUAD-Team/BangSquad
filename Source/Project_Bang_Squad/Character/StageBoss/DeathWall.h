@@ -2,7 +2,10 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
-#include "DeathWall.generated.h" // 이 파일은 반드시 마지막 include여야 합니다.
+#include "DeathWall.generated.h"
+
+// [설정] 3번 채널 = KillZone
+#define ECC_KillZone ECC_GameTraceChannel3
 
 UCLASS()
 class PROJECT_BANG_SQUAD_API ADeathWall : public AActor
@@ -15,6 +18,8 @@ public:
 protected:
     virtual void BeginPlay() override;
     virtual void NotifyActorBeginOverlap(AActor* OtherActor) override;
+    virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
 public:
     virtual void Tick(float DeltaTime) override;
 
@@ -24,19 +29,23 @@ public:
     UFUNCTION(BlueprintCallable)
     void DeactivateWall();
 
-
 protected:
-    // [수정] 메쉬를 담을 루트 컴포넌트 추가
+    // 1. [Root] 킬존 감지용 트리거 (대장)
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-    class USceneComponent* DefaultSceneRoot;
+    class UBoxComponent* KillZoneTrigger;
 
+    // 2. 물리 벽 (자식)
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
     class UStaticMeshComponent* WallMesh;
 
+    // 3. 스폰 볼륨 (자식)
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
     class UBoxComponent* SpawnVolume;
 
-    // [설정]
+    // [설정] 메쉬 회전값
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wall Settings")
+    FRotator MeshRotation;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wall Settings")
     TSubclassOf<AActor> PlatformClass;
 
@@ -48,23 +57,21 @@ protected:
 
     bool bIsActive = true;
 
-    // [패턴 설정값]
+    // [패턴 변수들]
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern Settings")
     float FirstPlatformHeight = 60.0f;
-
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern Settings")
     float LayerHeight = 150.0f;
-
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern Settings")
     float PlatformStickOut = 150.0f;
-
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern Settings")
     float RandomFlatProb = 0.3f;
 
-    // CPP 생성자용 변수
     float BranchWidth = 120.0f;
     float BranchProbability = 0.6f;
 
-    // 내부 함수
+    UPROPERTY()
+    TArray<AActor*> SpawnedActors;
+
     void GeneratePlatforms();
 };
