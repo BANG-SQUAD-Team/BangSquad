@@ -385,21 +385,34 @@ void AStrikerCharacter::Server_TrySkill1_Implementation(AActor* TargetActor)
 
 void AStrikerCharacter::Multicast_PlaySkill1FX_Implementation(AActor* Target)
 {
+    // 1. 캐릭터 메쉬 숨기기
     GetMesh()->SetVisibility(false);
 
-    // 1. 기존 몽타주 재생 (애니메이션)
+    // [수정] 변수명 충돌 해결 (Children -> WeaponComponents)
+    TArray<USceneComponent*> WeaponComponents;
+    GetMesh()->GetChildrenComponents(true, WeaponComponents);
+
+    for (USceneComponent* Child : WeaponComponents)
+    {
+        // 블루프린트에서 이름이 "Weapon_Root"로 시작하는 컴포넌트(L, R 둘 다)를 찾음
+        if (Child && Child->GetName().Contains(TEXT("Weapon_Root")))
+        {
+            Child->SetVisibility(false);
+        }
+    }
+
+    // 2. 기존 몽타주 재생 (애니메이션)
     ProcessSkill(TEXT("Skill1"));
 
     // 혹시 켜져 있을지 모를 타이머 끄기 (중복 실행 방지)
     GetWorldTimerManager().ClearTimer(SlashLoopTimerHandle);
 
-    // [수정] 이제 Niagara(Skill1SlashVFX)가 아니라 액터 클래스(SlashActorClass)를 확인해야 합니다.
     if (Target && SlashActorClass)
     {
         // 0.05초마다 액터 소환 함수 실행
         GetWorldTimerManager().SetTimer(SlashLoopTimerHandle, this, &AStrikerCharacter::SpawnRandomSlashFX, 0.05f, true);
     }
-}
+} 
 
 void AStrikerCharacter::SpawnRandomSlashFX()
 {
@@ -455,18 +468,27 @@ void AStrikerCharacter::SpawnRandomSlashFX()
     }
 }
 
-// [수정] 스킬 종료 처리
 void AStrikerCharacter::EndSkill1()
 {
-    // 1. 난도질 타이머 종료 (더 이상 이펙트 안 나옴)
+    // 1. 난도질 타이머 종료
     GetWorldTimerManager().ClearTimer(SlashLoopTimerHandle);
 
     GetCharacterMovement()->GravityScale = 1.0f;
 
-    GetWorldTimerManager().ClearTimer(SlashLoopTimerHandle);
-
-    // [추가] 캐릭터를 다시 짠! 하고 나타나게 합니다.
+    // [추가] 캐릭터 메쉬 다시 보이기
     GetMesh()->SetVisibility(true);
+
+    // [수정] 변수명 충돌 해결 (Children -> WeaponComponents)
+    TArray<USceneComponent*> WeaponComponents;
+    GetMesh()->GetChildrenComponents(true, WeaponComponents);
+
+    for (USceneComponent* Child : WeaponComponents)
+    {
+        if (Child && Child->GetName().Contains(TEXT("Weapon_Root")))
+        {
+            Child->SetVisibility(true);
+        }
+    }
 
     if (CurrentComboTarget)
     {
