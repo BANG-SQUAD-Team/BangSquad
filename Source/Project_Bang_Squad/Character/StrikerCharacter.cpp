@@ -366,13 +366,24 @@ void AStrikerCharacter::Server_TrySkill1_Implementation(AActor* TargetActor)
 	if (!TargetChar) return;
 	float DistSq = FVector::DistSquared(GetActorLocation(), TargetActor->GetActorLocation());
 	if (DistSq > 1500.f * 1500.f) return;
+	
 	float SkillDamage = 0.f;
+	float CooldownTime = 6.0f;
+	
 	if (SkillDataTable)
 	{
 		static const FString ContextString(TEXT("Striker Skill1 Context"));
 		FSkillData* Data = SkillDataTable->FindRow<FSkillData>(TEXT("Skill1"), ContextString);
-		if (Data) { if (!IsSkillUnlocked(Data->RequiredStage)) return; SkillDamage = Data->Damage; if (Data->SkillMontage) Multicast_PlaySkill1FX(TargetChar); }
+		if (Data) 
+			{ 
+			if (!IsSkillUnlocked(Data->RequiredStage)) return;
+			SkillDamage = Data->Damage; 
+			if (Data->SkillMontage) Multicast_PlaySkill1FX(TargetChar);
+			}
 	}
+	// UI 알림용 1번스킬
+	TriggerSkillCooldown(1, CooldownTime);
+	
 	FVector TeleportLoc = TargetChar->GetActorLocation() - (TargetChar->GetActorForwardVector() * 100.f) + FVector(0, 0, 50.f);
 	SetActorLocation(TeleportLoc);
 	FVector LookDir = TargetChar->GetActorLocation() - TeleportLoc; LookDir.Z = 0.f; SetActorRotation(LookDir.Rotation());
@@ -516,25 +527,28 @@ void AStrikerCharacter::Server_StartSkill2_Implementation()
 {
     // 1. 쿨타임 로직 (기존 동일)
     float CurrentTime = GetWorld()->GetTimeSeconds();
-    float ActualCooldown = 0.0f;
+    float CooldownTime = 6.0f;
     if (SkillDataTable)
     {
         static const FString ContextString(TEXT("StrikerSkill2Cooldown"));
         FSkillData* Data = SkillDataTable->FindRow<FSkillData>(TEXT("Skill2"), ContextString);
-        if (Data && Data->Cooldown > 0.0f) ActualCooldown = Data->Cooldown;
+        
+    	if (Data && Data->Cooldown > 0.0f) CooldownTime = Data->Cooldown;
     }
-    Skill2ReadyTime = CurrentTime + ActualCooldown;
+	
+    Skill2ReadyTime = CurrentTime + CooldownTime;
+	
+	// UI 알림용 2번스킬
+	TriggerSkillCooldown(2, CooldownTime);
 
-    // 2. [중요] 여기서 Multicast_Skill2()를 부르지 않습니다! (아직 구르면 안됨)
+    // 2. 여기서 Multicast_Skill2()를 부르지 않습니다! (아직 구르면 안됨)
     // 대신 그냥 떨어지는 힘만 가합니다.
     bIsSlamming = true;
     bHasTriggeredLandAnim = false; // 애니메이션 플래그 초기화
-
     // 3. 강력하게 하강
     FVector SlamVelocity = FVector(0.f, 0.f, -3500.f);
     LaunchCharacter(SlamVelocity, true, true);
-
-    // 4. [추가] 0.02초마다 바닥과의 거리를 체크 시작
+    // 4. 0.02초마다 바닥과의 거리를 체크 시작
     GetWorldTimerManager().SetTimer(GroundCheckTimerHandle, this, &AStrikerCharacter::CheckGroundDistanceForSkill2, 0.02f, true);
 }
 
@@ -719,6 +733,26 @@ void AStrikerCharacter::JobAbility()
 
 void AStrikerCharacter::Server_UseJobAbility_Implementation()
 {
+	// ==============================================================
+	// 1. 쿨타임 계산 및 UI 알림 (스킬 쓰자마자 바로 실행)
+	// ==============================================================
+	float CooldownTime = 5.0f; // 안전빵용 쿨타임
+	
+	if (SkillDataTable)
+	{
+		static const FString ContextString(TEXT("StrikerJobCooldown_Server"));
+		FSkillData* Data = SkillDataTable->FindRow<FSkillData>(TEXT("JobAbility"), ContextString);
+	
+		// 데이터 테이블에 값이 있으면 그걸로 덮어쓰기
+		if (Data && Data->Cooldown > 0.0f)
+		{
+			CooldownTime = Data->Cooldown;
+		}
+	}
+	
+	// UI한테 3번 스킬 쿨타임 돌리라고 명령
+	TriggerSkillCooldown(3, CooldownTime);
+	
     // 몽타주 재생 명령만 내림 (노티파이가 타점 잡음)
     Multicast_JobAbility();
 }

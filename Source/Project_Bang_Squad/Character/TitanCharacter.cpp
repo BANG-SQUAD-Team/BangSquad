@@ -804,6 +804,8 @@ void ATitanCharacter::Server_ThrowTarget_Implementation(FVector ThrowStartLocati
     bIsGrabbing = false;
     bIsCooldown = true;
     GetWorldTimerManager().SetTimer(CooldownTimerHandle, this, &ATitanCharacter::ResetCooldown, ThrowCooldownTime, false);
+
+	TriggerSkillCooldown(3, ThrowCooldownTime);
 }
 
 void ATitanCharacter::Server_Skill1_Implementation()
@@ -819,6 +821,8 @@ void ATitanCharacter::Server_Skill1_Implementation()
        CurrentSkillDamage = Row->Damage;
        if (Row->Cooldown > 0.0f) Skill1CooldownTime = Row->Cooldown;
        Multicast_Skill1();
+
+       TriggerSkillCooldown(1, Skill1CooldownTime);
     }
 
     bIsSkill1Cooldown = true;
@@ -1024,6 +1028,8 @@ void ATitanCharacter::Server_Skill2_Implementation()
        CurrentSkillDamage = Row->Damage;
        if (Row->Cooldown > 0.0f) Skill2CooldownTime = Row->Cooldown;
        Multicast_Skill2();
+    	
+    	TriggerSkillCooldown(2, Skill2CooldownTime);
     }
 
     if (!bIsCharging)
