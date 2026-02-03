@@ -25,7 +25,11 @@ public class Project_Bang_Squad : ModuleRules
             "GameplayTasks",
             "LevelSequence",
             "MovieScene",
-            "Niagara"
+            "Niagara",
+            "GeometryCollectionEngine",
+            "FieldSystemEngine",
+            "Chaos",
+            "ChaosSolverEngine"
         });
     }
 }
