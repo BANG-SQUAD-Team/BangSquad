@@ -12,7 +12,7 @@ AShatterPlatform::AShatterPlatform()
 	GCComponent = CreateDefaultSubobject<UGeometryCollectionComponent>(TEXT("GCComponent"));
 	SetRootComponent(GCComponent);
 
-	// 물리 시뮬레이션 끄기 (고정 상태)
+	// 초기 설정
 	GCComponent->SetSimulatePhysics(false);
 	GCComponent->SetCollisionProfileName(TEXT("BlockAll"));
 
@@ -26,12 +26,19 @@ void AShatterPlatform::BeginPlay()
 {
 	Super::BeginPlay();
 
+	UE_LOG(LogTemp, Warning, TEXT("[ShatterPlatform] BeginPlay Started."));
+
 	if (HasAuthority())
 	{
 		if (TriggerBox)
 		{
 			TriggerBox->OnComponentBeginOverlap.AddDynamic(this, &AShatterPlatform::OnOverlapBegin);
 			TriggerBox->OnComponentEndOverlap.AddDynamic(this, &AShatterPlatform::OnOverlapEnd);
+			UE_LOG(LogTemp, Warning, TEXT("[ShatterPlatform] Server: TriggerBox events bound."));
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("[ShatterPlatform] Server: TriggerBox is NULL!"));
 		}
 	}
 }
@@ -39,6 +46,11 @@ void AShatterPlatform::BeginPlay()
 void AShatterPlatform::OnOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
 	if (bIsShattered) return;
+
+	// 겹친 물체가 뭔지 로그 찍기
+	FString ActorName = OtherActor ? OtherActor->GetName() : TEXT("NULL");
+	UE_LOG(LogTemp, Log, TEXT("[ShatterPlatform] Overlap Begin: %s"), *ActorName);
+
 	CheckPlayerCount();
 }
 
@@ -56,14 +68,20 @@ void AShatterPlatform::CheckPlayerCount()
 	TArray<AActor*> OverlappingActors;
 	TriggerBox->GetOverlappingActors(OverlappingActors, ABaseCharacter::StaticClass());
 
+	int32 CurrentCount = OverlappingActors.Num();
+
+	// [중요] 현재 몇 명인지 로그 출력 (화면 + 출력 로그)
+	FString Msg = FString::Printf(TEXT("[ShatterPlatform] Current Players: %d / Required: %d"), CurrentCount, RequiredPlayerCount);
+	UE_LOG(LogTemp, Warning, TEXT("%s"), *Msg);
+
 	if (GEngine)
 	{
-		FString Msg = FString::Printf(TEXT("Current Players: %d / %d"), OverlappingActors.Num(), RequiredPlayerCount);
 		GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Cyan, Msg);
 	}
 
-	if (OverlappingActors.Num() >= RequiredPlayerCount)
+	if (CurrentCount >= RequiredPlayerCount)
 	{
+		UE_LOG(LogTemp, Error, TEXT("[ShatterPlatform] Requirement Met! Calling Multicast_Shatter..."));
 		bIsShattered = true;
 		Multicast_Shatter();
 	}
@@ -71,13 +89,25 @@ void AShatterPlatform::CheckPlayerCount()
 
 void AShatterPlatform::Multicast_Shatter_Implementation()
 {
-	if (!GCComponent) return;
+	UE_LOG(LogTemp, Error, TEXT("[ShatterPlatform] Multicast_Shatter Executing!"));
 
-	// [수정됨] SetObjectType 삭제. 물리 시뮬레이션 활성화만으로 충분합니다.
+	if (!GCComponent)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[ShatterPlatform] GCComponent is NULL!"));
+		return;
+	}
+
+	// 1. 물리 시뮬레이션 켜기
 	GCComponent->SetSimulatePhysics(true);
+	GCComponent->WakeAllRigidBodies(); // 자는 물리 깨우기
+	UE_LOG(LogTemp, Warning, TEXT("[ShatterPlatform] Physics Enabled & Woken up."));
 
-	// 2. 외부 충격 가하기 (와장창)
-	GCComponent->ApplyExternalStrain(ShatterDamage, GetActorLocation(), 500.0f);
+	// 2. 외부 충격 가하기
+	// 데미지 수치와 위치 로그
+	FVector Loc = GetActorLocation();
+	UE_LOG(LogTemp, Warning, TEXT("[ShatterPlatform] Applying Strain: %f at Location: %s"), ShatterDamage, *Loc.ToString());
+
+	GCComponent->ApplyExternalStrain(ShatterDamage, Loc, 500.0f);
 
 	// 3. 트리거 비활성화
 	if (TriggerBox)
@@ -86,5 +116,6 @@ void AShatterPlatform::Multicast_Shatter_Implementation()
 	}
 
 	// 4. 삭제 타이머
+	UE_LOG(LogTemp, Warning, TEXT("[ShatterPlatform] Destroy Timer Started (%f sec)"), CleanupDelay);
 	SetLifeSpan(CleanupDelay);
 }
