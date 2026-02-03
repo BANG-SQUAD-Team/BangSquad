@@ -1,7 +1,7 @@
-// Source/Project_Bang_Squad/Character/StageBoss/StageBossBase.cpp
-
 #include "StageBossBase.h"
 #include "Net/UnrealNetwork.h"
+#include "Project_Bang_Squad/Core/TrueDamageType.h"
+#include "Engine/DamageEvents.h"
 
 AStageBossBase::AStageBossBase()
 {
@@ -22,15 +22,17 @@ void AStageBossBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 
 float AStageBossBase::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
-    // [권한 분리] 데미지 계산은 반드시 서버(Authority)에서만 수행
-    if (!HasAuthority()) return 0.0f;
+    // [수정] 부모 클래스도 트루 데미지를 알아봐야 합니다!
+    bool bIsTrueDamage = (DamageEvent.DamageTypeClass == UTrueDamageType::StaticClass());
 
-    // 무적 상태라면 데미지를 계산하지 않고 0을 반환하여 방어
-    if (bIsInvincible) return 0.0f;
+    // 트루 데미지가 '아닐 때만' 무적 체크
+    if (!bIsTrueDamage && bIsInvincible)
+    {
+        return 0.0f;
+    }
 
     return Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
 }
-
 void AStageBossBase::SetPhase(EBossPhase NewPhase)
 {
     if (!HasAuthority()) return;

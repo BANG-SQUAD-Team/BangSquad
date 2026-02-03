@@ -9,7 +9,7 @@
 #include "Engine/TargetPoint.h"
 #include "AITypes.h"
 #include "Navigation/PathFollowingComponent.h"
-// [경로 수정] 빌드 오류 방지를 위한 전체 경로 포함
+// [경로 수정]
 #include "Project_Bang_Squad/BossPattern/Boss1_Rampart.h" 
 #include "AQTEObject.h" 
 #include "Stage1Boss.generated.h"
@@ -46,18 +46,21 @@ protected:
 	virtual void OnDeathStarted() override;
 	virtual void OnGimmickResolved(int32 GimmickID) override;
 
+	// 변수 복제
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
 protected:
 	// 보스 데이터 에셋 (애니메이션, 스탯 등)
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Boss|Data")
 	TObjectPtr<UEnemyBossData> BossData;
 
-	// 체력 변경 델리게이트
+	// 체력 변경 델리게이트 (서버 전용)
 	UFUNCTION()
 	void OnHealthChanged(float CurrentHealth, float MaxHealth);
 
 
 	// ==============================================================================
-	// [1] 기믹 발동 플래그 (100% / 50% / 10%) - 중복 방지용
+	// [1] 기믹 발동 플래그 (100% / 50% / 0% QTE)
 	// ==============================================================================
 protected:
 	// 1. 조우 시(100%) 크리스탈 기믹 발동 여부
@@ -66,16 +69,13 @@ protected:
 	// 2. 중간 단계(50%) 크리스탈 기믹 발동 여부
 	bool bHasTriggeredCrystal_50 = false;
 
-	// 3. QTE(10%) 발동 여부 (기존 bHasTriggeredGimmick 대체)
+	// 3. QTE(0%) 발동 여부
+	UPROPERTY(Replicated)
 	bool bHasTriggeredQTE_10 = false;
-
-	// QTE 발동 기준 (기본값 0.1 = 10%)
-	UPROPERTY(EditAnywhere, Category = "Boss|Gimmick")
-	float GimmickThresholdRatio = 0.1f;
 
 
 	// ==============================================================================
-	// [2] QTE 시스템 비주얼 및 결과 처리
+	// [2] QTE 시스템 (피니시 연출)
 	// ==============================================================================
 public:
 	// GameMode 명령 수신: 비주얼 연출 시작
@@ -92,6 +92,10 @@ protected:
 	// 생성된 QTE 오브젝트 참조
 	UPROPERTY()
 	TObjectPtr<class AQTEObject> ActiveQTEObject;
+
+	// QTE 진입 시 애니메이션 멈춤 처리
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_FreezeAnimation(bool bFreeze);
 
 
 	// ==============================================================================

@@ -15,6 +15,7 @@
 
 #include "Animation/AnimMontage.h"
 #include "Components/BoxComponent.h"
+#include "Engine/DamageEvents.h"
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Kismet/KismetSystemLibrary.h"
@@ -26,7 +27,13 @@
 
 AStage1Boss::AStage1Boss()
 {
-	// 생성자 로직
+	bReplicates = true;
+}
+
+void AStage1Boss::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME(AStage1Boss, bHasTriggeredQTE_10);
 }
 
 void AStage1Boss::BeginPlay()
@@ -62,108 +69,116 @@ void AStage1Boss::BeginPlay()
 
 // Source/Project_Bang_Squad/Character/StageBoss/Stage1Boss.cpp
 
+// ==============================================================================
+// [1] 데미지 처리 및 기믹(100, 50, 0) 발동 로직 (핵심)
+// ==============================================================================
+
+// Source/Project_Bang_Squad/Character/StageBoss/Stage1Boss.cpp
+
 float AStage1Boss::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
-	// 1. [방어 로직] 서버 권한, 성벽 패턴 중, 무적, QTE 중이면 데미지 무시
-	// 주의: 70% 패턴(DeathWall) 중에는 데미지를 안 입어야 패턴이 안 꼬입니다.
-	if (!HasAuthority() || bIsDeathWallSequenceActive || bIsInvincible) return 0.0f;
+	// [핵심 수정] 트루 데미지(처형)인지 먼저 식별합니다.
+	// 트루 데미지는 무적, QTE 상태, 아군 여부와 상관없이 무조건 뚫고 들어가야 합니다.
+	bool bIsTrueDamage = (DamageEvent.DamageTypeClass == UTrueDamageType::StaticClass());
 
-	AStageBossGameState* GS = GetWorld()->GetGameState<AStageBossGameState>();
-	if (GS && GS->bIsQTEActive) return 0.0f;
+	// 1. [방어 로직] 트루 데미지가 "아닐 때만" 방어 기제가 작동합니다.
+	if (!bIsTrueDamage)
+	{
+		// 서버 권한 없음 OR QTE 진행 중 OR 무적 상태라면 데미지 0 (일반 공격 무효화)
+		if (!HasAuthority() || bHasTriggeredQTE_10 || bIsInvincible) return 0.0f;
 
-	// 2. [팀킬 방지]
-	AActor* Attacker = DamageCauser;
-	if (EventInstigator && EventInstigator->GetPawn()) Attacker = EventInstigator->GetPawn();
-	if (Attacker && (Attacker == this || Attacker->IsA(AEnemyCharacterBase::StaticClass()))) return 0.0f;
+		// GameState 레벨의 QTE 컷신 중인지 체크
+		AStageBossGameState* GS = GetWorld()->GetGameState<AStageBossGameState>();
+		if (GS && GS->bIsQTEActive) return 0.0f;
 
-	// ==============================================================================
-	// [수정 핵심 1] 중복 데미지 제거
-	// Super::TakeDamage를 호출하면 내부적으로 ApplyDamage가 실행됩니다.
-	// 따라서 반환받은 ActualDamage를 또 ApplyDamage 하면 안 됩니다.
-	// ==============================================================================
-	float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
-	if (ActualDamage <= 0.0f) return 0.0f;
+		// 팀킬 방지
+		AActor* Attacker = DamageCauser;
+		if (EventInstigator && EventInstigator->GetPawn()) Attacker = EventInstigator->GetPawn();
+		if (Attacker && (Attacker == this || Attacker->IsA(AEnemyCharacterBase::StaticClass()))) return 0.0f;
+	}
 
-	// 3. 체력 및 기믹 체크
+	// 2. [체력 잠금 및 기믹 발동]
+	float ActualDamage = DamageAmount;
+
 	if (UHealthComponent* HC = FindComponentByClass<UHealthComponent>())
 	{
 		float CurrentHP = HC->GetHealth();
 		float MaxHP = HC->MaxHealth;
-		float HpRatio = CurrentHP / MaxHP;
 
-		// [디버그] 체력 상황 모니터링
-		// UE_LOG(LogTemp, Log, TEXT("[BOSS] HP: %.0f / %.0f (Ratio: %.2f)"), CurrentHP, MaxHP, HpRatio);
-
-		if (GS) GS->UpdateBossHealth(CurrentHP, MaxHP);
-
-		// ==========================================================================
-		// [수정 핵심 2] 패턴 충돌 방지 (70% vs 50%)
-		// 70% 패턴은 OnHealthChanged에서 발동되므로 여기서는 신경 쓰지 않아도 되지만,
-		// 만약 데미지가 너무 커서 70%를 건너뛰고 50%가 되었다면?
-		// -> 우선순위에 따라 '성벽'을 무시하고 '크리스탈'을 가거나, 순차적으로 처리해야 함.
-		// -> 여기서는 50%가 더 중요하므로, 50% 조건 만족 시 즉시 기믹으로 전환합니다.
-		// ==========================================================================
-
-		// --- [기믹 1] 체력 50% 이하: 크리스탈 재소환 ---
-		if (!bHasTriggeredCrystal_50 && HpRatio <= 0.5f)
+		// --- [기믹 1] 체력 50% 패턴 (기존 유지) ---
+		if (!bHasTriggeredCrystal_50 && (CurrentHP - DamageAmount) / MaxHP <= 0.5f)
 		{
-			// 혹시 70% 패턴이 켜져있다면 강제 종료 시키고 전환
-			if (bIsDeathWallSequenceActive)
-			{
-				FinishDeathWallPattern();
-				UE_LOG(LogTemp, Warning, TEXT("[BOSS] Force Stopping DeathWall for 50%% Gimmick"));
-			}
+			if (bIsDeathWallSequenceActive) FinishDeathWallPattern();
 
-			// 페이즈 확인 (Phase1일 때만 발동)
 			if (CurrentPhase == EBossPhase::Phase1)
 			{
 				bHasTriggeredCrystal_50 = true;
-				SetPhase(EBossPhase::Gimmick); // -> SpawnCrystals() 호출됨
+				Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
+				SetPhase(EBossPhase::Gimmick);
 				UE_LOG(LogTemp, Warning, TEXT("[BOSS] 50%% HP Reached: Starting Crystal Gimmick!"));
-
-				// 기믹 페이즈로 가면 무적이 되므로, 추가 데미지 로직 방지
 				return ActualDamage;
 			}
 		}
 
-		// --- [기믹 2] 체력 0 도달: 피니시 QTE 발동 ---
-		if (CurrentHP <= 0.0f && !bHasTriggeredQTE_10)
+		// --- [기믹 2] 체력 1 이하 보호 (QTE 진입) ---
+		// [수정] 트루 데미지가 아닐 때만 보호 (트루 데미지면 그냥 통과해서 죽게 둠)
+		if (!bIsTrueDamage && (CurrentHP - DamageAmount) <= 1.0f && !bHasTriggeredQTE_10)
 		{
-			// 1. 죽음 유예 (데미지 롤백 느낌으로 체력 1 설정)
-			// 참고: 이미 Super에서 깎였으므로 ApplyDamage가 아닌 SetHealth 개념이 필요하지만,
-			// HealthComponent 수정 없이 하려면 다음 프레임에 회복하거나, 
-			// 여기서 그냥 로직적으로만 처리하고 GameMode에 넘깁니다.
-			// (가장 깔끔한 건 아까 알려드린 'DamageAmount 조절' 방식이지만, 
-			//  지금은 Super가 이미 불렸으므로 로직만 실행합니다.)
+			// 체력을 1.0f까지만 깎이도록 데미지 조절
+			ActualDamage = FMath::Max(0.0f, CurrentHP - 1.0f);
 
+			// 조절된 데미지 적용
+			Super::TakeDamage(ActualDamage, DamageEvent, EventInstigator, DamageCauser);
+
+			// QTE 모드 시작 (무적 및 정지)
 			bHasTriggeredQTE_10 = true;
+			bIsInvincible = true;
 
-			// QTE 시작 요청
+			if (AAIController* AIC = Cast<AAIController>(GetController())) AIC->StopMovement();
+
+			// GameMode에 QTE 시작 요청
 			if (AStageBossGameMode* GM = GetWorld()->GetAuthGameMode<AStageBossGameMode>())
 			{
 				GM->TriggerSpearQTE(this);
-				UE_LOG(LogTemp, Warning, TEXT("[BOSS] HP 0 Reached! Finale QTE Triggered!"));
+				UE_LOG(LogTemp, Warning, TEXT("[BOSS] HP 1 Reached! Finale QTE Triggered!"));
 			}
+
+			// 여기서 리턴하여 1HP 상태 유지
+			return ActualDamage;
 		}
 	}
 
-	return ActualDamage;
+	// 3. 실제 데미지 적용
+	// 트루 데미지(99999)는 위 if문들을 모두 통과하여 여기에 도달 -> 즉사
+	return Super::TakeDamage(ActualDamage, DamageEvent, EventInstigator, DamageCauser);
 }
 
-// GameMode 호출: 비주얼 연출
+// GameMode 호출: 비주얼 연출 (서버 -> 멀티캐스트)
 void AStage1Boss::PlayQTEVisuals(float Duration)
 {
 	if (!HasAuthority()) return;
 
-	// 1. 전조 동작 몽타주 재생
+	// 1. 전조 동작 몽타주 재생 (지쳐서 헐떡임 등)
 	if (BossData && BossData->QTE_TelegraphMontage)
 	{
+		// 몽타주 재생
 		Multicast_PlayAttackMontage(BossData->QTE_TelegraphMontage);
-		UE_LOG(LogTemp, Log, TEXT("[BOSS] Playing QTE Telegraph Montage"));
+
+		// 몽타주 끝자락에서 정지(Freeze) 시키기 위한 타이머
+		// (몽타주 길이에 맞춰 적절히 조절 필요, 여기선 예시로 90% 지점)
+		float MontageLength = BossData->QTE_TelegraphMontage->GetPlayLength();
+		FTimerHandle FreezeTimer;
+		GetWorldTimerManager().SetTimer(FreezeTimer, [this]()
+			{
+				Multicast_FreezeAnimation(true);
+			}, MontageLength - 0.1f, false);
+
+		UE_LOG(LogTemp, Log, TEXT("[BOSS] Playing QTE Telegraph Montage (Freezing at end)"));
 	}
 
 	// 2. 하늘에서 창(운석) 소환
-	FVector SpawnLoc = GetActorLocation() + FVector(0, 0, 2000.0f);
+	// 머리 위 높은 곳에서 소환
+	FVector SpawnLoc = GetActorLocation() + FVector(0, 0, 2500.0f);
 	if (QTEObjectClass)
 	{
 		ActiveQTEObject = GetWorld()->SpawnActor<AQTEObject>(QTEObjectClass, SpawnLoc, FRotator::ZeroRotator);
@@ -179,16 +194,28 @@ void AStage1Boss::HandleQTEResult(bool bSuccess)
 {
 	if (!HasAuthority()) return;
 
+	// 애니메이션 다시 재생
+	Multicast_FreezeAnimation(false);
+
 	if (bSuccess)
 	{
-		// 성공 -> 창 폭발 -> 2페이즈(광폭화)
+		UE_LOG(LogTemp, Warning, TEXT("[BOSS] QTE SUCCESS -> EXECUTION"));
+
+		// QTE 물체 성공 연출 (폭발 등)
 		if (ActiveQTEObject) ActiveQTEObject->TriggerSuccess();
-		EnterPhase2();
+
+		// 무적 해제 및 트루 데미지로 즉사
+		bIsInvincible = false;
+		UGameplayStatics::ApplyDamage(this, 999999.f, GetController(), this, UTrueDamageType::StaticClass());
 	}
 	else
 	{
-		// 실패 -> 전멸기
+		UE_LOG(LogTemp, Error, TEXT("[BOSS] QTE FAILED -> WIPE"));
+
+		// QTE 물체 실패 연출 (꽝)
 		if (ActiveQTEObject) ActiveQTEObject->TriggerFailure();
+
+		// 전멸기 실행
 		PerformWipeAttack();
 	}
 }
@@ -201,24 +228,37 @@ void AStage1Boss::EnterPhase2()
 
 	bPhase2Started = true;
 	SetPhase(EBossPhase::Phase2);
-	bIsInvincible = false; // 2페이즈 전투 시작 시 무적 해제 (필요 시 조정)
-
-	// 기획에 따라 2페이즈 시작 시 수정을 또 소환할지 결정 (현재는 생략)
-	// SpawnCrystals(); 
+	bIsInvincible = false; // 2페이즈 전투 시작 시 무적 해제
 }
 
 void AStage1Boss::PerformWipeAttack()
 {
-	UE_LOG(LogTemp, Error, TEXT(">>> [BOSS] WIPE ATTACK TRIGGERED! <<<"));
-
+	// 플레이어 전원에게 트루 데미지 즉사
 	TArray<AActor*> Players;
 	UGameplayStatics::GetAllActorsOfClass(GetWorld(), ACharacter::StaticClass(), Players);
 
 	for (AActor* P : Players)
 	{
-		if (P && P != this)
+		// 나 자신(보스)이나 몬스터는 제외하고 플레이어만
+		if (P && P != this && !P->IsA(AEnemyCharacterBase::StaticClass()))
 		{
 			UGameplayStatics::ApplyDamage(P, 99999.f, GetController(), this, UTrueDamageType::StaticClass());
+		}
+	}
+}
+
+void AStage1Boss::Multicast_FreezeAnimation_Implementation(bool bFreeze)
+{
+	UAnimInstance* AnimInst = GetMesh()->GetAnimInstance();
+	if (AnimInst && BossData && BossData->QTE_TelegraphMontage)
+	{
+		if (bFreeze)
+		{
+			AnimInst->Montage_Pause(BossData->QTE_TelegraphMontage);
+		}
+		else
+		{
+			AnimInst->Montage_Resume(BossData->QTE_TelegraphMontage);
 		}
 	}
 }
@@ -240,11 +280,15 @@ void AStage1Boss::OnPhaseChanged(EBossPhase NewPhase)
 
 void AStage1Boss::OnHealthChanged(float CH, float MH)
 {
-	// 체력 70 이하 & 벽 패턴 미발동 시 실행
-	if (HasAuthority() && !bHasTriggeredDeathWall && CH > 0 && (CH / MH) <= 0.7f)
+	// 체력 70% 이하 & 벽 패턴 미발동 시 실행 & QTE 중 아님
+	if (HasAuthority() && !bHasTriggeredDeathWall && !bHasTriggeredQTE_10 && CH > 0 && (CH / MH) <= 0.7f)
 	{
-		bHasTriggeredDeathWall = true;
-		StartDeathWallSequence();
+		// 50% 패턴이 더 우선순위가 높으므로 50% 미만이면 패스 (TakeDamage에서 처리)
+		if ((CH / MH) > 0.5f)
+		{
+			bHasTriggeredDeathWall = true;
+			StartDeathWallSequence();
+		}
 	}
 }
 
