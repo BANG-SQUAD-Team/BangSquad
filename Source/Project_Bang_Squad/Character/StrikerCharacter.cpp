@@ -481,15 +481,28 @@ void AStrikerCharacter::SpawnRandomSlashFX()
 
 void AStrikerCharacter::EndSkill1()
 {
-    // 1. 난도질 타이머 종료
-    GetWorldTimerManager().ClearTimer(SlashLoopTimerHandle);
-
+    // 1. [서버 전용 로직] 중력, 타겟 해제 같은 건 서버가 해야 함
     GetCharacterMovement()->GravityScale = 1.0f;
 
-    // [추가] 캐릭터 메쉬 다시 보이기
+    if (CurrentComboTarget)
+    {
+        ReleaseTarget(CurrentComboTarget);
+        CurrentComboTarget = nullptr;
+    }
+
+    // 2. [추가] 이제 서버가 외칩니다. "야! 다들 다시 나타나!"
+    Multicast_EndSkill1();
+}
+
+void AStrikerCharacter::Multicast_EndSkill1_Implementation()
+{
+    // 1. 이펙트 난무하던 타이머 끄기 (클라이언트에서도 꺼줘야 소리가 멈춤)
+    GetWorldTimerManager().ClearTimer(SlashLoopTimerHandle);
+
+    // 2. 캐릭터 다시 보이기
     GetMesh()->SetVisibility(true);
 
-    // [수정] 변수명 충돌 해결 (Children -> WeaponComponents)
+    // 3. 무기 다시 보이기
     TArray<USceneComponent*> WeaponComponents;
     GetMesh()->GetChildrenComponents(true, WeaponComponents);
 
@@ -499,12 +512,6 @@ void AStrikerCharacter::EndSkill1()
         {
             Child->SetVisibility(true);
         }
-    }
-
-    if (CurrentComboTarget)
-    {
-        ReleaseTarget(CurrentComboTarget);
-        CurrentComboTarget = nullptr;
     }
 }
 

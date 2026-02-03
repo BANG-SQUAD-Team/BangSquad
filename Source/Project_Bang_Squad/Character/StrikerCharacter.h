@@ -160,6 +160,9 @@ protected:
 
 	void EndSkill1();
 
+	UFUNCTION(NetMulticast, Reliable) 
+	void Multicast_EndSkill1();
+
 protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Data")
 	class UDataTable* SkillDataTable;
