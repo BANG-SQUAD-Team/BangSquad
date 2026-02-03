@@ -14,33 +14,41 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
-	virtual void Tick(float DeltaTime) override;
+	virtual void OnConstruction(const FTransform& Transform) override;
 
-	UPROPERTY(VisibleAnywhere, Category = "Components")
+	/* ===== 컴포넌트 ===== */
+
+	// [NEW] 회전의 기준점이 될 빈 컴포넌트 (여기가 (0,0,0)입니다)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	USceneComponent* DefaultSceneRoot;
+
+	// 충돌 담당 박스
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	class UBoxComponent* CollisionBox;
+
+	// 눈에 보이는 메쉬
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	UStaticMeshComponent* MeshComponent;
 
-	/* ===== 회전 설정 (에디터 수정 가능) ===== */
+	// 회전 담당
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	class URotatingMovementComponent* RotatingMovement;
 
-	/** 초당 회전 속도 (도 단위) */
-	UPROPERTY(EditAnywhere, Category = "Rotation Settings")
+	/* ===== 설정 값 ===== */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rotation Settings")
 	float RotationSpeed = 90.0f;
 
-	/** 시계 방향 여부 (체크하면 시계 방향, 해제하면 반시계) */
-	UPROPERTY(EditAnywhere, Category = "Rotation Settings")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rotation Settings")
 	bool bClockwise = true;
 
-	/** 부딪혔을 때 밀어내는 힘 */
-	UPROPERTY(EditAnywhere, Category = "Knockback Settings")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Knockback Settings")
 	float PushForce = 1500.0f;
 
-	/** 살짝 띄워주는 상단 힘 (이게 있어야 잘 날아감) */
-	UPROPERTY(EditAnywhere, Category = "Knockback Settings")
-	float UpwardForce = 10.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Knockback Settings")
+	float UpwardForce = 200.0f;
 
-	/** 충돌 감지를 위한 함수 */
+	/* ===== 충돌 함수 ===== */
 	UFUNCTION()
-	void OnMeshHit(UPrimitiveComponent* HitComponent, AActor* OtherActor,
+	void OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor,
 		UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
-
-	void PreventClipping();
 };
