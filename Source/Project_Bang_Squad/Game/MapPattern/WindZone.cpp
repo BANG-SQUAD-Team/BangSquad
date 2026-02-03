@@ -92,23 +92,17 @@ void AWindZone::StopGust()
     if (HasAuthority())
     {
         bIsGusting = false;
-        OnRep_IsGusting(); // 서버에서도 이펙트 끄기
+        OnRep_IsGusting(); 
         
-        // 바람이 멈췄으니 구역 내 플레이어들의 이동 능력을 복구
         TArray<AActor*> OverlappingActors;
         WindBox->GetOverlappingActors(OverlappingActors);
+        
         for (AActor* Actor : OverlappingActors)
         {
             if (ABaseCharacter* Char = Cast<ABaseCharacter>(Actor))
             {
-                if (UCharacterMovementComponent* CMC = Char->GetCharacterMovement())
-                {
-                    // [복구] 정상 이동 가능하도록 설정
-                    CMC->MaxWalkSpeed = Char->GetDefaultWalkSpeed();
-                    CMC->MaxAcceleration = 2048.0f; // 가속도 복구 (다시 움직일 수 있음)
-                    CMC->GroundFriction = 8.0f;     // 마찰력 복구
-                    CMC->BrakingDecelerationWalking = 2048.0f;
-                }
+                // [수정] 통합 복구 함수 호출
+                ResetCharacterState(Char);
             }
         }
         
@@ -169,6 +163,24 @@ void AWindZone::OnRep_IsGusting()
         if (bIsGusting) WindVFX->Activate(true);
         else WindVFX->Deactivate();
     }
+    
+    if (!bIsGusting)
+    {
+        // 구역 안에 있는 모든 캐릭터를 찾아서 초기화
+        TArray<AActor*> OverlappingActors;
+        if (WindBox)
+        {
+            WindBox->GetOverlappingActors(OverlappingActors);
+            for (AActor* Actor : OverlappingActors)
+            {
+                if (ABaseCharacter* Char = Cast<ABaseCharacter>(Actor))
+                {
+                    // 클라이언트에서 직접 자신의 이동 수치 복구
+                    ResetCharacterState(Char);
+                }
+            }
+        }
+    }
 }
 
 void AWindZone::Tick(float DeltaTime)
@@ -182,7 +194,6 @@ void AWindZone::Tick(float DeltaTime)
     
     if (OverlappingActors.Num() == 0) return;
     
-    // 바람 방향 설정
     FVector WindForceDir = GetActorForwardVector() * (bPushForward ? 1.0f : -1.0f);
     FVector LookAtWindDir = -WindForceDir; 
 
@@ -193,48 +204,41 @@ void AWindZone::Tick(float DeltaTime)
         
         bool bIsProtected = false;
         
-        // 캡슐 정보 가져오기
+        // 캡슐 정보
         FVector ActorLoc = TargetChar->GetActorLocation();
         float CapHalfHeight = 88.0f; 
-        float CapRadius = 34.0f;
         if (UCapsuleComponent* Cap = TargetChar->GetCapsuleComponent())
         {
             CapHalfHeight = Cap->GetScaledCapsuleHalfHeight();
-            CapRadius = Cap->GetScaledCapsuleRadius();
         }
 
-        // 체크 포인트: 허리, 무릎, 가슴
+        // 체크 포인트 (허리, 무릎, 가슴)
         TArray<FVector> CheckPoints;
         CheckPoints.Add(ActorLoc);                                     
         CheckPoints.Add(ActorLoc - FVector(0, 0, CapHalfHeight * 0.5f)); 
         CheckPoints.Add(ActorLoc + FVector(0, 0, CapHalfHeight * 0.5f)); 
 
-        // 트레이스 파라미터
         FCollisionQueryParams Params;
-        Params.AddIgnoredActor(TargetChar); 
-        Params.bTraceComplex = false; // Simple Collision(박스)만 검사
+        Params.AddIgnoredActor(TargetChar); // 내 몸은 무시 (필수!)
+        Params.bTraceComplex = false; 
 
         float SphereRadius = 30.0f;
         FCollisionShape SphereShape = FCollisionShape::MakeSphere(SphereRadius);
 
         for (const FVector& BasePoint : CheckPoints)
         {
-            // 시작점을 캐릭터 캡슐 밖으로 살짝 이동
-            FVector StartPoint = BasePoint + (LookAtWindDir * (CapRadius + 20.0f));
-            FVector EndPoint = StartPoint + (LookAtWindDir * 400.0f); 
+            // 🚨 [수정 1] 시작점을 밖으로 빼지 말고, 캐릭터 중심에서 시작!
+            // 그래야 벽에 딱 붙었을 때도 벽을 감지할 수 있음.
+            FVector StartPoint = BasePoint; 
+            FVector EndPoint = StartPoint + (LookAtWindDir * 450.0f); // 거리 넉넉하게
 
             FHitResult HitResult;
 
-            // ECC_WorldStatic 채널로 검사 (벽, 울타리 등)
             if (GetWorld()->SweepSingleByChannel(HitResult, StartPoint, EndPoint, FQuat::Identity, ECC_WorldStatic, SphereShape, Params))
             {
-                // 바닥/경사면 판정 (Z값이 크면 바닥이므로 무시)
-                if (HitResult.ImpactNormal.Z > 0.6f) 
-                {
-                    continue; 
-                }
+                // 바닥 무시 (수직에 가까운 벽만 인정)
+                if (HitResult.ImpactNormal.Z > 0.6f) continue; 
 
-                // 벽이나 울타리에 막힘
                 bIsProtected = true;
                 break; 
             }
@@ -244,36 +248,28 @@ void AWindZone::Tick(float DeltaTime)
         {
             if (bIsProtected)
             {
-                // [보호 상태] : 정상 이동 가능
-                CMC->MaxWalkSpeed = TargetChar->GetDefaultWalkSpeed();
-                CMC->MaxAcceleration = 2048.0f; 
-                CMC->GroundFriction = 8.0f;     
-                CMC->BrakingDecelerationWalking = 2048.0f;
-                
-                // Falling 상태였다면 Walking으로 전환 (굳음 방지)
-                if (CMC->MovementMode == MOVE_Falling)
-                {
-                    CMC->SetMovementMode(MOVE_Walking);
-                }
+                ResetCharacterState(TargetChar);
             }
             else
             {
-                // [바람 상태] : 뚫기 불가 + 뒤로 날아감
-                CMC->MaxAcceleration = 0.0f;            // 입력 차단
-                CMC->MaxWalkSpeed = 6000.0f;            // 속도 제한 해제
-                CMC->GroundFriction = 0.0f;             // 마찰력 제거
-                CMC->BrakingDecelerationWalking = 0.0f; // 제동력 제거
+                // [바람 상태]
                 
-                // 땅에 붙어있으면 띄워서 마찰력 완전 제거
+                // 탈출을 위한 최소한의 제어력
+                CMC->MaxAcceleration = 200.0f;            
+                CMC->AirControl = 0.2f;
+
+                CMC->MaxWalkSpeed = 6000.0f;            
+                CMC->GroundFriction = 0.0f;             
+                CMC->BrakingDecelerationWalking = 0.0f; 
+                
                 if (CMC->MovementMode == MOVE_Walking)
                 {
                     TargetChar->LaunchCharacter(FVector(0.f, 0.f, 150.f), false, false);
                 }
 
-                // 물리 힘 적용
                 float ForceMultiplier = 3000.0f; 
                 FVector PushForce = WindForceDir * WindStrength * ForceMultiplier;
-                PushForce.Z = 0.0f; // 수평으로만 밀기
+                PushForce.Z = 0.0f; 
 
                 CMC->AddForce(PushForce);   
             }
@@ -300,19 +296,40 @@ void AWindZone::NotifyActorEndOverlap(AActor* OtherActor)
 
     if (ABaseCharacter* BaseChar = Cast<ABaseCharacter>(OtherActor))
     {
-        if (UCharacterMovementComponent* CMC = BaseChar->GetCharacterMovement())
-        {
-            // 구역 나가면 즉시 정상 상태로 복구
-            CMC->MaxWalkSpeed = BaseChar->GetDefaultWalkSpeed();
-            CMC->MaxAcceleration = 2048.0f;
-            CMC->GroundFriction = 8.0f;
-            CMC->BrakingDecelerationWalking = 2048.0f;
-        }
+        // 통합 복구 함수 호출
+        ResetCharacterState(BaseChar);
     }
     
-    // UI 끄기
     if (OtherActor == UGameplayStatics::GetPlayerPawn(this,0))
     {
         UpdateWarningUI(false);
+    }
+}
+
+// =========================================================================
+// 캐릭터 상태 완전 초기화 함수 (새로 추가)
+// =========================================================================
+void AWindZone::ResetCharacterState(ABaseCharacter* TargetChar)
+{
+    if (!TargetChar) return;
+    
+    if (UCharacterMovementComponent* CMC = TargetChar->GetCharacterMovement())
+    {
+        // 1. 이동 수치 원상복구
+        CMC->MaxWalkSpeed = TargetChar->GetDefaultWalkSpeed();
+        CMC->MaxAcceleration = 2048.0f;       // 필수: 0이면 움직이지 않음
+        CMC->GroundFriction = 8.0f;           // 필수: 0이면 멈추지 않음 (미끄러짐)
+        CMC->BrakingDecelerationWalking = 2048.0f;
+        CMC->AirControl = 0.05f;              // 기본 공중 제어값으로 복구
+        
+        // // 2. 물리 힘 초기화 (남아있는 바람의 힘 제거)
+        // CMC->Velocity = FVector::ZeroVector;  // 선택사항: 관성을 즉시 없애고 싶다면 추가
+        
+        // 3. [중요] 울타리에 껴서 'Falling' 상태로 굳는 것 방지
+        // 공중에 떠 있더라도 강제로 'Walking' 모드로 전환 시도
+        if (CMC->MovementMode == MOVE_Falling)
+        {
+            CMC->SetMovementMode(MOVE_Walking);
+        }
     }
 }
