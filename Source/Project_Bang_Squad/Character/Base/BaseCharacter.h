@@ -15,6 +15,9 @@ class UInputAction;
 class UHealthComponent;
 class AMageProjectile; 
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnSkillCooldownChanged,
+	int32, SkillIndex, float, CooldownTime);
+
 /** 스킬 데이터 구조체 */
 USTRUCT(BlueprintType)
 struct FSkillData : public FTableRowBase
@@ -103,6 +106,14 @@ public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	void SetJumpRestricted(bool bRestricted);
+	
+	// UI에서 바인딩할 델리게이트 변수
+	UPROPERTY(BlueprintAssignable, Category = "Events")
+	FOnSkillCooldownChanged OnSkillCooldownChanged;
+	
+	// 자식 클래스에서 쿨타임 시작할 때 호출할 함수
+	UFUNCTION(BlueprintCallable, Category = "Combat")
+	void TriggerSkillCooldown(int32 SkillIndex, float CooldownTime);
 protected:
 	virtual void BeginPlay() override;
 	

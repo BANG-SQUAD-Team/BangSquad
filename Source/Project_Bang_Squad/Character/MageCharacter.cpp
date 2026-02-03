@@ -510,6 +510,20 @@ void AMageCharacter::ProcessSkill(FName SkillRowName)
 		{
 			FTimerHandle& Handle = SkillTimers.FindOrAdd(SkillRowName);
 			GetWorldTimerManager().SetTimer(Handle, Data->Cooldown, false);
+			
+			//============================================
+			// UI 쿨타임 델리게이트 호출
+			//============================================
+			// 1. 어떤 스킬인지 번호 매핑 (Skill1 -> 1, Skill2 -> 2)
+			int32 SkillIdx = 0;
+			if (SkillRowName == TEXT("Skill1")) SkillIdx = 1;
+			else if (SkillRowName == TEXT("Skill2")) SkillIdx = 2;
+			
+			// 2. 부모 (BaseCharacter) 함수 호출 -> UI로 방송
+			if (SkillIdx > 0)
+			{
+				TriggerSkillCooldown(SkillIdx, Data->Cooldown);
+			}
 		}
 	}
 }

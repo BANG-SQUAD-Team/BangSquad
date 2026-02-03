@@ -368,6 +368,18 @@ void APaladinCharacter::ProcessSkill(FName SkillRowName)
         {
             FTimerHandle& Handle = SkillTimers.FindOrAdd(SkillRowName);
             GetWorldTimerManager().SetTimer(Handle, Data->Cooldown, false);
+            
+            // ==============================================================
+            //  UI 쿨타임 델리게이트 
+            // ==============================================================
+            int32 SkillIdx = 0;
+            if (SkillRowName == FName("Skill1")) SkillIdx = 1; 
+            else if (SkillRowName == FName("Skill2")) SkillIdx = 2; 
+            
+            if (SkillIdx > 0)
+            {
+                TriggerSkillCooldown(SkillIdx, Data->Cooldown);
+            }
         }
         
         // [서버 로직] 실제 판정 처리
@@ -677,6 +689,16 @@ void APaladinCharacter::OnShieldBroken()
     GetWorldTimerManager().SetTimer(ShieldBrokenTimerHandle, this, &APaladinCharacter::RestoreShieldAfterCooldown, BrokenCooldown, false);
     
     if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, TEXT("Shield is Broken! Waiting for cooldown..."));
+
+    // ==============================================================
+    // 방패(직업 스킬) 쿨타임 UI 호출
+    // ==============================================================
+    // 직업 능력은 3번!
+    TriggerSkillCooldown(3, BrokenCooldown);
+    
+    if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red,
+        TEXT("Shield is Broken! Waiting for cooldown..."));
+
 }
 
 void APaladinCharacter::RestoreShieldAfterCooldown()

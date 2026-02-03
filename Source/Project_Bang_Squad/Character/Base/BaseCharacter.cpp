@@ -664,3 +664,12 @@ void ABaseCharacter::OnRep_WindFloating()
 		}
 	}
 }
+
+void ABaseCharacter::TriggerSkillCooldown(int32 SkillIndex, float CooldownTime)
+{
+	// 델리게이트 방송 (듣고 있는 UI가 있다면 실행됨)
+	if (OnSkillCooldownChanged.IsBound())
+	{
+		OnSkillCooldownChanged.Broadcast(SkillIndex, CooldownTime);
+	}
+}
