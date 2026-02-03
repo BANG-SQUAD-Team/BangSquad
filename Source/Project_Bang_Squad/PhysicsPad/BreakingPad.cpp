@@ -79,7 +79,7 @@ void ABreakingPad::Multicast_DropPiece_Implementation(UStaticMeshComponent* Piec
         PieceToDrop->SetEnableGravity(true);
 
         // 하방 충격 가하기
-        //PieceToDrop->AddImpulse(FVector(0, 0, -500.f), NAME_None, true);
+        PieceToDrop->AddImpulse(FVector(0, 0, -10.f), NAME_None, true);
 
         // 5초 후 해당 컴포넌트 제거
         FTimerHandle CleanupHandle;
