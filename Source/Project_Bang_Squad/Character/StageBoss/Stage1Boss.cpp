@@ -418,7 +418,8 @@ void AStage1Boss::StartDeathWallSequence()
 	ControlRamparts(true);
 	GetWorldTimerManager().SetTimer(RampartTimerHandle, this, &AStage1Boss::RestoreRamparts, 105.0f, false);
 
-	if (GetCharacterMovement()) GetCharacterMovement()->SetMovementMode(MOVE_None);
+	//if (GetCharacterMovement()) GetCharacterMovement()->SetMovementMode(MOVE_None);
+	if (GetCharacterMovement()) GetCharacterMovement()->StopMovementImmediately();
 	bIsDeathWallSequenceActive = true;
 	bIsActionInProgress = true;
 	bIsInvincible = true;
