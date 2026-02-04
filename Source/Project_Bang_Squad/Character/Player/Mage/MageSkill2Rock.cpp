@@ -6,6 +6,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/Character.h"
+#include "Particles/ParticleSystemComponent.h"
 #include "NiagaraComponent.h"
 #include "Kismet/GameplayStatics.h"
 
@@ -35,14 +36,14 @@ AMageSkill2Rock::AMageSkill2Rock()
 	RockMesh->SetVisibility(false);
 	
 	// 나이아가라 컴포넌트 생성 및 부착
-	NiagaraComp = CreateDefaultSubobject<UNiagaraComponent>(TEXT("NiagaraComp"));
-	NiagaraComp->SetupAttachment(RootComponent); // 바위 중심에 부착
+	ParticleComp = CreateDefaultSubobject<UParticleSystemComponent>(TEXT("ParticleComp"));
+	ParticleComp->SetupAttachment(RootComponent); // 바위 중심에 부착
     
 	// 태어날 때는 꺼둠 (솟아오를 때 켤 것임)
-	NiagaraComp->bAutoActivate = false; 
+	ParticleComp->bAutoActivate = false; 
     
 	// 바위 메쉬보다 약간 아래 배치 (흙먼지 느낌)
-	NiagaraComp->SetRelativeLocation(FVector(0.f, 0.f, -50.f));
+	ParticleComp->SetRelativeLocation(FVector(0.f, 0.f, -50.f));
 }
 
 void AMageSkill2Rock::InitializeRock(float DamageAmount, APawn* InstigatorPawn)
@@ -67,9 +68,11 @@ void AMageSkill2Rock::Erupt()
 {
 	OnStartEruption();
 	
-	if (NiagaraComp)
+	if (ParticleComp)
 	{
-		NiagaraComp->Activate(true);
+		ParticleComp->SetRelativeScale3D(ParticleScale);
+		
+		ParticleComp->Activate(true);
 	}
 	
 	// 2. 범위 내 대상 감지

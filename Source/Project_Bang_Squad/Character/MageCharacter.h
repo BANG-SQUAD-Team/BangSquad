@@ -7,6 +7,8 @@
 #include "GameFramework/SpringArmComponent.h"
 #include "Camera/CameraComponent.h"
 #include "InputActionValue.h" 
+#include "NiagaraSystem.h" 
+#include "NiagaraComponent.h"
 #include "Project_Bang_Squad/Character/Player/Mage/PillarRotate.h"
 #include "MageCharacter.generated.h"
 
@@ -14,6 +16,7 @@ class UTimelineComponent;
 class APillar;
 class UCurveFloat; 
 class UNiagaraSystem;
+class UParticleSystem;
 
 UCLASS()
 class PROJECT_BANG_SQUAD_API AMageCharacter : public ABaseCharacter
@@ -87,6 +90,42 @@ protected:
     virtual void Skill1() override;
     virtual void Skill2() override;
     
+    // 에디터에서 넣을 지팡이 트레일 VFX
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "VFX")
+    UNiagaraSystem* StaffTrailVFX;
+
+    // 실제 생성될 컴포넌트
+    UPROPERTY()
+    UNiagaraComponent* StaffTrailComp;
+    
+    // 무기 메쉬 캐싱 (지팡이에 붙이기 위함)
+    UPROPERTY()
+    UStaticMeshComponent* CachedWeaponMesh;
+
+    // 멀티캐스트로 켜고 끄기
+    UFUNCTION(NetMulticast, Unreliable)
+    void Multicast_SetTrailActive(bool bActive);
+    
+    // 에디터에서 할당할 아우라 이펙트 (Loop 설정 필수!)
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "VFX")
+    UNiagaraSystem* JobAuraVFX;
+
+    //  아우라 크기 조절 변수 (기본값 1.0)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "VFX")
+    FVector JobAuraScale = FVector(1.0f);
+    
+    // 실제 생성될 컴포넌트
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "VFX")
+    UNiagaraComponent* JobAuraComp;
+
+    // 서버에게 아우라 상태 변경 요청
+    UFUNCTION(Server, Reliable)
+    void Server_SetAuraActive(bool bActive);
+
+    // 모든 클라이언트에게 아우라 켜기/끄기 전파
+    UFUNCTION(NetMulticast, Reliable)
+    void Multicast_SetAuraActive(bool bActive);
+    
     // 콤보 시스템
     int32 CurrentComboIndex = 0;
     FTimerHandle ComboResetTimer;
@@ -114,7 +153,11 @@ protected:
     void SpawnSkill2Rock(UClass* RockClass, float DamageAmount);
     // 스킬 2번 이펙트
     UPROPERTY(EditDefaultsOnly, Category = "VFX")
-    UNiagaraSystem* Skill2CastEffect;
+    UParticleSystem* Skill2CastEffect;
+    
+    // 생성된 파티클을 제어하기 위해 저장할 변수
+    UPROPERTY()
+    UParticleSystemComponent* Skill2CastComp;
     
     // ====================================================================================
     //  섹션 5: 직업 능력 (Job Ability - Telekinesis/Boat)

@@ -10,6 +10,7 @@
 class USphereComponent;
 class UStaticMeshComponent;
 class UNiagaraComponent;
+class UParticleSystemComponent;
 
 UCLASS()
 class PROJECT_BANG_SQUAD_API AMageSkill2Rock : public AActor
@@ -20,7 +21,7 @@ protected:
 	virtual void BeginPlay() override;
 	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-	UNiagaraComponent* NiagaraComp;
+	UParticleSystemComponent* ParticleComp;
 
 public:
 	AMageSkill2Rock();
@@ -28,6 +29,9 @@ public:
 	// 충돌 감지 컴포넌트
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	USphereComponent* OverlapComp;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "VFX")
+	FVector ParticleScale = FVector(1.0f);
 	
 	// 바위 메쉬 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")

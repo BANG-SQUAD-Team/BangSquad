@@ -6,6 +6,8 @@
 #include "Camera/CameraComponent.h"
 #include "EnhancedInputComponent.h"
 #include "Kismet/KismetMathLibrary.h"
+#include "Kismet/GameplayStatics.h" 
+#include "Particles/ParticleSystem.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Engine/DataTable.h"
@@ -64,6 +66,15 @@ AMageCharacter::AMageCharacter()
 		SpringArm->ProbeSize = 12.0f;
 		SpringArm->bUsePawnControlRotation = true;
 	}
+	
+	// [여기서 미리 생성]
+	JobAuraComp = CreateDefaultSubobject<UNiagaraComponent>(TEXT("JobAuraComp"));
+    
+	// 1. 일단 루트(캡슐)에 붙인다.
+	JobAuraComp->SetupAttachment(GetMesh(), TEXT("Bip001-Pelvis"));
+    
+	// 2. 시작하자마자 켜지는거 방지
+	JobAuraComp->bAutoActivate = false;
 }
 
 void AMageCharacter::BeginPlay()
@@ -99,6 +110,51 @@ void AMageCharacter::BeginPlay()
 		CameraTimelineComp->SetTimelineLength(1.0f);
 	}
 
+	// 1. 지팡이 찾기
+	TArray<UStaticMeshComponent*> StaticComps;
+	GetComponents<UStaticMeshComponent>(StaticComps);
+	for (UStaticMeshComponent* Comp : StaticComps)
+	{
+	
+		if (Comp && (Comp->DoesSocketExist(TEXT("Weapon_Root_R")) || Comp->DoesSocketExist(TEXT("TipSocket")))) 
+		{ 
+			CachedWeaponMesh = Comp; 
+			break; 
+		}
+	}
+
+	// 2. 트레일 컴포넌트 생성 및 부착
+	if (CachedWeaponMesh && StaffTrailVFX)
+	{
+		StaffTrailComp = UNiagaraFunctionLibrary::SpawnSystemAttached(
+			StaffTrailVFX,
+			CachedWeaponMesh,
+			NAME_None, // 지팡이 전체를 따라가게 (나이아가라 안에서 소켓 지정)
+			FVector::ZeroVector,
+			FRotator::ZeroRotator,
+			EAttachLocation::SnapToTarget,
+			false // Auto Destroy 끄기
+		);
+
+		if (StaffTrailComp)
+		{
+			StaffTrailComp->Deactivate(); // 일단 꺼둠
+		}
+	}
+	
+	if (JobAuraComp && JobAuraVFX)
+	{
+		// 1. 에셋 끼우기
+		JobAuraComp->SetAsset(JobAuraVFX);
+
+		// 2. 크기 조절
+		JobAuraComp->SetRelativeScale3D(JobAuraScale);
+
+		// 3. 끄고 대기
+		JobAuraComp->Deactivate();
+	}
+
+	
 	// [최적화] 데이터 테이블 캐싱
 	if (SkillDataTable)
 	{
@@ -145,6 +201,8 @@ void AMageCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 void AMageCharacter::OnDeath()
 {
 	if (bIsDead) return;
+	
+	Server_SetAuraActive(false);
 
 	// 직업 능력 강제 종료
 	if (bIsPillarMode || bIsBoatMode)
@@ -453,18 +511,31 @@ void AMageCharacter::ProcessSkill(FName SkillRowName)
 		{
 			if (Data->SkillMontage) Server_PlayMontage(Data->SkillMontage);
 
+			if (SkillRowName == TEXT("Attack_A") || SkillRowName == TEXT("Attack_B"))
+			{
+				Multicast_SetTrailActive(true);
+			}
+			
 			if (SkillRowName == TEXT("Skill2")) // 데이터 테이블 RowName과 일치해야함
 			{
-				// 지팡이 끝(Weapon_Root_R)에 이펙트 부착해서 재생
-				UNiagaraFunctionLibrary::SpawnSystemAttached(
-					Skill2CastEffect,
-					GetMesh(),
-					TEXT("Weapon_Root_R"), // 소켓 이름 (지팡이 끝)
-					FVector::ZeroVector,
-					FRotator::ZeroRotator,
-					EAttachLocation::SnapToTarget,
-					true
-				);
+				if (Skill2CastEffect)
+				{
+					// 1. 부착 대상 결정
+					USceneComponent* AttachTarget = nullptr;
+					if (CachedWeaponMesh) AttachTarget = CachedWeaponMesh;
+					else AttachTarget = GetMesh();
+                 
+					// 2. 파티클 재생 하고 -> 변수에 저장
+					Skill2CastComp = UGameplayStatics::SpawnEmitterAttached(
+					   Skill2CastEffect,
+					   AttachTarget,           
+					   TEXT("Weapon_Root_R"),  
+					   FVector::ZeroVector,
+					   FRotator::ZeroRotator,
+					   EAttachLocation::SnapToTarget,
+					   true                    
+					);
+				}
 				
 				// 바위 소환
 				if (Data->ProjectileClass)
@@ -532,6 +603,7 @@ void AMageCharacter::SpawnDelayedProjectile(UClass* ProjectileClass, float Damag
 {
 	if (!HasAuthority() || !ProjectileClass) return;
 
+	Multicast_SetTrailActive(false);
 	FVector SpawnLoc;
 	FName SocketName = TEXT("Weapon_Root_R");
 
@@ -596,7 +668,9 @@ void AMageCharacter::JobAbility()
 	{
 		TargetMontage = Data->SkillMontage;
 	}
-
+	
+	bool bSuccess = false;
+	
 	// Case 1: 일반 기둥 모드 진입
 	if (FocusedPillar)
 	{
@@ -617,6 +691,8 @@ void AMageCharacter::JobAbility()
 			SpringArm->bInheritRoll = true;
 		}
 		if (CameraTimelineComp) CameraTimelineComp->Play();
+		
+		bSuccess = true;
 	}
 	// Case 2: 인터페이스 액터 (보트 OR 회전기둥)
 	else if (HoveredActor)
@@ -651,7 +727,15 @@ void AMageCharacter::JobAbility()
 				if (TopDownCamera) TopDownCamera->SetActive(true);
 			}
 		}
+		bSuccess = true;
 	}
+	
+	
+	if (bSuccess)
+	{
+		Server_SetAuraActive(true);
+	}
+	
 }
 
 void AMageCharacter::EndJobAbility()
@@ -673,6 +757,8 @@ void AMageCharacter::EndJobAbility()
 		Server_StopMontage(TargetMontage);
 	}
 
+	Server_SetAuraActive(false);
+	
 	// Case 1: 기둥 모드 종료
 	if (bIsPillarMode)
 	{
@@ -718,6 +804,11 @@ void AMageCharacter::EndJobAbility()
 
 void AMageCharacter::SpawnSkill2Rock(UClass* RockClass, float DamageAmount)
 {
+	if (Skill2CastComp)
+	{
+		Skill2CastComp->DeactivateSystem(); // 즉시 끄기
+		Skill2CastComp = nullptr; // 안전하게 초기화
+	}
 	// 서버만 실행 & 클래스 체크
 	if (!HasAuthority() || !RockClass) return;
 	
@@ -825,5 +916,41 @@ void AMageCharacter::Server_SetBoatRideState_Implementation(AMagicBoat* Boat, bo
 	if (Boat)
 	{
 		Boat->SetRideState(bRiding);
+	}
+}
+
+
+void AMageCharacter::Multicast_SetTrailActive_Implementation(bool bActive)
+{
+	if (StaffTrailComp)
+	{
+		if (bActive)
+		{
+			StaffTrailComp->Activate(true);
+		}
+		else
+		{
+			StaffTrailComp->Deactivate();
+		}
+	}
+}
+
+void AMageCharacter::Server_SetAuraActive_Implementation(bool bActive)
+{
+	Multicast_SetAuraActive(bActive);
+}
+
+void AMageCharacter::Multicast_SetAuraActive_Implementation(bool bActive)
+{
+	if (JobAuraComp)
+	{
+		if (bActive)
+		{
+			JobAuraComp->Activate(true); // 켜기 (Reset)
+		}
+		else
+		{
+			JobAuraComp->Deactivate(); // 끄기
+		}
 	}
 }
