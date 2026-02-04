@@ -40,4 +40,9 @@ public:
 	// 공격 범위
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Base|Stats")
 	float AttackRange = 150.0f;
+
+	// [필수 추가] 공격력
+	// 이 변수가 있어야 Stage2MidBoss.cpp에서 BossData->AttackDamage를 읽을 수 있습니다.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Base|Stats")
+	float AttackDamage = 10.0f;
 };
