@@ -62,10 +62,10 @@ float AJobCrystal::TakeDamage(float DamageAmount, FDamageEvent const& DamageEven
     if (!bIsCorrectJob)
     {
         // [TODO: 정식 버전에서는 아래 주석(return 0.0f)을 해제하여 타 직업 데미지 무효화 필수!]
-        // return 0.0f; 
+         return 0.0f; 
 
         // [TEST MODE] 지금은 테스트 중이니 경고만 띄우고 데미지 들어감
-        UE_LOG(LogTemp, Warning, TEXT("[TEST] Job Mismatch! But damage allowed. (Required: %d)"), (int32)RequiredJobType);
+       // UE_LOG(LogTemp, Warning, TEXT("[TEST] Job Mismatch! But damage allowed. (Required: %d)"), (int32)RequiredJobType);
     }
 
     // 4. [데미지 적용] "무조건 1씩 차감" (평타 2방 컷 로직)
