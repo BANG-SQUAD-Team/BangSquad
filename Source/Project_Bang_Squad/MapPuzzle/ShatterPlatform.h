@@ -4,9 +4,6 @@
 #include "GameFramework/Actor.h"
 #include "ShatterPlatform.generated.h"
 
-class UGeometryCollectionComponent;
-class UBoxComponent;
-
 UCLASS()
 class PROJECT_BANG_SQUAD_API AShatterPlatform : public AActor
 {
@@ -19,41 +16,40 @@ protected:
 	virtual void BeginPlay() override;
 
 public:
-	// 카오스 파괴를 위한 지오메트리 컬렉션 (발판 메쉬)
+	// 깨지는 돌멩이 (비주얼 + 파편용)
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-	UGeometryCollectionComponent* GCComponent;
+	class UGeometryCollectionComponent* GCComponent;
 
-	// 플레이어 감지용 박스
+	// 감지 구역 (몇 명 왔나?)
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-	UBoxComponent* TriggerBox;
+	class UBoxComponent* TriggerBox;
 
-	// 부서지기까지 필요한 플레이어 수 (기본 4)
+	// [추가됨] 플레이어가 실제로 밟고 서 있을 '투명 바닥' (큐브)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	class UBoxComponent* MainFloorCollision;
+
+	// 설정값들
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shatter Settings")
-	int32 RequiredPlayerCount = 4;
+	int32 RequiredPlayerCount = 1; // 테스트용으로 1로 설정
 
-	// 부서진 후 사라지는 시간
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shatter Settings")
-	float CleanupDelay = 10.0f;
+	float ShatterDamage = 500.0f; // 돌의 체력(Threshold)보다 높아야 함
 
-	// 파괴 강도 (Strain)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shatter Settings")
-	float ShatterDamage = 500000.0f;
+	float CleanupDelay = 3.0f; // 3초 뒤 삭제
 
-private:
-	// 오버랩 이벤트 처리 함수
+	// 상태 변수
+	bool bIsShattered = false;
+
+	// 함수들
 	UFUNCTION()
 	void OnOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
 
 	UFUNCTION()
 	void OnOverlapEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
 
-	// 현재 올라와 있는 플레이어 수 확인
 	void CheckPlayerCount();
 
-	// 이미 부서졌는지 체크
-	bool bIsShattered = false;
-
-	// 모든 클라이언트에게 파괴 명령
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_Shatter();
 };

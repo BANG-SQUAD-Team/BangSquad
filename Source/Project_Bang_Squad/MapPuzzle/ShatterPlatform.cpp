@@ -1,24 +1,33 @@
 #include "ShatterPlatform.h"
-
 #include "GeometryCollection/GeometryCollectionComponent.h"
 #include "Components/BoxComponent.h"
-#include "Project_Bang_Squad/Character/Base/BaseCharacter.h" 
+#include "Project_Bang_Squad/Character/Base/BaseCharacter.h" // 캐릭터 헤더 경로 확인 필요
 
 AShatterPlatform::AShatterPlatform()
 {
 	PrimaryActorTick.bCanEverTick = false;
 	bReplicates = true;
 
+	// 1. 돌멩이 (GC) 컴포넌트
 	GCComponent = CreateDefaultSubobject<UGeometryCollectionComponent>(TEXT("GCComponent"));
 	SetRootComponent(GCComponent);
 
-	// 초기 설정
+	// 초기 설정: 물리는 꺼두고, 충돌은 켜둠 (총알 막기용 등)
 	GCComponent->SetSimulatePhysics(false);
 	GCComponent->SetCollisionProfileName(TEXT("BlockAll"));
 
+	// 2. [추가] 실제 밟는 바닥 (투명 큐브)
+	MainFloorCollision = CreateDefaultSubobject<UBoxComponent>(TEXT("MainFloorCollision"));
+	MainFloorCollision->SetupAttachment(GCComponent);
+	// 크기는 에디터에서 발판 크기에 맞춰 조절하세요 (기본값)
+	MainFloorCollision->SetBoxExtent(FVector(150.f, 150.f, 20.f));
+	MainFloorCollision->SetCollisionProfileName(TEXT("BlockAll")); // 확실하게 밟힘
+	MainFloorCollision->SetHiddenInGame(true); // 게임에선 안 보임 (투명)
+
+	// 3. 감지용 트리거 박스
 	TriggerBox = CreateDefaultSubobject<UBoxComponent>(TEXT("TriggerBox"));
 	TriggerBox->SetupAttachment(GCComponent);
-	TriggerBox->SetBoxExtent(FVector(200.f, 200.f, 100.f));
+	TriggerBox->SetBoxExtent(FVector(200.f, 200.f, 100.f)); // 바닥보다 좀 더 높게 설정
 	TriggerBox->SetCollisionProfileName(TEXT("Trigger"));
 }
 
@@ -26,19 +35,12 @@ void AShatterPlatform::BeginPlay()
 {
 	Super::BeginPlay();
 
-	UE_LOG(LogTemp, Warning, TEXT("[ShatterPlatform] BeginPlay Started."));
-
 	if (HasAuthority())
 	{
 		if (TriggerBox)
 		{
 			TriggerBox->OnComponentBeginOverlap.AddDynamic(this, &AShatterPlatform::OnOverlapBegin);
 			TriggerBox->OnComponentEndOverlap.AddDynamic(this, &AShatterPlatform::OnOverlapEnd);
-			UE_LOG(LogTemp, Warning, TEXT("[ShatterPlatform] Server: TriggerBox events bound."));
-		}
-		else
-		{
-			UE_LOG(LogTemp, Error, TEXT("[ShatterPlatform] Server: TriggerBox is NULL!"));
 		}
 	}
 }
@@ -46,11 +48,6 @@ void AShatterPlatform::BeginPlay()
 void AShatterPlatform::OnOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
 	if (bIsShattered) return;
-
-	// 겹친 물체가 뭔지 로그 찍기
-	FString ActorName = OtherActor ? OtherActor->GetName() : TEXT("NULL");
-	UE_LOG(LogTemp, Log, TEXT("[ShatterPlatform] Overlap Begin: %s"), *ActorName);
-
 	CheckPlayerCount();
 }
 
@@ -62,26 +59,18 @@ void AShatterPlatform::OnOverlapEnd(UPrimitiveComponent* OverlappedComp, AActor*
 
 void AShatterPlatform::CheckPlayerCount()
 {
-	if (!HasAuthority()) return;
-	if (!TriggerBox) return;
+	if (!HasAuthority() || !TriggerBox) return;
 
 	TArray<AActor*> OverlappingActors;
 	TriggerBox->GetOverlappingActors(OverlappingActors, ABaseCharacter::StaticClass());
 
 	int32 CurrentCount = OverlappingActors.Num();
 
-	// [중요] 현재 몇 명인지 로그 출력 (화면 + 출력 로그)
-	FString Msg = FString::Printf(TEXT("[ShatterPlatform] Current Players: %d / Required: %d"), CurrentCount, RequiredPlayerCount);
-	UE_LOG(LogTemp, Warning, TEXT("%s"), *Msg);
-
-	if (GEngine)
-	{
-		GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Cyan, Msg);
-	}
+	// 로그 출력
+	UE_LOG(LogTemp, Warning, TEXT("[ShatterPlatform] Players: %d / %d"), CurrentCount, RequiredPlayerCount);
 
 	if (CurrentCount >= RequiredPlayerCount)
 	{
-		UE_LOG(LogTemp, Error, TEXT("[ShatterPlatform] Requirement Met! Calling Multicast_Shatter..."));
 		bIsShattered = true;
 		Multicast_Shatter();
 	}
@@ -89,33 +78,28 @@ void AShatterPlatform::CheckPlayerCount()
 
 void AShatterPlatform::Multicast_Shatter_Implementation()
 {
-	UE_LOG(LogTemp, Error, TEXT("[ShatterPlatform] Multicast_Shatter Executing!"));
-
-	if (!GCComponent)
+	if (MainFloorCollision)
 	{
-		UE_LOG(LogTemp, Error, TEXT("[ShatterPlatform] GCComponent is NULL!"));
-		return;
+		MainFloorCollision->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	}
 
-	// 1. 물리 시뮬레이션 켜기
+	if (!GCComponent) return;
+
 	GCComponent->SetSimulatePhysics(true);
-	GCComponent->WakeAllRigidBodies(); // 자는 물리 깨우기
-	UE_LOG(LogTemp, Warning, TEXT("[ShatterPlatform] Physics Enabled & Woken up."));
+	GCComponent->WakeAllRigidBodies();
 
-	// 2. 외부 충격 가하기
-	// 데미지 수치와 위치 로그
+	GCComponent->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+	GCComponent->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+
 	FVector Loc = GetActorLocation();
-	UE_LOG(LogTemp, Warning, TEXT("[ShatterPlatform] Applying Strain: %f at Location: %s"), ShatterDamage, *Loc.ToString());
+	GCComponent->ApplyExternalStrain(ShatterDamage, Loc, 50000.0f);
 
-	GCComponent->ApplyExternalStrain(ShatterDamage, Loc, 10000.0f);
+	GCComponent->AddRadialImpulse(Loc, 3000.0f, 5000.0f, ERadialImpulseFalloff::RIF_Linear, true);
 
-	// 3. 트리거 비활성화
 	if (TriggerBox)
 	{
 		TriggerBox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	}
 
-	// 4. 삭제 타이머
-	UE_LOG(LogTemp, Warning, TEXT("[ShatterPlatform] Destroy Timer Started (%f sec)"), CleanupDelay);
 	SetLifeSpan(CleanupDelay);
 }
