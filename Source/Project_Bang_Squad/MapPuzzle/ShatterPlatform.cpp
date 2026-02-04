@@ -107,7 +107,7 @@ void AShatterPlatform::Multicast_Shatter_Implementation()
 	FVector Loc = GetActorLocation();
 	UE_LOG(LogTemp, Warning, TEXT("[ShatterPlatform] Applying Strain: %f at Location: %s"), ShatterDamage, *Loc.ToString());
 
-	GCComponent->ApplyExternalStrain(ShatterDamage, Loc, 500.0f);
+	GCComponent->ApplyExternalStrain(ShatterDamage, Loc, 10000.0f);
 
 	// 3. 트리거 비활성화
 	if (TriggerBox)
