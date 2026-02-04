@@ -869,6 +869,8 @@ void APaladinCharacter::SetShieldActive(bool bActive)
         ShieldMeshComp->SetCollisionResponseToAllChannels(ECR_Ignore);
         ShieldMeshComp->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
         ShieldMeshComp->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);   
+        
+        ShieldMeshComp->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Block);
 
         // 아군 투사체는 통과, 적군은 차단
         ShieldMeshComp->SetCollisionResponseToChannel(ECC_GameTraceChannel1, ECR_Ignore); 
