@@ -4,6 +4,11 @@
 #include "GameFramework/Actor.h"
 #include "SeaMonsterProjectile.generated.h"
 
+// 전방 선언: 컴파일 속도를 높이고 순환 참조를 방지합니다.
+class USphereComponent;
+class UStaticMeshComponent;
+class UProjectileMovementComponent;
+
 UCLASS()
 class PROJECT_BANG_SQUAD_API ASeaMonsterProjectile : public AActor
 {
@@ -12,20 +17,17 @@ class PROJECT_BANG_SQUAD_API ASeaMonsterProjectile : public AActor
 public:
 	ASeaMonsterProjectile();
 
-	FORCEINLINE class UProjectileMovementComponent* GetProjectileMovement() const { return ProjectileMovement; }
+	FORCEINLINE UProjectileMovementComponent* GetProjectileMovement() const { return ProjectileMovement; }
 
 protected:
-	// 충돌체 (이게 루트)
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-	class USphereComponent* CollisionComp;
+	USphereComponent* CollisionComp;
 
-	/** [NEW] 공의 외형을 담당할 메쉬 컴포넌트 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-	class UStaticMeshComponent* MeshComp;
+	UStaticMeshComponent* MeshComp;
 
-	// 발사체 이동 로직
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-	class UProjectileMovementComponent* ProjectileMovement;
+	UProjectileMovementComponent* ProjectileMovement;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
 	float KnockbackForce = 2000.0f;
