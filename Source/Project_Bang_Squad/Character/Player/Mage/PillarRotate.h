@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Project_Bang_Squad/Character/Player/Mage/MagicInteractableInterface.h"
+#include "Components/BoxComponent.h"
 #include "PillarRotate.generated.h"
 
 class UCurveFloat;
@@ -68,6 +69,23 @@ protected:
 	void OnRep_bIsFalling();
 
 	void UpdateFallProgress(float Alpha);
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	UBoxComponent* DamageTrigger; // 데미지 판정용 박스
+
+	/* ===== 데미지 및 넉백 설정 ===== */
+	UPROPERTY(EditAnywhere, Category = "Pillar|Combat")
+	float DamageAmount = 30.0f;
+
+	UPROPERTY(EditAnywhere, Category = "Pillar|Combat")
+	float KnockbackForce = 1500.0f;
+
+	// 한 번 넘어질 때 여러 번 데미지 입는 것 방지
+	TSet<AActor*> HitActors;
+
+	UFUNCTION()
+	void OnDamageTriggerOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
 
 public:
 	/* ===== 인터페이스 구현 ===== */
