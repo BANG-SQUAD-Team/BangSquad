@@ -74,18 +74,11 @@ void AStage2MagicBall::SetMageHighlight(bool bActive)
 
 void AStage2MagicBall::ProcessMageInput(FVector Direction)
 {
-    // [디버그 1] 메이지가 나를 건드리는지 확인
-    // 화면에 빨간 글씨로 입력된 방향값(X, Y, Z)을 띄웁니다.
-    if (GEngine)
-        GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, FString::Printf(TEXT("🔥 INPUT RECEIVED: %s"), *Direction.ToString()));
-
     // 서버 권한 없거나 이미 구르고 있으면 무시
     if (!HasAuthority()) return;
     if (bIsRolling) return;
 
-    // 🚨 [진단용 수정] 방향 따지지 말고, 입력이 조금이라도 들어오면 무조건 굴리기!
-    // 원래 코드: if (Direction.Y > RequiredInputThreshold)
-    // 수정 코드: 입력 크기가 0.1만 넘으면 출발 (방향 이슈 배제)
+   
     if (Direction.Size() > 0.1f) 
     {
         StartRolling();
@@ -112,22 +105,15 @@ void AStage2MagicBall::StartRolling()
         PushDir.Z = -0.5f; 
         PushDir.Normalize();
 
-        // 2. [핵심] "Impulse" 대신 "Force"를 쓰거나, 아주 약한 Impulse를 줍니다.
-        // bVelChange = false로 하면 "질량"을 반영해서 밀기 때문에
-        // 질량이 5000kg이면 엄청난 힘이 필요합니다.
-        // 여기서는 그냥 bVelChange=true(질량 무시)로 하되, 속도를 확 줄여서 '툭' 미는 느낌만 줍니다.
+        // 2. "Impulse" 대신 "Force"를 쓰거나, 아주 약한 Impulse를 준다
+        //여기서는 그냥 bVelChange=true(질량 무시)로 하되, 속도를 확 줄여서 툭 미는 느낌만 준다
         
-        // 기존 MoveSpeed가 1000이었다면 -> 300 ~ 500 정도로 줄이세요.
-        // 처음에 '툭' 밀어주면, 나머지는 중력(Gravity Scale 2.0)이 알아서 가속시킵니다.
+        
         
         float InitialPushSpeed = 300.0f; // 초기 속도는 느리게!
         
         BallMesh->SetPhysicsLinearVelocity(PushDir * InitialPushSpeed);
         
-        // (선택) 굴러가는 회전력을 처음에 살짝 줍니다 (앞으로 구르게)
-        // Y축이 오른쪽 진행방향이면, X축(앞)을 기준으로 회전
-        // FVector TorqueDir = FVector(1.0f, 0.0f, 0.0f) * -1.0f; 
-        // BallMesh->SetPhysicsAngularVelocityInDegrees(TorqueDir * 300.0f);
     }
 }
 
