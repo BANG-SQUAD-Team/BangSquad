@@ -102,6 +102,24 @@ void APaladinCharacter::BeginPlay()
         }
     }
     
+    if (CachedWeaponMesh && WeaponTrailVFX)
+    {
+        WeaponTrailComp = UNiagaraFunctionLibrary::SpawnSystemAttached(
+            WeaponTrailVFX,
+            CachedWeaponMesh,
+            NAME_None, // 소켓 이름 (무기 전체를 따라가려면 None, 특정 소켓이면 이름 입력)
+            FVector::ZeroVector,
+            FRotator::ZeroRotator,
+            EAttachLocation::SnapToTarget,
+            false // Auto Destroy (계속 쓸거니까 false)
+        );
+        // 시작하자마자는 꺼둠
+        if (WeaponTrailComp)
+        {
+            WeaponTrailComp->Deactivate();
+        }
+    }
+    
     // 시작 시 방패 비활성화 (확실하게 끄기)
     SetShieldActive(false);
     
@@ -232,6 +250,9 @@ void APaladinCharacter::StartMeleeTrace()
     if (WeaponComp) LastHammerLocation = WeaponComp->GetSocketLocation(TEXT("Weapon_HitCenter"));
     else LastHammerLocation = GetActorLocation() + GetActorForwardVector() * 100.f;
 
+    // 공격 시작 시 트레일 활성화 (서버 -> 모든 클라)
+    Multicast_SetTrailActive(true);
+    
     // 반복 검사 타이머 시작 (0.015초마다 궤적 스윕)
     GetWorldTimerManager().SetTimer(HitLoopTimerHandle, this, &APaladinCharacter::PerformMeleeTrace, 0.015f, true);
     
@@ -302,6 +323,8 @@ void APaladinCharacter::StopMeleeTrace()
 {
     GetWorldTimerManager().ClearTimer(HitLoopTimerHandle);
     SwingDamagedActors.Empty();
+    
+    Multicast_SetTrailActive(false);
 }
 
 void APaladinCharacter::Client_TriggerHitStop_Implementation()
@@ -440,6 +463,7 @@ void APaladinCharacter::ProcessSkill(FName SkillRowName)
             // ----------------------------------------------------
             if (SkillRowName == FName("Skill1"))
             {
+                
                 // [필수] "아직 데미지 안 줬음" 플래그 초기화
                 bHasDealtSmashDamage = false; 
 
@@ -447,6 +471,8 @@ void APaladinCharacter::ProcessSkill(FName SkillRowName)
                 GetWorldTimerManager().ClearTimer(AttackHitTimerHandle);
                 GetWorldTimerManager().ClearTimer(HitLoopTimerHandle);
                 StopMeleeTrace();
+                
+                Multicast_SetTrailActive(true);
                 
                 // 1. 점프 높이 계산 (체공 시간 기준 역산)
                 float JumpDuration = CurrentActionDelay;
@@ -647,6 +673,8 @@ void APaladinCharacter::PerformSmashDamage(float SmashingDamage)
     // 2. [중복 방지] 이미 데미지를 줬다면 즉시 종료
     if (bHasDealtSmashDamage) return;
     bHasDealtSmashDamage = true; // "데미지 줌" 체크
+    
+    Multicast_SetTrailActive(false);
    
     // 3. 광역 데미지 로직
     FVector ImpactLocation = GetActorLocation(); 
@@ -1013,5 +1041,22 @@ void APaladinCharacter::ConsumeShield(float Amount)
     if (CurrentShieldHP <= 0.0f)
     {
         OnShieldBroken();
+    }
+}
+
+void APaladinCharacter::Multicast_SetTrailActive_Implementation(bool bActive)
+{
+    if (WeaponTrailComp)
+    {
+        if (bActive)
+        {
+            // 트레일 켜기 (리셋하면서 켜야 깔끔함)
+            WeaponTrailComp->Activate(true);
+        }
+        else
+        {
+            // 트레일 끄기
+            WeaponTrailComp->Deactivate();
+        }
     }
 }

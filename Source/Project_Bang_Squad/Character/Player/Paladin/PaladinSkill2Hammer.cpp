@@ -6,6 +6,8 @@
 #include "Components/StaticMeshComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "NiagaraFunctionLibrary.h"
+#include "NiagaraComponent.h"
+#include "Particles/ParticleSystemComponent.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 
@@ -51,6 +53,22 @@ void APaladinSkill2Hammer::BeginPlay()
 	
 }
 
+// 맨 아래나 적당한 곳에 추가하세요
+
+void APaladinSkill2Hammer::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	Super::EndPlay(EndPlayReason);
+
+	// 액터(망치)가 SetLifeSpan에 의해 죽을 때 실행됨
+	if (LingeringVFXComp)
+	{
+		// 파티클 생성기 끄기 
+		// 기존에 나온 연기나 불꽃은 자연스럽게 사라짐 
+		LingeringVFXComp->DeactivateSystem();
+		
+	}
+}
+
 void APaladinSkill2Hammer::InitializeHammer(float InDamage, AActor* InCaster)
 {
 	Damage = InDamage;
@@ -74,12 +92,26 @@ void APaladinSkill2Hammer::InitializeHammer(float InDamage, AActor* InCaster)
 void APaladinSkill2Hammer::OnHammerHit(UPrimitiveComponent* HitComp, AActor* OtherActor, 
 		UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
-	// 땅이나 물체에 닿았을시 폭발
+	// 이미 터졌으면 중복 실행 방지
+	if (CollisionComp->GetCollisionEnabled() == ECollisionEnabled::NoCollision) return;
+
+	// 1. 폭발 로직 실행 (데미지, 넉백)
 	Explode();
-	
+    
+	// 2. 쾅! 하는 임팩트 이펙트 재생 (서버 -> 멀티캐스트)
 	Multicast_PlayImpactVFX(Hit.ImpactPoint);
-	
-	SetLifeSpan(0.1f);
+    
+	// 3. 충돌 끄기 및 메쉬 숨기기 (망치는 사라진 것처럼 보임)
+	if (HasAuthority())
+	{
+		CollisionComp->SetCollisionEnabled(ECollisionEnabled::NoCollision); // 더 이상 충돌 안 함
+        
+		// 멀티캐스트로 메쉬 숨기고 잔류 이펙트 재생하라고 명령
+		Multicast_StartLingeringEffect(Hit.ImpactPoint);
+        
+		// 4. 액터 삭제는 잔류 이펙트 시간만큼 기다렸다가 함
+		SetLifeSpan(LingeringDuration + 0.5f); // 넉넉하게 0.5초 더 줌
+	}
 }
 
 void APaladinSkill2Hammer::Multicast_PlayImpactVFX_Implementation(FVector Location)
@@ -97,6 +129,37 @@ void APaladinSkill2Hammer::Multicast_PlayImpactVFX_Implementation(FVector Locati
 		);
 	}
 }
+
+void APaladinSkill2Hammer::Multicast_StartLingeringEffect_Implementation(FVector Location)
+{
+	// 1. 망치 메쉬 안 보이게 하기
+	if (HammerMesh)
+	{
+		HammerMesh->SetVisibility(false);
+	}
+    
+	// 2. 움직임 멈추기
+	if (MovementComp)
+	{
+		MovementComp->StopMovementImmediately();
+	}
+
+	// 3. [ParticleSystem] 잔류 이펙트(장판) 생성
+	if (LingeringVFX)
+	{
+		LingeringVFXComp = UGameplayStatics::SpawnEmitterAtLocation(
+		  GetWorld(),
+		  LingeringVFX,
+		  Location,
+		  FRotator::ZeroRotator,
+		  LingeringVFXScale, 
+		  true,
+		  EPSCPoolMethod::None,
+		  true
+		);
+	}
+}
+
 
 void APaladinSkill2Hammer::Explode()
 {

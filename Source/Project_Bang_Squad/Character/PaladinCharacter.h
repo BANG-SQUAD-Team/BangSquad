@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Project_Bang_Squad/Character/Base/BaseCharacter.h"
 #include "NiagaraSystem.h"
+#include "NiagaraComponent.h"
 #include "PaladinCharacter.generated.h"
 
 UCLASS()
@@ -103,6 +104,19 @@ protected:
     // 에디터에서 카메라 흔들림 블루프린트를 넣을 변수
     UPROPERTY(EditAnywhere, Category = "Combat|Feel")
     TSubclassOf<class UCameraShakeBase> HitShakeClass;
+    
+    
+    // 에디터에서 할당할 트레일 이펙트 에셋 (나이아가라 시스템)
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "VFX")
+    UNiagaraSystem* WeaponTrailVFX;
+
+    // 실제 게임에서 생성되어 무기에 붙어있을 컴포넌트
+    UPROPERTY()
+    UNiagaraComponent* WeaponTrailComp;
+    
+    // 서버가 모든 클라이언트에게 "트레일 켜/꺼" 명령을 내리는 함수
+    UFUNCTION(NetMulticast, Unreliable)
+    void Multicast_SetTrailActive(bool bActive);
     
     // ====================================================================================
     //  섹션 4: 스킬 시스템 (Skill System - Smash)
