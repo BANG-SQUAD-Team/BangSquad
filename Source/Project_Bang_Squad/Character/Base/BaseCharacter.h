@@ -252,10 +252,9 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Game Progress")
 	int32 UnlockedStageLevel = 1;
-	
-	// 서버와 클라이언트 모두 속도를 바꾸게 하는 방송 함수
+
 	UFUNCTION(NetMulticast, Reliable)
-	void Multicast_SetMaxWalkSpeed(float NewSpeed);
+	void Multicast_SetMaxWalkSpeed(float NewSpeed, float NewRatio);
 
 bool bJumpRestricted = false;
 	

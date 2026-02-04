@@ -39,7 +39,9 @@ void AWebPad::OnOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherA
         //점프 봉인
         Character->SetJumpRestricted(true);
 
-        Character->GetCharacterMovement()->Velocity *= 0.05f;
+        Character->GetCharacterMovement()->GroundFriction = 20.0f;
+
+        Character->GetCharacterMovement()->BrakingDecelerationWalking = 10000.0f;
 
         //공중 마찰력
         Character->GetCharacterMovement()->FallingLateralFriction = 100.f;
@@ -61,6 +63,9 @@ void AWebPad::OnOverlapEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherAct
         Character->SetJumpRestricted(false);
 
         Character->GetCharacterMovement()->FallingLateralFriction = 0.f;
+
+        Character->GetCharacterMovement()->GroundFriction = 8.0f; 
+        Character->GetCharacterMovement()->BrakingDecelerationWalking = 2048.0f;
     }
 }
 

@@ -478,7 +478,7 @@ bool ABaseCharacter::IsSkillUnlocked(int32 RequiredStage)
 
 void ABaseCharacter::ApplySlowDebuff(bool bActive, float Ratio)
 {
-	if (!HasAuthority()) return; // 서버만 명령 가능
+	if (!HasAuthority()) return;
 
 	UCharacterMovementComponent* MoveComp = GetCharacterMovement();
 	if (!MoveComp) return;
@@ -489,26 +489,29 @@ void ABaseCharacter::ApplySlowDebuff(bool bActive, float Ratio)
 	}
 	else
 	{
-		// [장판 퇴장]
-		CurrentSlowRatio = 1.0f; // 비율 초기화
-		CachedWalkSpeed = 0.0f;  // 캐시 초기화
+		CurrentSlowRatio = 1.0f;
+		CachedWalkSpeed = 0.0f;
 	}
 
-	// 하드코딩(550.0f) 대신 DefaultMaxWalkSpeed를 사용하여 목표 속도 계산
 	float TargetSpeed = DefaultMaxWalkSpeed * CurrentSlowRatio;
 
-	// 서버와 클라이언트 모두 속도 변경
+	// 서버 적용
 	MoveComp->MaxWalkSpeed = TargetSpeed;
-	Multicast_SetMaxWalkSpeed(TargetSpeed);
+
+	// [수정] 클라이언트들에게 "속도랑 비율 둘 다 바꿔!"라고 방송
+	Multicast_SetMaxWalkSpeed(TargetSpeed, CurrentSlowRatio);
 }
 
-void ABaseCharacter::Multicast_SetMaxWalkSpeed_Implementation(float NewSpeed)
+void ABaseCharacter::Multicast_SetMaxWalkSpeed_Implementation(float NewSpeed, float NewRatio)
 {
-	// 나(서버)와 저쪽(클라이언트) 모두 동시에 바뀜 -> 렉 없음!
+	// 1. 속도 적용
 	if (GetCharacterMovement())
 	{
 		GetCharacterMovement()->MaxWalkSpeed = NewSpeed;
 	}
+
+	// 2. [추가] 클라이언트도 이 비율을 알아야 Tick에서 엉뚱한 계산을 안 함!
+	CurrentSlowRatio = NewRatio;
 }
 
 void ABaseCharacter::PlayActionMontage(UAnimMontage* MontageToPlay)
