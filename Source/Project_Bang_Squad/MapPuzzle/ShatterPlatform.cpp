@@ -78,34 +78,33 @@ void AShatterPlatform::CheckPlayerCount()
 
 void AShatterPlatform::Multicast_Shatter_Implementation()
 {
-	if (MainFloorCollision)
+	TArray<UPrimitiveComponent*> AllComps;
+	GetComponents<UPrimitiveComponent>(AllComps);
+
+	for (UPrimitiveComponent* Comp : AllComps)
 	{
-		MainFloorCollision->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	}
+		if (Comp == GCComponent)
+		{
+			GCComponent->SetCollisionObjectType(ECC_PhysicsBody);
+			GCComponent->SetCollisionEnabled(ECollisionEnabled::PhysicsOnly);
+			GCComponent->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+			GCComponent->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
 
-	if (!GCComponent) return;
+			GCComponent->SetSimulatePhysics(true);
+			GCComponent->WakeAllRigidBodies();
 
-	GCComponent->SetSimulatePhysics(true);
-	GCComponent->WakeAllRigidBodies();
+			FVector Loc = GetActorLocation();
+			GCComponent->ApplyExternalStrain(ShatterDamage, Loc, 50000.0f);
 
-	GCComponent->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
-	GCComponent->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
-
-	FVector Loc = GetActorLocation();
-
-
-	GCComponent->ApplyExternalStrain(ShatterDamage, Loc, 50000.0f);
-
-
-	FVector DownwardForce = FVector(0.0f, 0.0f, -1000.0f);
-
-	// VelChange를 true로 하면 질량 상관없이 속도를 바로 바꿉니다 (더 반응이 빠름)
-	GCComponent->AddImpulse(DownwardForce, NAME_None, true);
-
-	// 6. 트리거 박스도 끔
-	if (TriggerBox)
-	{
-		TriggerBox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			FVector DownwardForce = FVector(0.0f, 0.0f, -1000.0f);
+			GCComponent->AddImpulse(DownwardForce, NAME_None, true);
+		}
+		else
+		{
+			Comp->SetCollisionProfileName(TEXT("NoCollision"));
+			Comp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			Comp->SetCollisionResponseToAllChannels(ECR_Ignore);
+		}
 	}
 
 	SetLifeSpan(CleanupDelay);

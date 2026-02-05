@@ -126,6 +126,26 @@ void ABaseCharacter::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 	ApplySlopeSlide(DeltaTime);
 	
+
+	// 디버그: 현재 밟고 있는 바닥 액터 이름 출력
+	/*if (GetCharacterMovement() && GetCharacterMovement()->CurrentFloor.bBlockingHit)
+	{
+		AActor* FloorActor = GetCharacterMovement()->CurrentFloor.HitResult.GetActor();
+		if (FloorActor)
+		{
+			// 화면 왼쪽 상단에 초록색으로 0초(매 프레임 갱신)동안 표시
+			// Key값(123)을 고정해서 메시지가 쌓이지 않고 한 줄로 갱신되게 함
+			GEngine->AddOnScreenDebugMessage(123, 0.f, FColor::Green,
+				FString::Printf(TEXT("Floor: %s"), *FloorActor->GetName()));
+		}
+	}
+	else
+	{
+		// 공중에 떠있거나 바닥이 없으면 "None" 출력
+		GEngine->AddOnScreenDebugMessage(123, 0.f, FColor::Red, TEXT("Floor: None"));
+	}
+	*/
+
 }
 
 float ABaseCharacter::TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser)
