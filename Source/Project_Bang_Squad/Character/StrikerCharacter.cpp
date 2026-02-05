@@ -306,12 +306,13 @@ void AStrikerCharacter::ApplyJobAbilityHit()
         ACharacter* TargetChar = Cast<ACharacter>(Actor);
         if (!TargetChar) continue;
 
-        // 아군(Player 태그) 제외 로직이 필요하면 추가
-        if (TargetChar->ActorHasTag("Player")) continue;
+        // [수정됨] 아군(Player 태그) 제외 로직 주석 처리
+        // if (TargetChar->ActorHasTag("Player")) continue;
 
         bool bIsNormal = Actor->IsA(AEnemyNormal::StaticClass());
-        bool bIsBaseChar = Actor->IsA(ABaseCharacter::StaticClass());
+        bool bIsBaseChar = Actor->IsA(ABaseCharacter::StaticClass()); // 플레이어 캐릭터도 여기에 포함됨
 
+        // 플레이어 캐릭터(BaseCharacter)도 조건에 포함되어 있으므로 태그 체크만 끄면 적용됩니다.
         if (bIsNormal || bIsBaseChar)
         {
             // 데미지 적용
