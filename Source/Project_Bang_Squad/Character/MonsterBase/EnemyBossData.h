@@ -62,7 +62,7 @@ public:
     // =============================================================
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Stage2_Mage")
-    TSubclassOf<AMageProjectile> MagicProjectileClass;
+    TSubclassOf<AActor> MagicProjectileClass;
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Stage2_Mage")
     TObjectPtr<UAnimMontage> MagicAttackMontage;

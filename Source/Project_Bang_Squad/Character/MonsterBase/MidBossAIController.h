@@ -1,4 +1,4 @@
-// MidBossAIController.h
+// Source/Project_Bang_Squad/Character/MonsterBase/MidBossAIController.h
 
 #pragma once
 
@@ -13,76 +13,85 @@ class UAISenseConfig_Sight;
 UENUM(BlueprintType)
 enum class EMidBossAIState : uint8
 {
-	Idle        UMETA(DisplayName = "Idle"),
-	Notice      UMETA(DisplayName = "Notice (Roar)"),
-	Chase       UMETA(DisplayName = "Chase"),
-	Attack      UMETA(DisplayName = "Attack"),
-	Hit         UMETA(DisplayName = "Hit (Stunned)"),
-	Gimmick     UMETA(DisplayName = "Gimmick"),
-	Dead        UMETA(DisplayName = "Dead")
+    Idle        UMETA(DisplayName = "Idle"),
+    Notice      UMETA(DisplayName = "Notice (Roar)"),
+    Chase       UMETA(DisplayName = "Chase"),
+    Attack      UMETA(DisplayName = "Attack"),
+    Hit         UMETA(DisplayName = "Hit (Stunned)"),
+    Gimmick     UMETA(DisplayName = "Gimmick"),
+    Dead        UMETA(DisplayName = "Dead")
 };
 
 UCLASS()
 class PROJECT_BANG_SQUAD_API AMidBossAIController : public AAIController
 {
-	GENERATED_BODY()
+    GENERATED_BODY()
 
 public:
-	AMidBossAIController();
-	virtual void Tick(float DeltaTime) override;
+    AMidBossAIController();
 
-	// 캐릭터가 피격당했을 때 호출하는 함수
-	void OnDamaged(AActor* Attacker);
+    virtual void OnPossess(APawn* InPawn) override;
+    virtual void Tick(float DeltaTime) override;
 
-	// 사망 시 AI 정지 명령 함수
-	void SetDeadState();
+    // --- [Public Interface] ---
 
-	// 외부에서 공격 사거리를 설정할 수 있게 해주는 함수
-	void SetAttackRange(float NewRange) { AttackRange = NewRange; }
+    // 피격 시 호출 (외부에서 호출 가능)
+    void OnDamaged(AActor* Attacker);
 
-protected:
-	virtual void OnPossess(APawn* InPawn) override;
+    // 사망 시 AI 정지
+    void SetDeadState();
 
-	UFUNCTION()
-	void OnTargetDetected(AActor* Actor, FAIStimulus Stimulus);
+    // 공격 사거리 설정
+    void SetAttackRange(float NewRange) { AttackRange = NewRange; }
 
-	// 타이머 콜백 함수들
-	void StartChasing(); // 포효/피격 끝난 후 추적 시작
-	void FinishAttack(); // 공격 끝난 후 복귀
-
-	// [NEW] 랜덤 타겟 변경 함수 (일정 시간마다 실행)
-	void UpdateRandomTarget();
-
-	// [NEW] 타겟이 죽었는지(시체인지) 확인하는 함수
-	bool IsTargetDead(AActor* Actor);
+    // 공격 종료 시 호출 (타이머 or 몽타주 종료 시)
+    UFUNCTION()
+    virtual void FinishAttack();
 
 protected:
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AI")
-	TObjectPtr<UAISenseConfig_Sight> SightConfig;
+    // --- [FSM Virtual Functions] ---
+    // 자식 클래스(Stage1, Stage2)가 오버라이드하여 각자의 행동을 구현
+    virtual void UpdateIdleState(float DeltaTime);
+    virtual void UpdateChaseState(float DeltaTime);
+    virtual void UpdateAttackState(float DeltaTime);
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AI|State")
-	EMidBossAIState CurrentAIState;
+    // --- [Helper Functions] ---
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AI|State")
-	TObjectPtr<AActor> TargetActor;
+    // Perception 감지 시
+    UFUNCTION()
+    void OnTargetDetected(AActor* Actor, FAIStimulus Stimulus);
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|Config")
-	float AttackRange = 150.0f;
+    // 랜덤 타겟 변경 (멀티플레이어 어그로 분산)
+    virtual void UpdateRandomTarget();
 
-	FTimerHandle StateTimerHandle;
+    // 타겟 사망 여부 확인
+    bool IsTargetDead(AActor* Actor) const;
 
-	// [NEW] 랜덤 어그로 변경 타이머 핸들 & 주기 변수
-	FTimerHandle AggroTimerHandle;
+    // 추격 시작 헬퍼
+    virtual void StartChasing();
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|Config")
-	float TargetChangeInterval = 5.0f; // 기본값 5초 (에디터 수정 가능)
+protected:
+    // --- [Components] ---
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AI")
+    TObjectPtr<UAISenseConfig_Sight> SightConfig;
 
-	// [NEW] 검기 스킬 설정
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|Combat")
-	float SlashSkillCooldown = 8.0f; // 8초마다 사용 가능
+    // --- [State] ---
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AI|State")
+    EMidBossAIState CurrentAIState;
 
-	float LastSlashTime = -100.0f; // 초기엔 바로 쏠 수 있게 설정
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AI|State")
+    TObjectPtr<AActor> TargetActor;
 
-	// 한 번이라도 포효했는지 체크하는 플래그
-	bool bHasRoared = false;
+    // --- [Timers & Config] ---
+    FTimerHandle StateTimerHandle;
+    FTimerHandle AggroTimerHandle;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|Config")
+    float AttackRange = 150.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|Config")
+    float TargetChangeInterval = 5.0f;
+
+    // 한 번이라도 포효했는지 체크
+    bool bHasRoared = false;
 };

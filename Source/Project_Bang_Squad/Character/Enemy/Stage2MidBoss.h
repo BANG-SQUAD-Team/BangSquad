@@ -54,10 +54,18 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Combat")
     void CastAreaSkill();
 
+    // [NEW] 타겟 근처로 텔레포트 시도 (성공 시 true 반환)
+    bool TryTeleportToTarget(AActor* Target, float DistanceFromTarget);
+
+    // [NEW] 근접 공격 애니메이션 재생 (기존에 만들었다면 패스)
+    float PlayMeleeAttackAnim();
+
+
     /* --- [Animation Helpers] --- */
     float PlayMagicAttackAnim();
     float PlayTeleportAnim();
 
+ 
 protected:
     virtual void BeginPlay() override;
 
