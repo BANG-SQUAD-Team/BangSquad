@@ -47,7 +47,7 @@ void ASeaMonsterProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherAct
 			{
 				// A. 방어 성공!
 				// 1. 방패 체력 깎기 (기존 함수 활용)
-				Paladin->ConsumeShield(10.0f); 
+				Paladin->ConsumeShield(20.0f); 
                 
 				// 2. 투사체 파괴
 				Destroy();
