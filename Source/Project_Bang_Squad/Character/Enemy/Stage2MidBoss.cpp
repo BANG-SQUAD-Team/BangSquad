@@ -6,6 +6,7 @@
 #include "Components/CapsuleComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h" // SphereTrace 디버그용
+#include "NavigationSystem.h"
 #include "Project_Bang_Squad/Character/MonsterBase/MidBossAIController.h" 
 
 AStage2MidBoss::AStage2MidBoss()
@@ -23,6 +24,23 @@ AStage2MidBoss::AStage2MidBoss()
     // -> 메모리 절약 및 로직 분리
 
     CurrentPhase = EStage2Phase::Normal;
+
+    // 1. 컨트롤러가 보는 방향으로 몸을 강제 회전시키는 옵션 끄기
+    bUseControllerRotationYaw = false;
+
+    if (GetCharacterMovement())
+    {
+        // 2. 이동할 때 이동 방향으로 회전하는 기능은 켜두기 (자연스러운 이동)
+        GetCharacterMovement()->bOrientRotationToMovement = true;
+
+        // 3. [핵심] 컨트롤러 회전값을 무조건 따라가는 기능 끄기!
+        // 이걸 꺼야 AIController에서 SetActorRotation()으로 돌리는 게 먹힙니다.
+        GetCharacterMovement()->bUseControllerDesiredRotation = false;
+
+        // 4. 회전 속도 설정 (빠르게)
+        GetCharacterMovement()->RotationRate = FRotator(0.0f, 720.0f, 0.0f);
+    }
+    // ---------------------------------------------------------------------
 }
 
 void AStage2MidBoss::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -74,7 +92,20 @@ void AStage2MidBoss::BeginPlay()
             HealthComponent->SetMaxHealth(BossData->MaxHealth);
             UE_LOG(LogTemp, Log, TEXT("[Stage2Boss] Initialized Health: %f"), BossData->MaxHealth);
         }
+
+        if (BossData && GetController())
+        {
+            if (auto* MyAI = Cast<AMidBossAIController>(GetController()))
+            {
+                // BossData에 있는 사거리 값을 AI에게 주입
+                MyAI->SetAttackRange(BossData->AttackRange);
+                UE_LOG(LogTemp, Log, TEXT("[Stage2Boss] AI AttackRange Updated to: %f"), BossData->AttackRange);
+            }
+        }
+
+
     }
+
 
     // 사망 델리게이트 연결 (서버/클라 모두 연결하여 각자 처리할 로직 수행)
     if (HealthComponent)
@@ -159,43 +190,48 @@ void AStage2MidBoss::PerformAttackTrace()
     }
 }
 
-// 2. Projectile (유도탄 발사)
 void AStage2MidBoss::FireMagicMissile()
 {
-    // [Authority] 클라이언트가 호출해도 서버에서 실행되도록 체크
-    if (HasAuthority())
+    if (!HasAuthority()) return;
+
+    FVector SpawnLoc = GetActorLocation();
+
+    // [수정] "그냥 정면으로 쏜다." (플레이어가 피할 수 있게!)
+    // AI가 이미 몸을 돌려놨을 것이라 믿고, 현재 몸의 회전값을 그대로 씁니다.
+    FRotator SpawnRot = GetActorRotation();
+
+    // 소켓 위치 사용 (지팡이 끝)
+    if (GetMesh()->DoesSocketExist(TEXT("Muzzle_01")))
     {
-        FVector SpawnLoc = GetActorLocation() + GetActorForwardVector() * 100.f;
-        FRotator SpawnRot = GetActorRotation();
-
-        // 소켓 우선 사용 ("Muzzle_01" -> "Hand_R" 순서)
-        if (GetMesh()->DoesSocketExist(TEXT("Muzzle_01")))
-        {
-            SpawnLoc = GetMesh()->GetSocketLocation(TEXT("Muzzle_01"));
-        }
-        else if (GetMesh()->DoesSocketExist(TEXT("Hand_R")))
-        {
-            SpawnLoc = GetMesh()->GetSocketLocation(TEXT("Hand_R"));
-        }
-
-        // 실제 생성은 Server RPC로 위임
-        Server_SpawnMagicProjectile(SpawnLoc, SpawnRot);
+        SpawnLoc = GetMesh()->GetSocketLocation(TEXT("Muzzle_01"));
     }
+    else if (GetMesh()->DoesSocketExist(TEXT("Hand_R")))
+    {
+        SpawnLoc = GetMesh()->GetSocketLocation(TEXT("Hand_R"));
+    }
+
+    // 서버 생성 요청
+    Server_SpawnMagicProjectile(SpawnLoc, SpawnRot);
 }
 
 void AStage2MidBoss::Server_SpawnMagicProjectile_Implementation(FVector SpawnLoc, FRotator SpawnRot)
 {
-    // [Safety] DataAsset에 투사체 클래스가 지정되어 있는지 확인
+    // 데이터 에셋 체크
     if (!BossData || !BossData->MagicProjectileClass)
     {
-        UE_LOG(LogTemp, Warning, TEXT("[Stage2Boss] MagicProjectileClass is NULL in DataAsset!"));
+        // (디버그용) 투사체가 없으면 빨간 공이라도 띄워서 확인
+        DrawDebugSphere(GetWorld(), SpawnLoc, 30.0f, 12, FColor::Red, false, 2.0f);
+        DrawDebugLine(GetWorld(), SpawnLoc, SpawnLoc + SpawnRot.Vector() * 1000.0f, FColor::Red, false, 2.0f, 0, 2.0f);
         return;
     }
 
     FActorSpawnParameters Params;
     Params.Owner = this;
-    Params.Instigator = this; // 투사체가 생성자(보스)를 무시하도록 설정
+    Params.Instigator = this;
 
+    // [깔끔한 생성] 
+    // 유도 기능 없음. 그냥 직선으로 생성.
+    // 속도는 BP_MagicProjectile 안의 ProjectileMovement에서 조절하세요.
     GetWorld()->SpawnActor<AActor>(BossData->MagicProjectileClass, SpawnLoc, SpawnRot, Params);
 }
 
@@ -206,6 +242,63 @@ void AStage2MidBoss::CastAreaSkill()
         // TODO: 광역기(장판) 소환 로직 구현
         UE_LOG(LogTemp, Log, TEXT("[Stage2Boss] Casting Area Skill (Meteor)!"));
     }
+}
+
+bool AStage2MidBoss::TryTeleportToTarget(AActor* Target, float DistanceFromTarget)
+{
+    if (!HasAuthority() || !Target) return false;
+
+    UNavigationSystemV1* NavSystem = UNavigationSystemV1::GetCurrent(GetWorld());
+    if (!NavSystem) return false;
+
+    // 1. 목표 위치 계산
+    FVector TargetLoc = Target->GetActorLocation();
+    FVector TargetBack = -Target->GetActorForwardVector();
+    FVector DestLoc = TargetLoc + (TargetBack * DistanceFromTarget);
+
+    // 2. NavMesh 투영
+    FNavLocation NavLoc;
+    bool bCanTeleport = NavSystem->ProjectPointToNavigation(DestLoc, NavLoc, FVector(200.0f));
+
+    if (bCanTeleport)
+    {
+        // 3. 연출 (사라짐)
+        PlayTeleportAnim();
+
+        // 4. [수정] 높이 보정 (Z Offset)
+        // NavMesh 점은 '바닥'이므로, 캡슐의 절반 높이(HalfHeight)만큼 올려줘야 땅에 안 묻힘.
+        float CapsuleHalfHeight = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+        FVector FinalLoc = NavLoc.Location;
+
+        // 살짝 위에서 툭 떨어지는 느낌을 위해 +50.0f 추가 (총 높이 + 여유)
+        FinalLoc.Z += (CapsuleHalfHeight + 50.0f);
+
+        // 5. 이동
+        SetActorLocation(FinalLoc);
+
+        // 6. 회전 (타겟 바라보기 - Z축 무시)
+        FVector LookDir = TargetLoc - FinalLoc;
+        LookDir.Z = 0.f;
+        if (!LookDir.IsNearlyZero())
+        {
+            SetActorRotation(LookDir.Rotation());
+        }
+
+        return true;
+    }
+    return false;
+}
+
+float AStage2MidBoss::PlayMeleeAttackAnim()
+{
+    // (이전 답변에서 구현한 내용과 동일)
+    if (!HasAuthority()) return 0.0f;
+    if (BossData && BossData->AttackMontages.Num() > 0)
+    {
+        Multicast_PlayMontage(BossData->AttackMontages[0]);
+        return BossData->AttackMontages[0]->GetPlayLength();
+    }
+    return 0.0f;
 }
 
 // --- [Animation Helpers] ---
@@ -289,3 +382,4 @@ void AStage2MidBoss::OnDeath()
         SetLifeSpan(5.0f); // 5초 뒤 시체 삭제
     }
 }
+

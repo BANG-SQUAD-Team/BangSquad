@@ -1,19 +1,18 @@
 // Source/Project_Bang_Squad/Character/MonsterBase/MidBossAIController.cpp
 
-#include "Project_Bang_Squad/Character/MonsterBase/MidBossAIController.h"
-#include "Project_Bang_Squad/Character/Enemy/EnemyMidBoss.h" 
+#include "MidBossAIController.h"
 #include "Perception/AIPerceptionComponent.h"
 #include "Perception/AISenseConfig_Sight.h"
 #include "GameFramework/Character.h"
 #include "TimerManager.h"
 #include "Kismet/GameplayStatics.h"
-#include "Project_Bang_Squad/Character/Base/BaseCharacter.h" // [필수] 플레이어 구분용
-#include "Project_Bang_Squad/Character/MonsterBase/EnemyCharacterBase.h" // [필수] 적군 구분용
-#include "Project_Bang_Squad/Character/Component/HealthComponent.h" // [필수] 사망 여부 확인
+#include "Project_Bang_Squad/Character/Base/BaseCharacter.h"
+#include "Project_Bang_Squad/Character/MonsterBase/EnemyCharacterBase.h"
+#include "Project_Bang_Squad/Character/Component/HealthComponent.h"
 
 AMidBossAIController::AMidBossAIController()
 {
-    // 1. Perception(감각) 컴포넌트 생성
+    // 1. Perception 생성
     SetPerceptionComponent(*CreateDefaultSubobject<UAIPerceptionComponent>(TEXT("AI Perception")));
 
     // 2. 시야 설정
@@ -22,9 +21,9 @@ AMidBossAIController::AMidBossAIController()
     {
         SightConfig->SightRadius = 1500.0f;
         SightConfig->LoseSightRadius = 2000.0f;
-        SightConfig->PeripheralVisionAngleDegrees = 90.0f;
+        SightConfig->PeripheralVisionAngleDegrees = 180.0f; // 시야각 (필요 시 360도로 확장)
 
-        // [중요] 클라이언트(Neutrals)와 팀원(Friendlies) 모두 감지하도록 설정 (멀티플레이어 필수)
+        // [중요] 모든 진영 감지 (플레이어는 보통 Neutral 또는 Different Team)
         SightConfig->DetectionByAffiliation.bDetectEnemies = true;
         SightConfig->DetectionByAffiliation.bDetectNeutrals = true;
         SightConfig->DetectionByAffiliation.bDetectFriendlies = true;
@@ -43,39 +42,38 @@ void AMidBossAIController::OnPossess(APawn* InPawn)
     Super::OnPossess(InPawn);
     bHasRoared = false;
 
-    // [NEW] 빙의 시 쿨타임 초기화 (바로 쏠 수 있게)
-    LastSlashTime = -SlashSkillCooldown;
-
     // Perception 이벤트 연결
     if (GetPerceptionComponent())
     {
         GetPerceptionComponent()->OnTargetPerceptionUpdated.AddDynamic(this, &AMidBossAIController::OnTargetDetected);
     }
 
-    // [NEW] 랜덤 타겟 변경 타이머 시작
-    GetWorld()->GetTimerManager().SetTimer(
-        AggroTimerHandle,
-        this,
-        &AMidBossAIController::UpdateRandomTarget,
-        TargetChangeInterval,
-        true
-    );
+    // 랜덤 타겟 변경 타이머 시작
+    if (GetWorld())
+    {
+        GetWorld()->GetTimerManager().SetTimer(
+            AggroTimerHandle,
+            this,
+            &AMidBossAIController::UpdateRandomTarget,
+            TargetChangeInterval,
+            true
+        );
+    }
 }
 
 void AMidBossAIController::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
 
-    // 죽었거나 기믹 상태면 행동 정지
+    // [예외 처리] 사망했거나 기믹 중이면 로직 정지
     if (CurrentAIState == EMidBossAIState::Dead || CurrentAIState == EMidBossAIState::Gimmick)
     {
         return;
     }
 
-    // 타겟 유효성 검사 (쫓다가 사라지거나 죽었을 때)
+    // [타겟 검증] 타겟이 사라지거나 죽었으면 초기화
     if (CurrentAIState == EMidBossAIState::Chase || CurrentAIState == EMidBossAIState::Attack)
     {
-        // [수정] 타겟이 유효하지 않거나 죽었으면(IsTargetDead) 포기
         if (!IsValid(TargetActor) || IsTargetDead(TargetActor))
         {
             TargetActor = nullptr;
@@ -85,69 +83,96 @@ void AMidBossAIController::Tick(float DeltaTime)
         }
     }
 
+    // [FSM 실행] 상태별로 가상 함수 호출 -> 자식 클래스에서 구체적 행동 정의
     switch (CurrentAIState)
     {
     case EMidBossAIState::Idle:
+        UpdateIdleState(DeltaTime);
+        break;
     case EMidBossAIState::Notice:
-    case EMidBossAIState::Hit:
-    case EMidBossAIState::Dead:
+        // 포효 중 (타이머가 끝나면 StartChasing 호출)
         break;
-
     case EMidBossAIState::Chase:
-        if (TargetActor)
-        {
-            float Distance = GetPawn()->GetDistanceTo(TargetActor);
-            float CurrentTime = GetWorld()->GetTimeSeconds();
-
-            // [패턴 1] 가까우면(사거리 내) -> 무조건 일반 공격 (Melee)
-            if (Distance <= AttackRange)
-            {
-                StopMovement();
-                CurrentAIState = EMidBossAIState::Attack;
-
-                auto* MyPawn = Cast<AEnemyMidBoss>(GetPawn());
-                if (MyPawn)
-                {
-                    // 일반 공격
-                    float AnimDuration = MyPawn->PlayRandomAttack();
-                    float WaitTime = (AnimDuration > 0.f) ? AnimDuration : 1.5f;
-                    GetWorld()->GetTimerManager().SetTimer(StateTimerHandle, this, &AMidBossAIController::FinishAttack, WaitTime, false);
-                }
-            }
-            // [패턴 2] 멀리 있는데(1000cm 이내) + 쿨타임 찼음 -> 검기 발사! (Projectile)
-            else if (Distance <= 1000.0f && (CurrentTime - LastSlashTime >= SlashSkillCooldown))
-            {
-                StopMovement();
-                CurrentAIState = EMidBossAIState::Attack;
-
-                // 쿨타임 갱신
-                LastSlashTime = CurrentTime;
-
-                auto* MyPawn = Cast<AEnemyMidBoss>(GetPawn());
-                if (MyPawn)
-                {
-                    UE_LOG(LogTemp, Warning, TEXT("BOSS: Target FAR -> Slash Attack!"));
-
-                    // 검기 발사 함수 호출
-                    float AnimDuration = MyPawn->PlaySlashAttack();
-                    float WaitTime = (AnimDuration > 0.f) ? AnimDuration : 1.5f;
-                    GetWorld()->GetTimerManager().SetTimer(StateTimerHandle, this, &AMidBossAIController::FinishAttack, WaitTime, false);
-                }
-            }
-            // [패턴 3] 멀고 쿨타임도 안 찼음 -> 뛰어감 (Chase)
-            else
-            {
-                MoveToActor(TargetActor, 50.0f);
-            }
-        }
+        UpdateChaseState(DeltaTime);
         break;
-
     case EMidBossAIState::Attack:
+        UpdateAttackState(DeltaTime);
+        break;
+    case EMidBossAIState::Hit:
+        // 피격 경직 중 (타이머가 끝나면 StartChasing 호출)
+        break;
+    case EMidBossAIState::Dead:
         break;
     }
 }
 
-// 피격 시 호출
+// --- [FSM Virtual Implementations (Default)] ---
+
+void AMidBossAIController::UpdateIdleState(float DeltaTime)
+{
+    // 기본 로직: 타겟이 있으면 바로 추격
+    if (TargetActor)
+    {
+        StartChasing();
+    }
+}
+
+void AMidBossAIController::UpdateChaseState(float DeltaTime)
+{
+    // 기본 로직: 타겟을 향해 단순 이동
+    if (TargetActor)
+    {
+        MoveToActor(TargetActor, AttackRange * 0.8f);
+    }
+}
+
+void AMidBossAIController::UpdateAttackState(float DeltaTime)
+{
+    // 부모 클래스는 공격 방식(칼? 마법?)을 모르므로 비워둡니다.
+    // 자식 클래스(Stage1AI, Stage2AI)에서 반드시 오버라이드 해야 합니다.
+}
+
+// --- [Helper Functions] ---
+
+void AMidBossAIController::OnTargetDetected(AActor* Actor, FAIStimulus Stimulus)
+{
+    if (CurrentAIState == EMidBossAIState::Dead) return;
+
+    auto* PlayerCharacter = Cast<ABaseCharacter>(Actor);
+    if (!PlayerCharacter || !Stimulus.WasSuccessfullySensed() || IsTargetDead(PlayerCharacter))
+    {
+        return;
+    }
+
+    // 최초 발견 시 로직
+    if (CurrentAIState == EMidBossAIState::Idle)
+    {
+        TargetActor = PlayerCharacter;
+
+        // 아직 포효 안 했으면 포효
+        if (!bHasRoared)
+        {
+            bHasRoared = true;
+            CurrentAIState = EMidBossAIState::Notice;
+            StopMovement();
+
+            // 몽타주 재생은 폰에게 위임 (EnemyCharacterBase에 PlayAggroAnim이 있다고 가정)
+            float WaitTime = 1.5f;
+            if (auto* MyPawn = Cast<AEnemyCharacterBase>(GetPawn()))
+            {
+                // 부모 캐릭터 클래스에 가상함수로 PlayAggroAnim()이 있다면 호출, 없으면 시간만 대기
+                // WaitTime = MyPawn->PlayAggroAnim(); 
+            }
+
+            GetWorld()->GetTimerManager().SetTimer(StateTimerHandle, this, &AMidBossAIController::StartChasing, WaitTime, false);
+        }
+        else
+        {
+            StartChasing();
+        }
+    }
+}
+
 void AMidBossAIController::OnDamaged(AActor* Attacker)
 {
     if (CurrentAIState == EMidBossAIState::Dead || CurrentAIState == EMidBossAIState::Gimmick) return;
@@ -155,7 +180,7 @@ void AMidBossAIController::OnDamaged(AActor* Attacker)
     GetWorld()->GetTimerManager().ClearTimer(StateTimerHandle);
     StopMovement();
 
-    // 1. 진짜 공격자(플레이어 폰) 찾기 - 투사체 예외 처리
+    // 1. 공격자 식별 (Owner 확인)
     AActor* RealTarget = Attacker;
     if (Attacker)
     {
@@ -166,92 +191,57 @@ void AMidBossAIController::OnDamaged(AActor* Attacker)
         }
     }
 
-    // [수정] 공격자가 우리 편(몬스터)이거나 죽은 상태면 타겟팅 안 함
+    // 2. 아군 오인 사격 방지
     bool bIsEnemyTeam = RealTarget && RealTarget->IsA(AEnemyCharacterBase::StaticClass());
 
-    if (!bHasRoared && RealTarget && !IsTargetDead(RealTarget) && !bIsEnemyTeam)
+    if (RealTarget && !IsTargetDead(RealTarget) && !bIsEnemyTeam)
     {
+        // 타겟 변경 (어그로 핑퐁)
         TargetActor = RealTarget;
-        bHasRoared = true;
+        if (!bHasRoared) bHasRoared = true;
     }
 
-    // 3. 피격 상태 전환 (스턴 모션)
+    // 3. 피격 상태 전환
     CurrentAIState = EMidBossAIState::Hit;
-
     float StunDuration = 0.5f;
-    auto* MyPawn = Cast<AEnemyMidBoss>(GetPawn());
-    if (MyPawn)
-    {
-        // 피격 모션 (멀티캐스트로 재생됨)
-        float AnimTime = MyPawn->PlayHitReactAnim();
-        if (AnimTime > 0.f) StunDuration = AnimTime;
-    }
+
+    // 피격 애니메이션 재생 요청 (폰에게 위임)
+    /* [설계 포인트]
+       모든 적 캐릭터가 공통으로 PlayHitReactAnim을 가진다면 AEnemyCharacterBase에 가상함수로 넣는 것이 좋습니다.
+       여기서는 일단 타이머만 설정합니다.
+    */
 
     GetWorld()->GetTimerManager().SetTimer(StateTimerHandle, this, &AMidBossAIController::StartChasing, StunDuration, false);
-
-    UE_LOG(LogTemp, Warning, TEXT("BOSS: Hit by [%s]. Current Target: [%s]"),
-        *Attacker->GetName(),
-        TargetActor ? *TargetActor->GetName() : TEXT("None"));
 }
 
-void AMidBossAIController::SetDeadState()
+void AMidBossAIController::UpdateRandomTarget()
 {
-    CurrentAIState = EMidBossAIState::Dead;
-    StopMovement();
-    GetWorld()->GetTimerManager().ClearTimer(StateTimerHandle);
+    if (CurrentAIState == EMidBossAIState::Dead || CurrentAIState == EMidBossAIState::Gimmick) return;
 
-    // [중요] 죽으면 타겟 변경 타이머도 확실하게 꺼야 합니다.
-    GetWorld()->GetTimerManager().ClearTimer(AggroTimerHandle);
-}
+    TArray<AActor*> PerceivedActors;
+    GetPerceptionComponent()->GetKnownPerceivedActors(UAISenseConfig_Sight::StaticClass(), PerceivedActors);
 
-void AMidBossAIController::OnTargetDetected(AActor* Actor, FAIStimulus Stimulus)
-{
-    if (CurrentAIState == EMidBossAIState::Dead) return;
-
-    // [핵심] 아군 오인 사격 방지 로직
-    // 오직 '플레이어(ABaseCharacter)'만 타겟으로 삼는다.
-    auto* PlayerCharacter = Cast<ABaseCharacter>(Actor);
-
-    // 플레이어가 아니거나(nullptr), 감지에 실패했거나, 이미 죽은 시체라면 무시
-    if (!PlayerCharacter || !Stimulus.WasSuccessfullySensed() || IsTargetDead(PlayerCharacter))
+    TArray<AActor*> ValidTargets;
+    for (AActor* Actor : PerceivedActors)
     {
-        // (옵션) 만약 현재 쫓던 타겟이 죽은 거라면 멈춤
-        if (TargetActor == Actor && IsTargetDead(PlayerCharacter))
+        ABaseCharacter* PlayerChar = Cast<ABaseCharacter>(Actor);
+        if (PlayerChar && IsValid(PlayerChar) && !IsTargetDead(PlayerChar))
         {
-            TargetActor = nullptr;
-            CurrentAIState = EMidBossAIState::Idle;
-            StopMovement();
+            ValidTargets.Add(Actor);
         }
-        return;
     }
 
-    // 살아있는 플레이어를 처음 발견했을 때 추격 시작
-    if (CurrentAIState == EMidBossAIState::Idle)
+    if (ValidTargets.Num() > 0)
     {
-        TargetActor = PlayerCharacter;
+        int32 RandomIndex = FMath::RandRange(0, ValidTargets.Num() - 1);
+        AActor* NewTarget = ValidTargets[RandomIndex];
 
-        // 아직 포효 안 했으면 포효 시작
-        if (!bHasRoared)
+        if (TargetActor != NewTarget)
         {
-            bHasRoared = true;
-            CurrentAIState = EMidBossAIState::Notice;
-            StopMovement();
-
-            auto* MyPawn = Cast<AEnemyMidBoss>(GetPawn());
-            if (MyPawn)
-            {
-                float Duration = MyPawn->PlayAggroAnim();
-                float WaitTime = (Duration > 0.f) ? Duration : 1.5f;
-                GetWorld()->GetTimerManager().SetTimer(StateTimerHandle, this, &AMidBossAIController::StartChasing, WaitTime, false);
-            }
-            else
-            {
-                StartChasing();
-            }
-        }
-        else
-        {
-            StartChasing();
+            TargetActor = NewTarget;
+            // 타겟 변경 시 잠깐 멈춤 or 즉시 반응 (기획에 따라 조정)
+            // StopMovement(); 
+            UE_LOG(LogTemp, Log, TEXT("AI: Switched Target to %s"), *TargetActor->GetName());
         }
     }
 }
@@ -259,84 +249,46 @@ void AMidBossAIController::OnTargetDetected(AActor* Actor, FAIStimulus Stimulus)
 void AMidBossAIController::StartChasing()
 {
     if (CurrentAIState == EMidBossAIState::Dead) return;
+
     CurrentAIState = EMidBossAIState::Chase;
 
-    // [수정] 타겟이 살아있을 때만 추격
-    if (TargetActor && !IsTargetDead(TargetActor))
-    {
-        MoveToActor(TargetActor, 50.0f);
-    }
+    // Tick에서 UpdateChaseState가 호출되면서 이동 시작함
 }
 
 void AMidBossAIController::FinishAttack()
 {
     if (CurrentAIState == EMidBossAIState::Dead) return;
+
+    // 공격이 끝나면 다시 추격 상태로 복귀
     CurrentAIState = EMidBossAIState::Chase;
 }
 
-// [NEW] 랜덤 타겟 변경 함수 구현
-void AMidBossAIController::UpdateRandomTarget()
+void AMidBossAIController::SetDeadState()
 {
-    // 죽었거나 기믹 중이면 패스
-    if (CurrentAIState == EMidBossAIState::Dead || CurrentAIState == EMidBossAIState::Gimmick) return;
+    CurrentAIState = EMidBossAIState::Dead;
+    StopMovement();
 
-    // 1. 현재 Perception에 감지된 모든 액터 가져오기
-    TArray<AActor*> PerceivedActors;
-    GetPerceptionComponent()->GetKnownPerceivedActors(UAISenseConfig_Sight::StaticClass(), PerceivedActors);
-
-    // 2. 플레이어(Character)만 골라내기
-    TArray<AActor*> ValidTargets;
-    for (AActor* Actor : PerceivedActors)
+    if (GetWorld())
     {
-        // [핵심] 플레이어(BaseCharacter) 형변환 성공 && 살아있음 조건을 만족해야만 후보로 등록
-        // ACharacter -> ABaseCharacter로 더 구체화하여 팀킬 방지
-        ABaseCharacter* PlayerChar = Cast<ABaseCharacter>(Actor);
-
-        if (PlayerChar && IsValid(PlayerChar) && !IsTargetDead(PlayerChar))
-        {
-            ValidTargets.Add(Actor);
-        }
+        GetWorld()->GetTimerManager().ClearTimer(StateTimerHandle);
+        GetWorld()->GetTimerManager().ClearTimer(AggroTimerHandle);
     }
 
-    // 3. 랜덤 선택
-    if (ValidTargets.Num() > 0)
-    {
-        int32 RandomIndex = FMath::RandRange(0, ValidTargets.Num() - 1);
-        AActor* NewTarget = ValidTargets[RandomIndex];
-
-        // 타겟이 실제로 바뀌었을 때만 반응
-        if (TargetActor != NewTarget)
-        {
-            TargetActor = NewTarget;
-
-            // 갑자기 방향을 틀면 더 자연스러우므로 잠깐 멈춤 명령
-            StopMovement();
-
-            // [핵심] 타겟이 바뀌면, 바로 검기를 쏠 수 있게 쿨타임을 리셋해줌! (긴장감 조성)
-            LastSlashTime = -SlashSkillCooldown;
-
-            // 로그로 확인
-            UE_LOG(LogTemp, Warning, TEXT("BOSS: Random Target Switch -> [%s] (Slash Ready!)"), *TargetActor->GetName());
-        }
-    }
+    // 감각 비활성화
+    GetPerceptionComponent()->SetSenseEnabled(UAISense_Sight::StaticClass(), false);
 }
 
-// [NEW] 타겟 사망 확인용 도우미 함수
-bool AMidBossAIController::IsTargetDead(AActor* Actor)
+bool AMidBossAIController::IsTargetDead(AActor* Actor) const
 {
     if (!Actor) return true;
 
-    // 1. 플레이어 클래스인 경우 우선적으로 체크
     if (ABaseCharacter* BaseChar = Cast<ABaseCharacter>(Actor))
     {
         if (BaseChar->IsDead()) return true;
     }
 
-    // 2. 체력 컴포넌트를 찾아서 2차 확인
     UHealthComponent* HP = Actor->FindComponentByClass<UHealthComponent>();
-    if (HP && HP->IsDead())
-    {
-        return true; // 죽음 (시체)
-    }
-    return false; // 살아있음
+    if (HP && HP->IsDead()) return true;
+
+    return false;
 }
