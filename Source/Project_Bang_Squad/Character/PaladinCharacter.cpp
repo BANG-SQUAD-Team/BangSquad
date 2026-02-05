@@ -388,29 +388,28 @@ void APaladinCharacter::Skill2()
             if (Data->SkillMontage)
             {
                 // BaseCharacter에 있는 함수 사용 (ProcessSkill과 동일하게)
-                PlayActionMontage(Data->SkillMontage); 
+                PlayActionMontage(Data->SkillMontage);
+            }    
+            if (Skill2CastVFX)
+            {
+                FVector SpawnLoc = GetActorLocation();
+                SpawnLoc.Z -= GetCapsuleComponent()->GetScaledCapsuleHalfHeight(); // 발밑
+
+                UNiagaraFunctionLibrary::SpawnSystemAttached(
+                    Skill2CastVFX, 
+                    GetMesh(),
+                    TEXT("Hand_R_Root"),
+                    FVector::ZeroVector,
+                    FRotator::ZeroRotator, 
+                    EAttachLocation::SnapToTarget,
+                    true
+                );
             }
+
+            // 서버에게 스킬 사용 요청 (여기서 망치 소환 및 다른 사람들에게 몽타주 전송)
+            Server_Skill2();
         }
     }
-    
-    if (Skill2CastVFX)
-    {
-        FVector SpawnLoc = GetActorLocation();
-        SpawnLoc.Z -= GetCapsuleComponent()->GetScaledCapsuleHalfHeight(); // 발밑
-
-        UNiagaraFunctionLibrary::SpawnSystemAttached(
-            Skill2CastVFX, 
-            GetMesh(),
-            TEXT("Hand_R_Root"),
-            FVector::ZeroVector,
-            FRotator::ZeroRotator, 
-            EAttachLocation::SnapToTarget,
-            true
-        );
-    }
-
-    // 서버에게 스킬 사용 요청 (여기서 망치 소환 및 다른 사람들에게 몽타주 전송)
-    Server_Skill2();
 }
 void APaladinCharacter::ProcessSkill(FName SkillRowName)
 {
