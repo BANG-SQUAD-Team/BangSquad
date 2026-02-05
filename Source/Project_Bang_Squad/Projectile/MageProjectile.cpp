@@ -26,8 +26,7 @@ AMageProjectile::AMageProjectile()
     //  충돌 전략 변경: "일단 무시(Ignore)하고 필요한 것만 설정ㄴ
     // -------------------------------------------------------------------------
     SphereComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-    ㄴㅇ
-ㅇ
+    
     // 2. 벽, 바닥 등 뚫으면 안 되는 정적 물체는 막음 (Block -> NotifyHit 호출됨)
     SphereComp->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
     SphereComp->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Block); // 움직이는 문/플랫폼 등
