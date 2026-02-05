@@ -48,6 +48,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Health")
 	float GetHealth() const { return CurrentHealth; }
 
+	UFUNCTION(BlueprintCallable, Category = "Health")
+	float GetMaxHealth() const { return MaxHealth; }
+	
 	// [추가] 죽었는지 확인 (BaseCharacter에서 사용)
 	UFUNCTION(BlueprintCallable, Category = "Health")
 	bool IsDead() const;

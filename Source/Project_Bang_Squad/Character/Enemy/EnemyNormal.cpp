@@ -8,7 +8,10 @@
 #include "Engine/World.h"
 #include "Components/BoxComponent.h"
 #include "DrawDebugHelpers.h" // DrawDebugBox 사용을 위해 필요
-#include "Project_Bang_Squad/Character/Base/BaseCharacter.h" // [필수] 플레이어 구분 및 IsDead 확인용
+#include "Project_Bang_Squad/Character/Base/BaseCharacter.h" //  플레이어 구분 및 IsDead 확인용
+#include "Project_Bang_Squad/UI/Enemy/EnemyNormalHPWidget.h"
+#include "Components/WidgetComponent.h"
+#include "Project_Bang_Squad/Character/Component/HealthComponent.h"
 
 AEnemyNormal::AEnemyNormal()
 {
@@ -30,14 +33,27 @@ AEnemyNormal::AEnemyNormal()
 	WeaponCollisionBox->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Overlap);
 	// 3. 충돌 이벤트 연결
 	WeaponCollisionBox->OnComponentBeginOverlap.AddDynamic(this, &AEnemyNormal::OnWeaponOverlap);
+	
+	// 체력바 위젯 설정
+	HealthWidgetComp = CreateDefaultSubobject<UWidgetComponent>(TEXT("HealthWidgetComp"));
+	HealthWidgetComp->SetupAttachment(GetRootComponent());
+	HealthWidgetComp->SetRelativeLocation(FVector(0.0f, 0.0f, 130.0f)); 
+	HealthWidgetComp->SetWidgetSpace(EWidgetSpace::Screen); 
+	HealthWidgetComp->SetDrawSize(FVector2D(100.0f, 15.0f));
+	HealthWidgetComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 }
 
 void AEnemyNormal::BeginPlay()
 {
 	Super::BeginPlay();
 
-	AcquireTarget();
+	// 시작 시 체력바 초기화
+	if (UHealthComponent* HC = FindComponentByClass<UHealthComponent>())
+	{
+		UpdateHealthBar(HC->GetMaxHealth(), HC->GetMaxHealth());
+	}
 
+	AcquireTarget();
 	if (TargetPawn.IsValid())
 	{
 		StartChase(TargetPawn.Get());
@@ -390,4 +406,36 @@ void AEnemyNormal::OnDeathStarted()
 	StopChase();
 	bIsAttacking = false;
 	DisableWeaponCollision();
+}
+// 부모(HealthComponent)가 체력 변화를 감지했을 때 호출됨 (서버에서 실행됨)
+void AEnemyNormal::OnHPChanged(float CurrentHP, float MaxHP)
+{
+	Super::OnHPChanged(CurrentHP, MaxHP);
+
+	// 서버라면 -> 모든 클라이언트들에게 UI 갱신 명령을 보냄
+	if (HasAuthority())
+	{
+		Multicast_UpdateHealthBar(CurrentHP, MaxHP);
+	}
+}
+
+void AEnemyNormal::Multicast_UpdateHealthBar_Implementation(float CurrentHP, float InMaxHP)
+{
+	// 실제 위젯 갱신
+	UpdateHealthBar(CurrentHP, InMaxHP);
+}
+
+void AEnemyNormal::UpdateHealthBar(float CurrentHP, float MaxHP)
+{
+	if (HealthWidgetComp)
+	{
+		// 위젯 컴포넌트에서 실제 UUserWidget 객체 가져오기
+		UEnemyNormalHPWidget* HPWidget = Cast<UEnemyNormalHPWidget>(HealthWidgetComp->GetUserWidgetObject());
+        
+		if (HPWidget)
+		{
+			// 위젯 갱신
+			HPWidget->UpdateHP(CurrentHP, MaxHP);
+		}
+	}
 }

@@ -42,6 +42,8 @@ public:
 protected:
     // 사망 시작 시 자식 클래스(EnemyNormal)에서 로직 처리용
     virtual void OnDeathStarted();
+    // 자식 클래스에서 오버라이드할 수 있는 체력 변경 알림 함수
+    virtual void OnHPChanged(float CurrentHP, float MaxHP);
 
     // ===== HealthComponent Auto Bind =====
     UFUNCTION()

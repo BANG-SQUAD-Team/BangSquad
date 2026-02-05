@@ -18,37 +18,42 @@ AEnemyCharacterBase::AEnemyCharacterBase()
 
 void AEnemyCharacterBase::BeginPlay()
 {
-    Super::BeginPlay();
+	Super::BeginPlay();
 
 	GenerateUniqueID();
 
 	UBSGameInstance* GI = Cast<UBSGameInstance>(GetGameInstance());
 	if (GI && GI->IsMonsterDead(MyUniqueID))
 	{
-		// 이미 죽은 기록이 있다면, 태어나자마자 조용히 사라집니다.
 		Destroy();
 		return; 
 	}
-	
-    if (UCharacterMovementComponent* Move = GetCharacterMovement())
-    {
-       DefaultMaxWalkSpeed = Move->MaxWalkSpeed;
+    
+	if (UCharacterMovementComponent* Move = GetCharacterMovement())
+	{
+		DefaultMaxWalkSpeed = Move->MaxWalkSpeed;
+		Move->bUseControllerDesiredRotation = true;
+		Move->RotationRate = FRotator(0.f, 720.f, 0.f);
+	}
 
-       Move->bUseControllerDesiredRotation = true;
-       Move->RotationRate = FRotator(0.f, 720.f, 0.f);
-    }
+	// =========================
+	// HealthComponent 자동 바인딩 및 초기화
+	// =========================
+	if (UHealthComponent* HC = FindComponentByClass<UHealthComponent>())
+	{
+		//  게임 시작 시 현재 체력을 최대 체력과 똑같이 맞춤
+		if (HasAuthority())
+		{
+			HC->CurrentHealth = HC->MaxHealth;
+		}
 
-    // =========================
-    // HealthComponent 자동 바인딩
-    // =========================
-    if (UHealthComponent* HC = FindComponentByClass<UHealthComponent>())
-    {
-       HC->OnDead.RemoveDynamic(this, &AEnemyCharacterBase::HandleDeadFromHealth);
-       HC->OnDead.AddDynamic(this, &AEnemyCharacterBase::HandleDeadFromHealth);
+		// 기존 델리게이트 연결
+		HC->OnDead.RemoveDynamic(this, &AEnemyCharacterBase::HandleDeadFromHealth);
+		HC->OnDead.AddDynamic(this, &AEnemyCharacterBase::HandleDeadFromHealth);
 
-       HC->OnHealthChanged.RemoveDynamic(this, &AEnemyCharacterBase::HandleHealthChangedFromHealth);
-       HC->OnHealthChanged.AddDynamic(this, &AEnemyCharacterBase::HandleHealthChangedFromHealth);
-    }
+		HC->OnHealthChanged.RemoveDynamic(this, &AEnemyCharacterBase::HandleHealthChangedFromHealth);
+		HC->OnHealthChanged.AddDynamic(this, &AEnemyCharacterBase::HandleHealthChangedFromHealth);
+	}
 }
 
 float AEnemyCharacterBase::TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent,
@@ -115,8 +120,18 @@ void AEnemyCharacterBase::HandleDeadFromHealth()
     ReceiveDeath();
 }
 
+
+// 빈 가상 함수 구현 (자식이 없으면 아무 일도 안 함)
+void AEnemyCharacterBase::OnHPChanged(float CurrentHP, float MaxHP)
+{
+	
+}
+
 void AEnemyCharacterBase::HandleHealthChangedFromHealth(float NewHealth, float InMaxHealth)
 {
+	
+	OnHPChanged(NewHealth, InMaxHealth);
+	
     if (!HasAuthority()) return;
     if (bIsDead) return;
     if (NewHealth <= 0.f) return;
