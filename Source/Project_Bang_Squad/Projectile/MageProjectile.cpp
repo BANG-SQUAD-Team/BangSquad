@@ -20,14 +20,14 @@ AMageProjectile::AMageProjectile()
     //  프로필 이름을 쓰지 않고 직접 채널을 설정합니다.
     // SphereComp->SetCollisionProfileName(TEXT("Custom")); 
 
+    SphereComp->SetCollisionObjectType(ECC_GameTraceChannel1);
+    
     // -------------------------------------------------------------------------
-    //  충돌 전략 변경: "일단 무시(Ignore)하고 필요한 것만 설정"
+    //  충돌 전략 변경: "일단 무시(Ignore)하고 필요한 것만 설정ㄴ
     // -------------------------------------------------------------------------
     SphereComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-    
-    // 1. 기본값: 모든 채널 무시 (Ignore)
-    SphereComp->SetCollisionResponseToAllChannels(ECR_Ignore);
-
+    ㄴㅇ
+ㅇ
     // 2. 벽, 바닥 등 뚫으면 안 되는 정적 물체는 막음 (Block -> NotifyHit 호출됨)
     SphereComp->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
     SphereComp->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Block); // 움직이는 문/플랫폼 등

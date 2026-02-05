@@ -7,6 +7,8 @@
 #include "MagicInteractableInterface.h"
 #include "MagicBoat.generated.h"
 
+class UBoxComponent;
+
 UCLASS()
 class PROJECT_BANG_SQUAD_API AMagicBoat : public AActor, public IMagicInteractableInterface
 {
@@ -17,13 +19,23 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
-
+	virtual void Tick(float DeltaTime) override;
+	
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+	
 	FVector CurrentMoveDirection = FVector::ZeroVector;
 	
 	// 현재 보트에 탑승 중인지 체크하는 플래그
+	UPROPERTY(Replicated)
 	bool bIsOccupied = false;
 public:
-	virtual void Tick(float DeltaTime) override;
+	// 초기 위치/회전 저장 변수
+	FVector InitialLocation;
+	FRotator InitialRotation;
+	
+	// 리셋 함수
+	UFUNCTION(BlueprintCallable, Category = "Boat")
+	void ResetToStart(FVector SafeLandingLocation);
 	
 	// 보트 외형
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
@@ -43,7 +55,9 @@ public:
 	// 외부에서 탑승 상태를 알리는 함수
 	void SetRideState(bool bRiding);
 	
+protected:
+	//  탑승자 감지용 박스 (보트 갑판 크기에 맞게 조절)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	UBoxComponent* PassengerCheckVolume;
 	
-	
-
 };
