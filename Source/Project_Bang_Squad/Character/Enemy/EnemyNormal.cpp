@@ -11,6 +11,7 @@
 #include "Project_Bang_Squad/Character/Base/BaseCharacter.h" //  플레이어 구분 및 IsDead 확인용
 #include "Project_Bang_Squad/UI/Enemy/EnemyNormalHPWidget.h"
 #include "Components/WidgetComponent.h"
+#include "Navigation/PathFollowingComponent.h"
 #include "Project_Bang_Squad/Character/Component/HealthComponent.h"
 
 AEnemyNormal::AEnemyNormal()
@@ -150,82 +151,110 @@ void AEnemyNormal::StopChase()
 
 void AEnemyNormal::UpdateMoveTo()
 {
-	// 1. 나 자신이 죽었으면 중단
-	if (IsDead()) return;
+    // 1. 나 자신이 죽었으면 AI 종료 (이건 멈추는 게 맞음)
+    if (IsDead())
+    {
+        StopChase(); 
+        return;
+    }
 
-	APawn* TP = TargetPawn.Get();
+    APawn* TP = TargetPawn.Get();
+    ABaseCharacter* PlayerTarget = Cast<ABaseCharacter>(TP);
 
-	// 2. 타겟이 없거나 유효하지 않으면 -> 새 타겟 찾기 시도
-	if (!TP || !IsValid(TP))
-	{
-		APawn* NewTarget = FindNearestLivingPlayer();
-		if (NewTarget) StartChase(NewTarget);
-		else StopChase();
-		return;
-	}
+    // =========================================================
+    // 타겟 상태 검사 및 재탐색 로직
+    // =========================================================
+    bool bNeedNewTarget = false;
 
-	// =========================================================
-	// [핵심 수정] 타겟 검증 로직 (팀킬 방지 & 시체 추격 방지 & 환승)
-	// =========================================================
-	ABaseCharacter* PlayerTarget = Cast<ABaseCharacter>(TP);
-	if (PlayerTarget)
-	{
-		// 플레이어인데 이미 죽었다면?
-		if (PlayerTarget->IsDead())
-		{
-			// [중요] 즉시 멈추는 게 아니라, 살아있는 다른 플레이어를 찾는다!
-			APawn* NewTarget = FindNearestLivingPlayer();
-			if (NewTarget)
-			{
-				StartChase(NewTarget); // 환승
-			}
-			else
-			{
-				StopChase(); // 다 죽었으면 멈춤
-			}
-			return;
-		}
-	}
-	else
-	{
-		// 플레이어 클래스가 아님 (오인 사격 방지) -> 진짜 플레이어 찾기
-		APawn* NewTarget = FindNearestLivingPlayer();
-		if (NewTarget) StartChase(NewTarget);
-		else StopChase();
-		return;
-	}
-	// =========================================================
+    // 타겟이 아예 없거나(nullptr), 유효하지 않거나, 죽었다면?
+    if (!TP || !IsValid(TP)) bNeedNewTarget = true;
+    else if (PlayerTarget && PlayerTarget->IsDead()) bNeedNewTarget = true;
 
-	const float Dist = FVector::Dist(GetActorLocation(), TP->GetActorLocation());
-	if (Dist > StopChaseDistance)
-	{
-		// 거리가 너무 멀어졌을 때도 다시 가까운 적을 찾는 게 좋음 (선택 사항)
-		APawn* NewTarget = FindNearestLivingPlayer();
-		if (NewTarget) StartChase(NewTarget);
-		else StopChase();
-		return;
-	}
+    if (bNeedNewTarget)
+    {
+        // 살아있는 다른 플레이어를 찾는다 (환승 시도)
+        APawn* NewTarget = FindNearestLivingPlayer();
 
-	if (bIsAttacking)
-	{
-		return;
-	}
+        if (NewTarget)
+        {
+            // 찾았다! -> 바로 쫓아감
+            StartChase(NewTarget);
+        }
+        else
+        {
+            // 다 죽고 아무도 없다... (플레이어 전멸 상황)
+            
+            // ✅ [수정] 타이머는 끄지 말고, 타겟 변수만 비우고 대기합니다.
+            TargetPawn = nullptr;
+            
+            // 이동 멈춤
+            if (AAIController* AIC = Cast<AAIController>(GetController()))
+            {
+                AIC->StopMovement();
+            }
+            
+            // 공격 중이었다면 강제 취소 (허공에 칼질 방지 & 상태 초기화)
+            if (bIsAttacking)
+            {
+                bIsAttacking = false;
+                DisableWeaponCollision();
+                GetWorldTimerManager().ClearTimer(AttackEndTimer);
+                GetWorldTimerManager().ClearTimer(CollisionEnableTimer);
+                GetWorldTimerManager().ClearTimer(CollisionDisableTimer);
+            }
+        }
+        
+        // 이번 턴은 여기서 끝내지만, 타이머는 살아있으므로 
+        // 0.3초(RepathInterval) 뒤에 다시 들어와서 NewTarget을 또 찾습니다.
+        return; 
+    }
 
-	if (IsInAttackRange())
-	{
-		if (AAIController* AIC = Cast<AAIController>(GetController()))
-		{
-			AIC->StopMovement();
-		}
+    // =========================================================
+    // 3. 정상 추격 및 공격 로직 (기존 코드 유지)
+    // =========================================================
+    
+    // 너무 멀어지면 다시 찾기 (거리가 너무 멀어졌을 때도 포기하지 않고 재탐색)
+    const float Dist = FVector::Dist(GetActorLocation(), TP->GetActorLocation());
+    if (Dist > StopChaseDistance)
+    {
+       APawn* NewTarget = FindNearestLivingPlayer();
+       if (NewTarget) StartChase(NewTarget);
+       else 
+       {
+           TargetPawn = nullptr; // 타겟 놓침
+           if (AAIController* AIC = Cast<AAIController>(GetController()))
+           {
+               AIC->StopMovement();
+           }
+       }
+       return;
+    }
 
-		Server_TryAttack();
-		return;
-	}
+    // 공격 중이면 이동 안 함
+    if (bIsAttacking) return;
 
-	if (AAIController* AIC = Cast<AAIController>(GetController()))
-	{
-		AIC->MoveToActor(TP, AcceptanceRadius, true, true, true, 0, true);
-	}
+    // 사거리 안이면 공격 시도
+    if (IsInAttackRange())
+    {
+       if (AAIController* AIC = Cast<AAIController>(GetController()))
+       {
+          AIC->StopMovement();
+       }
+       Server_TryAttack();
+       return;
+    }
+
+    // 이동 (Crowd Manager 등을 위해 MoveToRequest 사용 권장)
+    if (AAIController* AIC = Cast<AAIController>(GetController()))
+    {
+       // [추가] 부분 경로 허용 (좁은 길이나 언덕 등에서 멈추는 현상 방지)
+       FAIMoveRequest MoveReq;
+       MoveReq.SetGoalActor(TP);
+       MoveReq.SetAcceptanceRadius(AcceptanceRadius);
+       MoveReq.SetAllowPartialPath(true); // <--- 갈 수 있는 데까지만이라도 가라!
+       
+       AIC->MoveTo(MoveReq);
+    }
 }
 
 bool AEnemyNormal::IsInAttackRange() const
