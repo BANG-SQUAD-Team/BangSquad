@@ -75,6 +75,11 @@ void ATitanCharacter::BeginPlay()
 
     GetCapsuleComponent()->OnComponentBeginOverlap.AddDynamic(this, &ATitanCharacter::OnChargeOverlap);
     GetCapsuleComponent()->OnComponentHit.AddDynamic(this, &ATitanCharacter::OnChargeHit);
+
+    if (UAnimInstance* AnimInst = GetMesh()->GetAnimInstance())
+    {
+        AnimInst->OnMontageEnded.AddDynamic(this, &ATitanCharacter::OnMontageEndedDelegate);
+    }
     
     if (SpringArm) 
     {
@@ -244,6 +249,8 @@ void ATitanCharacter::Attack()
 
 void ATitanCharacter::Server_Attack_Implementation(FName SkillName)
 {
+    ForceRecoverState();
+    
     if (SkillName == TEXT("Attack_A"))
     {
        MyAttackSocket = TEXT("Hand_R_Socket"); 
@@ -493,6 +500,8 @@ void ATitanCharacter::ExecuteGrab() { if (GEngine) GEngine->AddOnScreenDebugMess
 
 void ATitanCharacter::Server_TryGrab_Implementation(AActor* TargetToGrab)
 {
+    ForceRecoverState();
+
     // 1. 유효성 검사 (기존 코드)
     if (!TargetToGrab || bIsGrabbing) return;
 
@@ -911,6 +920,8 @@ void ATitanCharacter::Server_ThrowTarget_Implementation(FVector ThrowStartLocati
 
 void ATitanCharacter::Server_Skill1_Implementation()
 {
+    ForceRecoverState();
+
     if (!SkillDataTable) return;
 
     static const FString ContextString(TEXT("TitanSkill1"));
@@ -1118,6 +1129,8 @@ void ATitanCharacter::Server_ThrowRock_Implementation()
 
 void ATitanCharacter::Server_Skill2_Implementation()
 {
+    ForceRecoverState();
+
     if (!SkillDataTable) return;
 
     static const FString ContextString(TEXT("Skill2 Context"));
@@ -1551,4 +1564,63 @@ void ATitanCharacter::UpdateTrajectory()
     {
         SplineMeshes[i]->SetVisibility(false);
     }
+}
+
+void ATitanCharacter::ForceRecoverState()
+{
+    // 1. 공격 판정 강제 종료
+    StopMeleeTrace();
+    GetWorldTimerManager().ClearTimer(AttackHitTimerHandle);
+    GetWorldTimerManager().ClearTimer(HitLoopTimerHandle);
+    GetWorldTimerManager().ClearTimer(MeleeStopTimerHandle);
+    SwingDamagedActors.Empty();
+
+    // 2. 돌진(Charge) 상태였다면 강제 정지
+    if (bIsCharging)
+    {
+        StopCharge(); // 기존 StopCharge 로직 재활용
+    }
+
+    // 3. 이동 관련 수치 복구 (가장 중요: 미끄러짐 방지)
+    if (GetCharacterMovement())
+    {
+        // 걷는 상태가 아니라면(날거나 떨어지는 중) 강제로 걷기로 전환 (공중 스킬 제외)
+        if (GetCharacterMovement()->MovementMode == MOVE_Flying)
+        {
+            GetCharacterMovement()->SetMovementMode(MOVE_Falling);
+        }
+
+        // 마찰력 복구 (돌진하다 끊기면 마찰력 0이라 계속 미끄러짐)
+        GetCharacterMovement()->GroundFriction = 8.0f; // 기본값(설정에 맞게)
+        GetCharacterMovement()->GravityScale = 1.0f;
+    }
+
+    // 4. 잡기 상태인데 잡은 게 없다면? (좀비 상태 방지)
+    if (bIsGrabbing && !IsValid(GrabbedActor))
+    {
+        bIsGrabbing = false;
+        GrabbedActor = nullptr;
+    }
+}
+
+void ATitanCharacter::OnMontageEndedDelegate(UAnimMontage* Montage, bool bInterrupted)
+{
+    // 1. 공격 몽타주가 끝났는데(혹은 캔슬됐는데) 아직 공격 판정이 켜져 있다면?
+    if (GetWorldTimerManager().IsTimerActive(HitLoopTimerHandle))
+    {
+        StopMeleeTrace();
+    }
+
+    // 2. 돌진(Skill2) 몽타주가 끝났는데 아직 돌진 상태라면?
+    // (몽타주가 다 재생됐거나, 피격되어서 끊겼을 때 모두 포함)
+    if (bIsCharging)
+    {
+        // 돌진용 몽타주인지 확인하면 더 좋지만, 
+        // 돌진 상태(bIsCharging)인데 애니메이션이 끝났다면 무조건 끄는 게 안전함
+        StopCharge();
+    }
+
+    // 3. 만약 잡기(Throw) 몽타주가 끝났는데 
+    // 아직도 '던지기 쿨타임' 설정이 안 되어 있다면? (상태 꼬임 방지)
+    // 필요하다면 여기서 bIsGrabbing 등을 체크할 수도 있습니다.
 }

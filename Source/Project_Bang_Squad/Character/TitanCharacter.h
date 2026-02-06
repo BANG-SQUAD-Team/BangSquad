@@ -304,4 +304,18 @@ private:
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Data", meta = (AllowPrivateAccess = "true"))
     class UDataTable* SkillDataTable;
+
+   protected:
+       // =================================================================
+       // [안전장치 및 상태 복구]
+       // =================================================================
+
+       // 스킬 사용 전, 이전 동작의 찌꺼기(타이머, 충돌 등)를 강제로 정리하는 함수
+       void ForceRecoverState();
+
+       // 몽타주가 끝났거나(정상 종료), 끊겼을 때(피격 등) 호출될 콜백 함수
+       // ※ UFUNCTION() 필수입니다!
+       UFUNCTION()
+       void OnMontageEndedDelegate(UAnimMontage* Montage, bool bInterrupted);
+
 };
