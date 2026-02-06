@@ -157,6 +157,9 @@ protected:
     UFUNCTION(Server, Reliable)
     void Server_TryGrab(AActor* TargetToGrab);
 
+    UFUNCTION(NetMulticast, Reliable)
+    void Multicast_GrabSuccess(AActor* Target);
+
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
     UArrowComponent* ThrowSpawnPoint;
 

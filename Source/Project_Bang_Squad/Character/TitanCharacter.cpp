@@ -57,7 +57,6 @@ ATitanCharacter::ATitanCharacter()
 
     DashPSC = CreateDefaultSubobject<UNiagaraComponent>(TEXT("DashFX"));
 
-    // 1. 캐릭터 등짝(spine_03)에 붙이기 (이게 없으면 발바닥에 생김)
     if (GetMesh())
     {
         DashPSC->SetupAttachment(GetMesh(), TEXT("spine_03"));
@@ -67,7 +66,6 @@ ATitanCharacter::ATitanCharacter()
         DashPSC->SetupAttachment(RootComponent);
     }
 
-    // 2. 게임 시작하자마자 켜지지 않게 꺼두기
     DashPSC->bAutoActivate = false;
 }
 
@@ -75,11 +73,9 @@ void ATitanCharacter::BeginPlay()
 {
     Super::BeginPlay();
 
-    // 돌진 스킬 충돌 이벤트 바인딩
     GetCapsuleComponent()->OnComponentBeginOverlap.AddDynamic(this, &ATitanCharacter::OnChargeOverlap);
     GetCapsuleComponent()->OnComponentHit.AddDynamic(this, &ATitanCharacter::OnChargeHit);
     
-    // 초기 카메라 오프셋 저장
     if (SpringArm) 
     {
        DefaultSocketOffset = SpringArm->SocketOffset;
@@ -90,10 +86,10 @@ void ATitanCharacter::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
 
-    // 로컬 플레이어 전용 로직 (카메라 및 궤적)
+    // 로컬 플레이어 전용 로직
     if (IsLocallyControlled())
     {
-        // 1. 카메라 보간 로직 (잡기 상태에 따라 줌인/줌아웃)
+        // 1. 카메라 보간
         if (SpringArm)
         {
             FVector TargetOffset = bIsGrabbing ? AimingSocketOffset : DefaultSocketOffset;
@@ -103,31 +99,49 @@ void ATitanCharacter::Tick(float DeltaTime)
         }
 
         // =================================================================
-        // [수정] 상태 초기화 로직 강화 (버그 픽스 핵심)
+        // [상태 강제 초기화 (Self-Healing)] 
         // =================================================================
-        // 1. 잡은 대상이 있는지 검사 (IsValid 사용으로 PendingKill 상태까지 체크)
-        bool bHasValidTarget = (GrabbedActor != nullptr && IsValid(GrabbedActor));
 
-        // 2. "나는 잡고 있다고 생각하는데(bIsGrabbing), 실제론 대상이 없다면?" -> 강제 초기화
+        // A. [잡기 복구] 잡은 놈이 없는데 잡고 있다고 착각할 때
+        bool bHasValidTarget = (GrabbedActor != nullptr && IsValid(GrabbedActor));
         if (bIsGrabbing && !bHasValidTarget)
         {
             bIsGrabbing = false;
-            GrabbedActor = nullptr; // 확실하게 널 포인터 처리
+            GrabbedActor = nullptr;
             ShowTrajectory(false);
-
-            // 혹시 켜져 있을지 모를 하이라이트 끄기
             if (HoveredActor)
             {
                 SetHighlight(HoveredActor, false);
                 HoveredActor = nullptr;
             }
         }
+
+        // B. [공격 복구] 공격 중이라는데 몸이 가만히 있을 때 (몽타주 끊김)
+        if (bIsAttacking)
+        {
+            UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+            // 몽타주가 아무것도 재생 안 되고 있다면 -> 즉시 공격 상태 해제
+            if (AnimInstance && !AnimInstance->IsAnyMontagePlaying())
+            {
+                bIsAttacking = false;
+            }
+        }
+
+        // C. [쿨타임 복구] 쿨타임이라는데 타이머가 안 돌 때
+        if (bIsAttackCoolingDown)
+        {
+            // 타이머가 돌고 있지 않다면 -> 쿨타임 해제
+            if (!GetWorldTimerManager().IsTimerActive(AttackCooldownTimerHandle))
+            {
+                bIsAttackCoolingDown = false;
+            }
+        }
         // =================================================================
 
-        // 3. 궤적 표시 로직 (이제 bIsGrabbing이 정상적으로 false가 되므로 실행됨)
+        // 3. 궤적 및 하이라이트 표시
         if (!bIsGrabbing)
         {
-            UpdateHoverHighlight(); // 여기서 다시 아웃라이너가 그려지게 됩니다
+            UpdateHoverHighlight(); // 상태가 풀렸으니 이제 이게 실행됩니다!
             ShowTrajectory(false);
         }
         else
@@ -479,39 +493,66 @@ void ATitanCharacter::ExecuteGrab() { if (GEngine) GEngine->AddOnScreenDebugMess
 
 void ATitanCharacter::Server_TryGrab_Implementation(AActor* TargetToGrab)
 {
+    // 1. 유효성 검사 (기존 코드)
     if (!TargetToGrab || bIsGrabbing) return;
 
-    // 보스 및 중간보스 잡기 불가 처리
     if (TargetToGrab->IsA(AEnemyMidBoss::StaticClass()) ||
-       TargetToGrab->IsA(AStageBossBase::StaticClass()) ||
-       TargetToGrab->ActorHasTag("Boss") ||
-       TargetToGrab->ActorHasTag("MidBoss"))
+        TargetToGrab->IsA(AStageBossBase::StaticClass()) ||
+        TargetToGrab->ActorHasTag("Boss") ||
+        TargetToGrab->ActorHasTag("MidBoss"))
     {
-       return;
+        return;
     }
 
     float DistSq = FVector::DistSquared(GetActorLocation(), TargetToGrab->GetActorLocation());
     if (DistSq > 1000.f * 1000.f) return;
 
+    // 2. 상태 변경
     GrabbedActor = TargetToGrab;
     bIsGrabbing = true;
 
-    // 잡힌 물체의 물리 및 충돌 비활성화
-    if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(GrabbedActor->GetRootComponent()))
-    {
-       RootComp->SetSimulatePhysics(false);
-       RootComp->SetCollisionProfileName(TEXT("NoCollision")); 
-    }
+    // =================================================================
+    // [핵심 수정] 서버에서 먼저 끄고, 모두에게 알림!
+    // =================================================================
 
-    GrabbedActor->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, TEXT("Hand_R_Socket"));
+    // 1) 일단 서버에서 위치 갱신 끄기 (중요)
+    GrabbedActor->SetReplicateMovement(false);
 
+    // 2) 모든 클라이언트에게 "당장 물리 끄고 손에 붙여!" 명령
+    Multicast_GrabSuccess(GrabbedActor);
+
+    // 3) 캐릭터일 경우 상태 설정 (기존 코드)
     if (ACharacter* Victim = Cast<ACharacter>(GrabbedActor))
     {
-       SetHeldState(Victim, true);
+        SetHeldState(Victim, true);
     }
 
+    // 4) 몽타주 및 타이머 (기존 코드)
     Multicast_PlayJobMontage(TEXT("Grab"));
     GetWorldTimerManager().SetTimer(GrabTimerHandle, this, &ATitanCharacter::AutoThrowTimeout, GrabMaxDuration, false);
+}
+
+void ATitanCharacter::Multicast_GrabSuccess_Implementation(AActor* Target)
+{
+    if (!Target || !Target->IsValidLowLevel()) return;
+
+    // 1. 확실하게 물리 끄기
+    if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(Target->GetRootComponent()))
+    {
+        RootComp->SetSimulatePhysics(false);
+        RootComp->SetCollisionProfileName(TEXT("NoCollision"));
+        RootComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    }
+
+    // 2. 위치 동기화 끄기 (클라이언트에서도 꺼야 덜덜 떨리지 않음)
+    Target->SetReplicateMovement(false);
+
+    // 3. 손에 강제 부착 (SnapToTarget)
+    Target->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, TEXT("Hand_R_Socket"));
+
+    // 4. 위치/회전 0점으로 초기화 (혹시 모르니 손 중앙으로 정렬)
+    Target->SetActorRelativeLocation(FVector::ZeroVector);
+    Target->SetActorRelativeRotation(FRotator::ZeroRotator);
 }
 
 void ATitanCharacter::AutoThrowTimeout()
@@ -543,46 +584,52 @@ void ATitanCharacter::OnRep_GrabbedActor()
     }
     else
     {
-       // [놓았을 때] 손에서 강제 분리 및 상태 복구
-       bIsGrabbing = false;
+        bIsGrabbing = false;
 
-       TArray<AActor*> AttachedActors;
-       GetAttachedActors(AttachedActors);
+        TArray<AActor*> AttachedActors;
+        GetAttachedActors(AttachedActors);
 
-       for (AActor* Child : AttachedActors)
-       {
-          if (Child && Child->GetRootComponent() && Child->GetRootComponent()->GetAttachSocketName() == TEXT("Hand_R_Socket"))
-          {
-             Child->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+        for (AActor* Child : AttachedActors)
+        {
+            if (Child && Child->GetRootComponent() && Child->GetRootComponent()->GetAttachSocketName() == TEXT("Hand_R_Socket"))
+            {
+                Child->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
 
-             // 물리 및 충돌 복구
-             if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(Child->GetRootComponent()))
-             {
-                RootComp->SetCollisionProfileName(TEXT("Pawn"));
-                RootComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-                RootComp->SetSimulatePhysics(true);
-             }
-
-             // 캐릭터일 경우 위치 보정
-             if (ACharacter* Victim = Cast<ACharacter>(Child))
-             {
-                SetHeldState(Victim, false);
-
-                if (Victim->GetMesh())
+                // 1. 캐릭터인지 확인
+                if (ACharacter* Victim = Cast<ACharacter>(Child))
                 {
-                   Victim->GetMesh()->SetRelativeLocationAndRotation(
-                      FVector(0.f, 0.f, -90.f), 
-                      FRotator(0.f, -90.f, 0.f)
-                   );
-                }
+                    // [캐릭터 복구 로직]
+                    if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(Child->GetRootComponent()))
+                    {
+                        RootComp->SetCollisionProfileName(TEXT("Pawn")); // 캐릭터는 Pawn
+                        RootComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+                        RootComp->SetSimulatePhysics(true);
+                    }
 
-                if (Victim->GetCharacterMovement())
-                {
-                   Victim->GetCharacterMovement()->SetMovementMode(MOVE_Falling);
+                    SetHeldState(Victim, false);
+
+                    if (Victim->GetMesh())
+                    {
+                        Victim->GetMesh()->SetRelativeLocationAndRotation(FVector(0.f, 0.f, -90.f), FRotator(0.f, -90.f, 0.f));
+                    }
+                    if (Victim->GetCharacterMovement())
+                    {
+                        Victim->GetCharacterMovement()->SetMovementMode(MOVE_Falling);
+                    }
                 }
-             }
-          }
-       }
+                else
+                {
+                    Child->SetReplicateMovement(true);
+
+                    if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(Child->GetRootComponent()))
+                    {
+                        RootComp->SetCollisionProfileName(TEXT("PhysicsActor"));
+                        RootComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+                        RootComp->SetSimulatePhysics(true);
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -834,7 +881,11 @@ void ATitanCharacter::Server_ThrowTarget_Implementation(FVector ThrowStartLocati
           GetCapsuleComponent()->IgnoreComponentWhenMoving(RootComp, true);
           RootComp->IgnoreComponentWhenMoving(GetCapsuleComponent(), true);
        }
-       if (GrabbedActor->ActorHasTag("Mushroom")) GrabbedActor->SetLifeSpan(5.0f);
+
+       if (GrabbedActor->IsA(ATitanThrowableActor::StaticClass()))
+       {
+           GrabbedActor->SetLifeSpan(5.0f);
+       }
 
        RootComp->SetPhysicsLinearVelocity(BaseVelocity); 
 
@@ -1243,63 +1294,52 @@ void ATitanCharacter::UpdateHoverHighlight()
     FVector Start = Camera->GetComponentLocation();
     FVector End = Start + (Camera->GetForwardVector() * 600.0f);
 
-    // [핵심] 여기서 구체(Sphere) 모양을 만듭니다. (반지름 70)
+    // 구체(Sphere) 모양으로 쏘기
     FCollisionShape Shape = FCollisionShape::MakeSphere(70.0f);
 
-    // SweepMulti 결과를 담을 배열
     TArray<FHitResult> HitResults;
-
     FCollisionQueryParams Params;
-    Params.AddIgnoredActor(this); // 나는 무시
+    Params.AddIgnoredActor(this); // 나 자신은 무시
 
-    // 감지할 대상 타입 설정 (폰, 물리 물체, 월드 다이내믹)
+    // 감지할 물리 타입 설정
     FCollisionObjectQueryParams ObjectParams;
     ObjectParams.AddObjectTypesToQuery(ECC_Pawn);
     ObjectParams.AddObjectTypesToQuery(ECC_PhysicsBody);
     ObjectParams.AddObjectTypesToQuery(ECC_WorldDynamic);
 
-    // [변경] SweepSingle -> SweepMultiByObjectType (구체 모양으로 뚫고 지나가기)
+    // SweepMulti로 경로상의 모든 물체 검사
     bool bHit = GetWorld()->SweepMultiByObjectType(
-        HitResults,
-        Start,
-        End,
-        FQuat::Identity,
-        ObjectParams,
-        Shape, // 여기에 아까 만든 Sphere 모양을 넣습니다
-        Params
+        HitResults, Start, End, FQuat::Identity, ObjectParams, Shape, Params
     );
 
     AActor* NewTarget = nullptr;
 
     if (bHit)
     {
-        // 맞은 놈들을 가까운 순서대로 하나씩 검사
+        // 가까운 순서대로 확인
         for (const FHitResult& Hit : HitResults)
         {
             AActor* HitActor = Hit.GetActor();
             if (!HitActor) continue;
 
             // =========================================================
-            // [Whitelist] 우리가 원하는 대상인가?
+            // [최종 수정] Whitelist 방식: 딱 3가지만 허용!
             // =========================================================
 
-            // 1. 던질 수 있는 물건 (바위, 폭탄 등)
+            // 1. 던질 수 있는 물건 (버섯, 바위 등 -> ATitanThrowableActor 상속받음)
             bool bIsThrowable = (Cast<ATitanThrowableActor>(HitActor) != nullptr);
 
-            // 2. 적 (몬스터)
-            bool bIsEnemy = (Cast<AEnemyCharacterBase>(HitActor) != nullptr);
-
-            // 3. 플레이어 (BaseCharacter)
+            // 2. 플레이어 (아군)
             bool bIsPlayer = (Cast<ABaseCharacter>(HitActor) != nullptr);
 
-            // 4. 보스 제외 (안전장치)
-            bool bIsBoss = HitActor->ActorHasTag("Boss") || HitActor->ActorHasTag("MidBoss");
+            // 3. 일반 몬스터 (Normal) -> 보스는 여기에 포함 안 됨
+            bool bIsNormalEnemy = (Cast<AEnemyNormal>(HitActor) != nullptr);
 
-            // 조건에 맞는 놈을 찾았으면? -> 이걸 타겟으로 정하고 루프 종료!
-            if ((bIsThrowable || bIsEnemy || bIsPlayer) && !bIsBoss)
+            // [결론] 위 3개 중 하나면 타겟팅 (보스 제외 로직 따로 필요 없음)
+            if (bIsThrowable || bIsPlayer || bIsNormalEnemy)
             {
                 NewTarget = HitActor;
-                break; // 찾았으니 뒤에 있는 건 더 볼 필요 없음 (가장 가까운 유효 타겟)
+                break; // 찾았으면 루프 종료
             }
         }
     }

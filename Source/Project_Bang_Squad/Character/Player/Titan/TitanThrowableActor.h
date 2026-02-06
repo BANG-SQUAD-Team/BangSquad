@@ -14,15 +14,11 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
-
-	virtual void PostInitializeComponents() override;
 	
 public:
-	// ������ ��ü�� ���� (Static Mesh)
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Components")
 	UStaticMeshComponent* MeshComp;
 
-	// �������� �� �߰� ȿ��(��: ���ư��� �Ҹ�, ��ƼŬ)�� ���� ����� �Լ�
 	UFUNCTION(BlueprintNativeEvent, Category = "Titan|Throw")
 	void OnThrown(FVector Direction);
 };
