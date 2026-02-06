@@ -249,34 +249,23 @@ void AStrikerCharacter::ApplyAttackForwardForce()
 
 void AStrikerCharacter::ApplyJobAbilityHit()
 {
+    // 1. 이펙트 소환 (기존 코드 유지)
     if (JobAbilityEffectClass)
     {
-        // 머리 위 3미터(300) 정도 위치
         FVector SpawnLocation = GetActorLocation() + FVector(0.0f, 0.0f, 300.0f);
         FRotator SpawnRotation = FRotator::ZeroRotator;
-
         FActorSpawnParameters SpawnParams;
         SpawnParams.Owner = this;
         SpawnParams.Instigator = this;
 
-        // 월드에 액터 소환
-        GetWorld()->SpawnActor<AActor>(
-            JobAbilityEffectClass,
-            SpawnLocation,
-            SpawnRotation,
-            SpawnParams
-        );
+        GetWorld()->SpawnActor<AActor>(JobAbilityEffectClass, SpawnLocation, SpawnRotation, SpawnParams);
     }
 
-    // =================================================================
-    // 2. [GameLogic] 데미지 및 물리 처리 (서버만 실행)
-    // =================================================================
-    // 데미지나 물리력(Launch)은 서버에서만 계산해야 합니다.
+    // 2. 서버 권한 체크
     if (!HasAuthority()) return;
 
-    // --- 기존 데미지 로직 시작 ---
+    // 데미지 값 가져오기
     float AbilityDamage = 50.f;
-
     if (SkillDataTable)
     {
         static const FString ContextString(TEXT("Striker JobAbility Damage"));
@@ -287,48 +276,57 @@ void AStrikerCharacter::ApplyJobAbilityHit()
     FVector MyLoc = GetActorLocation();
     FVector MyFwd = GetActorForwardVector();
 
-    // 판정 박스 위치 및 크기
+    // 판정 박스 설정
     FVector BoxCenter = MyLoc + (MyFwd * 150.f);
-    FVector BoxExtent = FVector(150.f, 150.f, 150.f); // Y, Z축 범위를 좀 더 넉넉하게 수정
+    FVector BoxExtent = FVector(150.f, 150.f, 150.f);
 
-    // [디버그] 눈에 보이는 빨간 박스 그리기 (2초간 유지)
+    // [디버그]
     DrawDebugBox(GetWorld(), BoxCenter, BoxExtent, FColor::Red, false, 2.0f);
 
     TArray<AActor*> OverlappingActors;
     TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;
     ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_Pawn));
-    ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_WorldDynamic)); // [추가] 적이 Pawn이 아닐 경우 대비
+    ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_WorldDynamic));
 
     UKismetSystemLibrary::BoxOverlapActors(GetWorld(), BoxCenter, BoxExtent, ObjectTypes, ACharacter::StaticClass(), { this }, OverlappingActors);
 
     for (AActor* Actor : OverlappingActors)
     {
+        // 1. 기본 캐릭터 캐스팅 및 본인 제외
         ACharacter* TargetChar = Cast<ACharacter>(Actor);
-        if (!TargetChar) continue;
+        if (!TargetChar || TargetChar == this) continue;
 
-        // [수정됨] 아군(Player 태그) 제외 로직 주석 처리
-        // if (TargetChar->ActorHasTag("Player")) continue;
+        // 2. [요청하신 부분] 태그 대신 클래스 타입으로 확실하게 구분
+        // BaseCharacter로 캐스팅 성공하면 플레이어(아군)로 간주
+        ABaseCharacter* PlayerChar = Cast<ABaseCharacter>(Actor);
 
-        bool bIsNormal = Actor->IsA(AEnemyNormal::StaticClass());
-        bool bIsBaseChar = Actor->IsA(ABaseCharacter::StaticClass()); // 플레이어 캐릭터도 여기에 포함됨
+        // 적 캐릭터인지 확인 (기존 IsA 방식 유지 또는 캐스팅)
+        bool bIsEnemy = Actor->IsA(AEnemyNormal::StaticClass());
 
-        // 플레이어 캐릭터(BaseCharacter)도 조건에 포함되어 있으므로 태그 체크만 끄면 적용됩니다.
-        if (bIsNormal || bIsBaseChar)
+        // 적이거나 플레이어(BaseCharacter)일 때만 로직 실행
+        if (bIsEnemy || PlayerChar)
         {
-            // 데미지 적용
-            UGameplayStatics::ApplyDamage(TargetChar, AbilityDamage, GetController(), this, UDamageType::StaticClass());
+            // [데미지 로직] -> 적(Enemy)일 때만 데미지 적용
+            // 플레이어(PlayerChar)는 이 조건문에 걸리지 않아 데미지를 입지 않습니다.
+            if (bIsEnemy)
+            {
+                UGameplayStatics::ApplyDamage(TargetChar, AbilityDamage, GetController(), this, UDamageType::StaticClass());
+            }
 
-            // [중요 수정 2] 확실하게 띄우기 위한 로직 강화
-            // 땅에 붙어있으면 마찰력 때문에 Launch가 약할 수 있으므로 강제로 Falling 상태로 변경
+            // =========================================================
+            // [공통 로직] 띄우기(Launch) -> 적과 플레이어 모두 적용
+            // =========================================================
+
+            // 강제로 Falling 상태로 변경 (마찰력 무시하고 띄우기 위해)
             if (TargetChar->GetCharacterMovement())
             {
                 TargetChar->GetCharacterMovement()->SetMovementMode(MOVE_Falling);
             }
 
-            // Z축 1000이면 꽤 높이 뜹니다. XY축 반동이 없으면 제자리 점프처럼 보일 수 있으니 살짝 밀어줍니다.
+            // 띄우는 힘 계산 (앞으로 살짝 + 위로 높게)
             FVector LaunchVel = (GetActorForwardVector() * 100.f) + FVector(0.f, 0.f, 1000.f);
 
-            // XY, Z 모두 override(true)
+            // 붕 띄우기! (Override XY, Z True)
             TargetChar->LaunchCharacter(LaunchVel, true, true);
         }
     }
