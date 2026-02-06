@@ -33,6 +33,9 @@ public:
     virtual void OnPossess(APawn* InPawn) override;
     virtual void Tick(float DeltaTime) override;
 
+
+    UFUNCTION(BlueprintPure, Category = "AI")
+    AActor* GetTargetActor() const { return TargetActor; }
     // --- [Public Interface] ---
 
     // 피격 시 호출 (외부에서 호출 가능)

@@ -4,6 +4,8 @@
 #include "Kismet/GameplayStatics.h"
 #include "NiagaraComponent.h"
 #include "NiagaraFunctionLibrary.h"
+#include "Project_Bang_Squad/Character/MonsterBase/EnemyCharacterBase.h"
+
 
 ALichProjectile::ALichProjectile()
 {
@@ -56,12 +58,19 @@ void ALichProjectile::BeginPlay()
 
 void ALichProjectile::OnOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-    // 서버에서만 데미지 처리
+    // 서버 권한 확인
     if (!HasAuthority()) return;
     if (!OtherActor || OtherActor == GetOwner()) return;
 
-    // [핵심] 플레이어 태그가 있거나 Pawn이면 데미지 적용
-    if (OtherActor->ActorHasTag(TEXT("Player")) || OtherActor->IsA(APawn::StaticClass()))
+    // [수정] 아군(몬스터)이면 그냥 통과 (return)
+    if (OtherActor->IsA(AEnemyCharacterBase::StaticClass()))
+    {
+        return;
+    }
+
+    // [수정] "플레이어 태그"가 있는 경우에만 폭발하도록 변경 (더 안전함)
+    // 혹은 Pawn이면서 몬스터가 아닌 경우(위에서 걸러짐)로 처리
+    if (OtherActor->ActorHasTag(TEXT("Player")))
     {
         // 1. 데미지
         UGameplayStatics::ApplyDamage(
@@ -78,7 +87,7 @@ void ALichProjectile::OnOverlap(UPrimitiveComponent* OverlappedComponent, AActor
             UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), HitVFX, GetActorLocation());
         }
 
-        // 3. 삭제 (관통하지 않고 사라짐)
+        // 3. 삭제
         Destroy();
     }
 }

@@ -126,24 +126,12 @@ void AStage2AIController::UpdateMagePattern(float DeltaTime)
         }
         else
         {
-            // 텔레포트 실패 시에는 어쩔 수 없이 걸어가야 함
-            CurrentPattern = EStage2Pattern::MeleeChase;
-        }
-    }
-    break;
+            // [수정] 실패 시: 억지로 쫓아가지 말고, 다시 처음(마법 패턴)으로 복귀!
+            UE_LOG(LogTemp, Warning, TEXT("MageAI: Teleport Failed! -> Restart Magic Barrage."));
 
-    case EStage2Pattern::MeleeChase:
-        // (텔레포트 실패했을 때만 여기로 옴 -> 걸어서 추격)
-    {
-        float Dist = MyPawn->GetDistanceTo(TargetActor);
-        if (Dist <= 200.0f)
-        {
-            StopMovement();
-            CurrentPattern = EStage2Pattern::MeleeAttack;
-        }
-        else
-        {
-            MoveToActor(TargetActor, 50.0f);
+            CurrentPattern = EStage2Pattern::MagicBarrage; // 1번 패턴으로
+            MagicFireCount = 0;     // 발사 횟수 리셋
+            PatternCooldown = 1.0f; // 1초 정도 숨 고르고 다시 공격 시작
         }
     }
     break;

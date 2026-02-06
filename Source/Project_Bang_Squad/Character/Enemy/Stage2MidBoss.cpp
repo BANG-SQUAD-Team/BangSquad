@@ -195,12 +195,9 @@ void AStage2MidBoss::FireMagicMissile()
     if (!HasAuthority()) return;
 
     FVector SpawnLoc = GetActorLocation();
+    FRotator SpawnRot = GetActorRotation(); // 기본값
 
-    // [수정] "그냥 정면으로 쏜다." (플레이어가 피할 수 있게!)
-    // AI가 이미 몸을 돌려놨을 것이라 믿고, 현재 몸의 회전값을 그대로 씁니다.
-    FRotator SpawnRot = GetActorRotation();
-
-    // 소켓 위치 사용 (지팡이 끝)
+    // 1. 소켓 위치 (높은 곳)
     if (GetMesh()->DoesSocketExist(TEXT("Muzzle_01")))
     {
         SpawnLoc = GetMesh()->GetSocketLocation(TEXT("Muzzle_01"));
@@ -210,7 +207,29 @@ void AStage2MidBoss::FireMagicMissile()
         SpawnLoc = GetMesh()->GetSocketLocation(TEXT("Hand_R"));
     }
 
-    // 서버 생성 요청
+    // 2. [수정] 타겟이 있다면 "타겟을 향해" 발사 각도(Pitch)를 계산합니다.
+    if (auto* MyAI = Cast<AMidBossAIController>(GetController()))
+    {
+        AActor* Target = MyAI->GetTargetActor(); // AIController에 Getter 필요
+        // Getter가 없다면: AActor* Target = Cast<AActor>(MyAI->GetBlackboardComponent()->GetValueAsObject("TargetActor"));
+
+        if (Target)
+        {
+            // 타겟의 중심(배/가슴) 위치
+            FVector TargetLoc = Target->GetActorLocation();
+
+            // 키 작은 캐릭터를 위해 타겟 위치를 살짝 아래로 잡을 수도 있음 (선택사항)
+            // TargetLoc.Z -= 20.0f; 
+
+            // 발사 위치에서 타겟 위치로 향하는 벡터 계산
+            FVector Direction = TargetLoc - SpawnLoc;
+
+            // 그 방향으로 회전값 생성 (Pitch가 아래로 꺾임)
+            SpawnRot = Direction.Rotation();
+        }
+    }
+
+    // 3. 발사
     Server_SpawnMagicProjectile(SpawnLoc, SpawnRot);
 }
 
