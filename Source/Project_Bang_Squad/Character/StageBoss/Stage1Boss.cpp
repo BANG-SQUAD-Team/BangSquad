@@ -425,7 +425,7 @@ void AStage1Boss::StartDeathWallSequence()
 	if (!HasAuthority()) return;
 
 	ControlRamparts(true);
-	GetWorldTimerManager().SetTimer(RampartTimerHandle, this, &AStage1Boss::RestoreRamparts, 105.0f, false);
+	GetWorldTimerManager().SetTimer(RampartTimerHandle, this, &AStage1Boss::RestoreRamparts, 60.0f, false);
 
 	//if (GetCharacterMovement()) GetCharacterMovement()->SetMovementMode(MOVE_None);
 	if (GetCharacterMovement()) GetCharacterMovement()->StopMovementImmediately();
