@@ -93,33 +93,48 @@ void ATitanCharacter::Tick(float DeltaTime)
     // 로컬 플레이어 전용 로직 (카메라 및 궤적)
     if (IsLocallyControlled())
     {
-       // 1. 카메라 보간 로직 (잡기 상태에 따라 줌인/줌아웃)
-       if (SpringArm)
-       {
-          FVector TargetOffset = bIsGrabbing ? AimingSocketOffset : DefaultSocketOffset;
-          FVector CurrentOffset = SpringArm->SocketOffset;
-          FVector NewOffset = FMath::VInterpTo(CurrentOffset, TargetOffset, DeltaTime, CameraInterpSpeed);
-          SpringArm->SocketOffset = NewOffset;
-       }
-       
-       // 2. 예외 처리: 잡은 대상이 소멸되었을 경우 상태 복구
-       if (bIsGrabbing && !GrabbedActor)
-       {
-          bIsGrabbing = false;
-          ShowTrajectory(false);
-       }
+        // 1. 카메라 보간 로직 (잡기 상태에 따라 줌인/줌아웃)
+        if (SpringArm)
+        {
+            FVector TargetOffset = bIsGrabbing ? AimingSocketOffset : DefaultSocketOffset;
+            FVector CurrentOffset = SpringArm->SocketOffset;
+            FVector NewOffset = FMath::VInterpTo(CurrentOffset, TargetOffset, DeltaTime, CameraInterpSpeed);
+            SpringArm->SocketOffset = NewOffset;
+        }
 
-       // 3. 궤적 표시 로직 (잡고 있거나 바위를 들고 있을 때)
-       if (!bIsGrabbing) 
-       {
-          UpdateHoverHighlight();
-          ShowTrajectory(false);
-       }
-       else
-       {
-          ShowTrajectory(true);
-          UpdateTrajectory();
-       }
+        // =================================================================
+        // [수정] 상태 초기화 로직 강화 (버그 픽스 핵심)
+        // =================================================================
+        // 1. 잡은 대상이 있는지 검사 (IsValid 사용으로 PendingKill 상태까지 체크)
+        bool bHasValidTarget = (GrabbedActor != nullptr && IsValid(GrabbedActor));
+
+        // 2. "나는 잡고 있다고 생각하는데(bIsGrabbing), 실제론 대상이 없다면?" -> 강제 초기화
+        if (bIsGrabbing && !bHasValidTarget)
+        {
+            bIsGrabbing = false;
+            GrabbedActor = nullptr; // 확실하게 널 포인터 처리
+            ShowTrajectory(false);
+
+            // 혹시 켜져 있을지 모를 하이라이트 끄기
+            if (HoveredActor)
+            {
+                SetHighlight(HoveredActor, false);
+                HoveredActor = nullptr;
+            }
+        }
+        // =================================================================
+
+        // 3. 궤적 표시 로직 (이제 bIsGrabbing이 정상적으로 false가 되므로 실행됨)
+        if (!bIsGrabbing)
+        {
+            UpdateHoverHighlight(); // 여기서 다시 아웃라이너가 그려지게 됩니다
+            ShowTrajectory(false);
+        }
+        else
+        {
+            ShowTrajectory(true);
+            UpdateTrajectory();
+        }
     }
 }
 
@@ -188,6 +203,13 @@ void ATitanCharacter::Attack()
 {
     if (bIsDead) return;
     if (!CanAttack()) return;
+
+    if (bIsGrabbing && !IsValid(GrabbedActor))
+    {
+        bIsGrabbing = false;
+        GrabbedActor = nullptr;
+        ShowTrajectory(false);
+    }
 
     FName SkillRowName = bIsNextAttackA ? TEXT("Attack_A") : TEXT("Attack_B");
 
@@ -384,6 +406,12 @@ void ATitanCharacter::JobAbility()
 {
     if (!IsSkillUnlocked(1)) return;
     if (bIsDead || bIsCooldown) return;
+
+    if (bIsGrabbing && !IsValid(GrabbedActor))
+    {
+        bIsGrabbing = false;
+        GrabbedActor = nullptr;
+    }
 
     if (bIsGrabbing)
     {
@@ -618,23 +646,43 @@ void ATitanCharacter::OnThrownActorHit(AActor* SelfActor, AActor* OtherActor, FV
 
     if (SelfActor)
     {
-       SelfActor->OnActorHit.RemoveDynamic(this, &ATitanCharacter::OnThrownActorHit);
+        SelfActor->OnActorHit.RemoveDynamic(this, &ATitanCharacter::OnThrownActorHit);
     }
 
-    float ImpactRadius = 300.0f;  
-    float KnockbackForce = 800.0f; 
+    float ImpactRadius = 300.0f;
+    float KnockbackForce = 800.0f;
     float ImpactDamage = (CurrentSkillDamage > 0.0f) ? CurrentSkillDamage : 30.0f;
 
+    // =================================================================
+    // [최종 수정] "적(Enemy)"일 때만 데미지 1.5배! (제일 깔끔함)
+    // =================================================================
+    if (SelfActor)
+    {
+        // 몬스터(EnemyCharacterBase)로 변환이 성공하면 -> 적이다!
+        if (Cast<AEnemyCharacterBase>(SelfActor) != nullptr)
+        {
+            UGameplayStatics::ApplyDamage(
+                SelfActor,
+                ImpactDamage * 1.5f, // 몬스터는 아프게 맞음
+                GetController(),
+                this,
+                UDamageType::StaticClass()
+            );
+        }
+    }
+    // =================================================================
+
+    // 주변 폭발 (SelfActor 제외)
     PerformRadialImpact(Hit.ImpactPoint, ImpactRadius, ImpactDamage, KnockbackForce, SelfActor);
 
-    // 던져진 캐릭터 상태 회복
+    // 던져진 캐릭터 기상 처리 (적, 아군 모두 일어나는 건 해야 함)
     if (ACharacter* ThrownChar = Cast<ACharacter>(SelfActor))
     {
-       if (ThrownChar->GetCharacterMovement())
-       {
-          ThrownChar->GetCharacterMovement()->StopMovementImmediately();
-       }
-       RecoverCharacter(ThrownChar);
+        if (ThrownChar->GetCharacterMovement())
+        {
+            ThrownChar->GetCharacterMovement()->StopMovementImmediately();
+        }
+        RecoverCharacter(ThrownChar);
     }
 }
 
@@ -1194,50 +1242,74 @@ void ATitanCharacter::UpdateHoverHighlight()
 
     FVector Start = Camera->GetComponentLocation();
     FVector End = Start + (Camera->GetForwardVector() * 600.0f);
-    FCollisionShape Shape = FCollisionShape::MakeSphere(70.0f);
-    FHitResult HitResult;
-    FCollisionQueryParams Params;
-    Params.AddIgnoredActor(this);
-    
-    FCollisionObjectQueryParams ObjectParams;
-    ObjectParams.AddObjectTypesToQuery(ECC_Pawn);          
-    ObjectParams.AddObjectTypesToQuery(ECC_PhysicsBody);   
 
-    bool bHit = GetWorld()->SweepSingleByObjectType(
-       HitResult, 
-       Start, 
-       End, 
-       FQuat::Identity, 
-       ObjectParams, 
-       Shape, 
-       Params
+    // [핵심] 여기서 구체(Sphere) 모양을 만듭니다. (반지름 70)
+    FCollisionShape Shape = FCollisionShape::MakeSphere(70.0f);
+
+    // SweepMulti 결과를 담을 배열
+    TArray<FHitResult> HitResults;
+
+    FCollisionQueryParams Params;
+    Params.AddIgnoredActor(this); // 나는 무시
+
+    // 감지할 대상 타입 설정 (폰, 물리 물체, 월드 다이내믹)
+    FCollisionObjectQueryParams ObjectParams;
+    ObjectParams.AddObjectTypesToQuery(ECC_Pawn);
+    ObjectParams.AddObjectTypesToQuery(ECC_PhysicsBody);
+    ObjectParams.AddObjectTypesToQuery(ECC_WorldDynamic);
+
+    // [변경] SweepSingle -> SweepMultiByObjectType (구체 모양으로 뚫고 지나가기)
+    bool bHit = GetWorld()->SweepMultiByObjectType(
+        HitResults,
+        Start,
+        End,
+        FQuat::Identity,
+        ObjectParams,
+        Shape, // 여기에 아까 만든 Sphere 모양을 넣습니다
+        Params
     );
-    
+
     AActor* NewTarget = nullptr;
 
-    if (bHit && HitResult.GetActor())
+    if (bHit)
     {
-       AActor* HitActor = HitResult.GetActor();
+        // 맞은 놈들을 가까운 순서대로 하나씩 검사
+        for (const FHitResult& Hit : HitResults)
+        {
+            AActor* HitActor = Hit.GetActor();
+            if (!HitActor) continue;
 
-       bool bIsTargetChar = (Cast<ACharacter>(HitActor) != nullptr);
-       bool bIsThrowable = (Cast<ATitanThrowableActor>(HitActor) != nullptr);
-       bool bIsMushroom = HitActor->ActorHasTag("Mushroom");
+            // =========================================================
+            // [Whitelist] 우리가 원하는 대상인가?
+            // =========================================================
 
-       bool bIsMidBoss = HitActor->IsA(AEnemyMidBoss::StaticClass());
-       bool bIsStageBoss = HitActor->IsA(AStageBossBase::StaticClass());
-       bool bHasBossTag = HitActor->ActorHasTag("Boss") || HitActor->ActorHasTag("MidBoss");
+            // 1. 던질 수 있는 물건 (바위, 폭탄 등)
+            bool bIsThrowable = (Cast<ATitanThrowableActor>(HitActor) != nullptr);
 
-       if ((bIsTargetChar || bIsThrowable || bIsMushroom) && !bIsMidBoss && !bIsStageBoss && !bHasBossTag)
-       {
-          NewTarget = HitActor;
-       }
+            // 2. 적 (몬스터)
+            bool bIsEnemy = (Cast<AEnemyCharacterBase>(HitActor) != nullptr);
+
+            // 3. 플레이어 (BaseCharacter)
+            bool bIsPlayer = (Cast<ABaseCharacter>(HitActor) != nullptr);
+
+            // 4. 보스 제외 (안전장치)
+            bool bIsBoss = HitActor->ActorHasTag("Boss") || HitActor->ActorHasTag("MidBoss");
+
+            // 조건에 맞는 놈을 찾았으면? -> 이걸 타겟으로 정하고 루프 종료!
+            if ((bIsThrowable || bIsEnemy || bIsPlayer) && !bIsBoss)
+            {
+                NewTarget = HitActor;
+                break; // 찾았으니 뒤에 있는 건 더 볼 필요 없음 (가장 가까운 유효 타겟)
+            }
+        }
     }
 
+    // 하이라이트 갱신
     if (HoveredActor != NewTarget)
     {
-       if (HoveredActor) SetHighlight(HoveredActor, false);
-       if (NewTarget) SetHighlight(NewTarget, true);
-       HoveredActor = NewTarget;
+        if (HoveredActor) SetHighlight(HoveredActor, false);
+        if (NewTarget) SetHighlight(NewTarget, true);
+        HoveredActor = NewTarget;
     }
 }
 
