@@ -52,24 +52,10 @@ void AEnemyMidBoss::OnConstruction(const FTransform& Transform)
 {
 	Super::OnConstruction(Transform);
 
-	if (BossData)
+	// 에디터 상에서 미리보기 용도 (게임 실행 전 확인용)
+	if (BossData && GetCharacterMovement())
 	{
-		if (GetMesh() && BossData->Mesh)
-		{
-			GetMesh()->SetSkeletalMesh(BossData->Mesh);
-		}
-		if (GetMesh() && BossData->AnimClass)
-		{
-			GetMesh()->SetAnimInstanceClass(BossData->AnimClass);
-		}
-		// CDO 체크 추가
-		if (!HasAnyFlags(RF_ClassDefaultObject))
-		{
-			if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
-			{
-				MoveComp->MaxWalkSpeed = BossData->WalkSpeed;
-			}
-		}
+		GetCharacterMovement()->MaxWalkSpeed = BossData->WalkSpeed;
 	}
 }
 
@@ -77,20 +63,34 @@ void AEnemyMidBoss::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// ���� ���� �� ������ ���� Ȯ��
+	// [수정] Data Asset의 값이 "진짜"이므로, 게임 시작 시 무조건 덮어씁니다.
+	if (BossData)
+	{
+		// 1. 이동 속도 동기화
+		if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+		{
+			// 기존 BP 값을 무시하고 DataAsset 값으로 덮어씁니다.
+			MoveComp->MaxWalkSpeed = BossData->WalkSpeed;
+
+			// 디버깅 로그
+			UE_LOG(LogTemp, Warning, TEXT("[MidBoss] Speed Updated from DataAsset: %f"), BossData->WalkSpeed);
+		}
+	} // <--- [중요] 여기가 빠져있었습니다! if (BossData)를 닫아주는 괄호입니다.
+
+	// 2. 체력 초기화
 	if (HasAuthority() && BossData && HealthComponent)
 	{
 		HealthComponent->SetMaxHealth(BossData->MaxHealth);
 		UE_LOG(LogTemp, Log, TEXT("[MidBoss] Initialized Health: %f"), BossData->MaxHealth);
 	}
 
-	// ��� �̺�Ʈ ����
+	// 3. 사망 이벤트 등록
 	if (HealthComponent)
 	{
 		HealthComponent->OnDead.AddDynamic(this, &AEnemyMidBoss::OnDeath);
 	}
 
-	// ������ ������ AttackRange�� AI���� ����!
+	// 4. 공격 범위 설정
 	if (GetController())
 	{
 		auto* MyAI = Cast<AMidBossAIController>(GetController());
@@ -104,28 +104,22 @@ void AEnemyMidBoss::BeginPlay()
 
 float AEnemyMidBoss::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
+	// 1. 체력 감소는 정상적으로 수행 (Super 호출 유지)
 	float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
 
 	if (ActualDamage <= 0.0f) return 0.0f;
 	if (HealthComponent && HealthComponent->IsDead()) return 0.0f;
 
-	
-
-	if (GetController())
-	{
-		auto* MyAI = Cast<AMidBossAIController>(GetController());
-		if (MyAI)
-		{
-			// [������] ����ü(DamageCauser)�� ������� �۶����� �ʰ�, ������ ���(Instigator Pawn)�� ã�Ƽ� �Ѱ��ݴϴ�.
-			AActor* RealAttacker = DamageCauser;
-			if (EventInstigator && EventInstigator->GetPawn())
-			{
-				RealAttacker = EventInstigator->GetPawn();
-			}
-
-			MyAI->OnDamaged(RealAttacker);
-		}
-	}
+	// 2. AI에게 피격 사실을 알리는 로직 차단
+	//if (GetController())
+	//{
+	//	auto* MyAI = Cast<AMidBossAIController>(GetController());
+	//	if (MyAI)
+	//	{
+	//		 이 부분을 주석 처리하여 AI가 '피격 상태'로 전이되는 것을 막습니다.
+	//		 MyAI->OnDamaged(RealAttacker); 
+	//	}
+	//}
 
 	return ActualDamage;
 }
@@ -270,17 +264,7 @@ void AEnemyMidBoss::Multicast_PlayAttackMontage_Implementation(UAnimMontage* Mon
 
 float AEnemyMidBoss::PlayHitReactAnim()
 {
-	// 1. ���� üũ (������ ����)
-	if (!HasAuthority()) return 0.0f;
-
-	if (BossData && BossData->HitReactMontage)
-	{
-		// 2. [����] ��Ƽĳ��Ʈ�� "��� ���� ��� �����!" ���
-		Multicast_PlayAttackMontage(BossData->HitReactMontage);
-
-		// 3. AI���Դ� �ִϸ��̼� ���� ���� (���� �ð� ����)
-		return BossData->HitReactMontage->GetPlayLength();
-	}
+	// 시니어 조언: 0.0f를 반환하면 이를 호출한 AI Task가 대기 시간 없이 즉시 다음 행동
 	return 0.0f;
 }
 

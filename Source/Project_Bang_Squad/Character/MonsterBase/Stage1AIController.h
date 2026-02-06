@@ -8,20 +8,14 @@
 
 class AEnemyMidBoss;
 
-// [패턴 정의] Stage 1 보스가 수행할 행동의 종류
+// 패턴 정의 (그대로 유지)
 UENUM(BlueprintType)
 enum class EStage1Pattern : uint8
 {
-    MeleeRush,      // 1. 달려가서 근접 공격
-    SlashStationary // 2. 제자리에서 검기 발사
+    MeleeRush,      // 평타 (근접)
+    SlashStationary // 참격 (원거리)
 };
 
-/**
- * [Stage 1 AI Controller]
- * - 특징: 'StartChasing' 단계에서 패턴을 미리 결정합니다.
- * - 참격: 제자리에서 즉시 발사.
- * - 근접: 타겟에게 달려간 뒤(Chase) 멈춰서 공격.
- */
 UCLASS()
 class PROJECT_BANG_SQUAD_API AStage1AIController : public AMidBossAIController
 {
@@ -31,25 +25,25 @@ public:
     virtual void OnPossess(APawn* InPawn) override;
 
 protected:
-    // [핵심] 부모의 추격 명령을 가로채서 "패턴 결정(Decision)"을 수행
+    // [설계 변경] 확률 계산 없이 "이번엔 뭐 할 차례인지" 결정
     virtual void StartChasing() override;
 
-    // 근접 돌진 패턴일 때만 실행되는 로직
+    // 참격도 거리가 멀면 추격하도록 수정
     virtual void UpdateChaseState(float DeltaTime) override;
 
-    // 공격 중 회전 보정
+    // 공격 중 회전 (그대로 유지)
     virtual void UpdateAttackState(float DeltaTime) override;
+
+    // [추가] 공격이 끝나면 순서를 뒤집고(Toggle) 다시 추격 시작
+    virtual void FinishAttack() override;
 
 private:
     UPROPERTY()
     TObjectPtr<AEnemyMidBoss> MyPawn;
 
-    // 현재 결정된 패턴 저장
+    // 현재 실행 중인 패턴
     EStage1Pattern CurrentPattern;
 
-    // --- [Skill Config] ---
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|Combat", meta = (AllowPrivateAccess = "true"))
-    float SlashSkillCooldown = 8.0f; // 검기 쿨타임
-
-    float LastSlashTime = -100.0f; // 초기화용
+    // [핵심] 이번 턴이 참격(Slash) 차례인가? (false면 평타, true면 참격)
+    bool bIsSlashTurn = false;
 };
