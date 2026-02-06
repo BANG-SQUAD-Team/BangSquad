@@ -835,6 +835,8 @@ void ATitanCharacter::Server_ThrowTarget_Implementation(FVector ThrowStartLocati
     if (ACharacter* Victim = Cast<ACharacter>(GrabbedActor))
     {
        Victim->SetActorLocation(ExactStartLoc, false, nullptr, ETeleportType::TeleportPhysics);
+
+       Victim->SetReplicateMovement(true);
        
        Multicast_ForceThrowCleanup(Victim, BaseVelocity);
 
