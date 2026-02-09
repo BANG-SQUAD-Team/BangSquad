@@ -140,9 +140,7 @@ protected:
     // 스킬 쿨타임 관리 (Key: 스킬이름, Value: 타이머 핸들)
     UPROPERTY()
     TMap<FName, FTimerHandle> SkillTimers;
-
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Data")
-    UDataTable* SkillDataTable;
+    
     
     // 데이터 테이블 캐싱 변수
     TMap<FName, FSkillData*> SkillDataCache;

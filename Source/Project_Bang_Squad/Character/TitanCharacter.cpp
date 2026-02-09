@@ -1,4 +1,5 @@
 #include "Project_Bang_Squad/Character/TitanCharacter.h"
+#include "Project_Bang_Squad/Character/Base/BaseCharacter.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"

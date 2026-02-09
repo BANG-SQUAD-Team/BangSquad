@@ -50,6 +50,9 @@ public:
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
 	float Duration = 0.0f;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI")
+	UTexture2D* Icon = nullptr;
 };
 
 UCLASS()
@@ -100,6 +103,10 @@ public:
 	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Wind")
 	bool bIsWindFloating = false;
 	
+	// 서버가 특정 클라이언트에게 "UI 쿨타임 돌려라" 명령하는 함수
+	UFUNCTION(Client, Reliable)
+	void Client_TriggerSkillCooldown(int32 SkillIndex, float CooldownTime);
+	
 	UFUNCTION()
 	void OnRep_WindFloating();
 	
@@ -114,8 +121,16 @@ public:
 	// 자식 클래스에서 쿨타임 시작할 때 호출할 함수
 	UFUNCTION(BlueprintCallable, Category = "Combat")
 	void TriggerSkillCooldown(int32 SkillIndex, float CooldownTime);
+	
+	// UI가 호출할 헬퍼 함수
+	UFUNCTION(BlueprintCallable, Category = "UI")
+	UTexture2D* GetSkillIconByRowName(FName RowName);
 protected:
 	virtual void BeginPlay() override;
+	
+	// 스킬 데이터 테이블
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Data")
+	class UDataTable* SkillDataTable;
 	
 	// 게임 시작 시 저장해둘 원래 속도
 	float DefaultMaxWalkSpeed;

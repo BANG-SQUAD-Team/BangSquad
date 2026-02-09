@@ -164,8 +164,6 @@ protected:
 	void Multicast_EndSkill1();
 
 protected:
-	UPROPERTY(EditDefaultsOnly, Category = "Data")
-	class UDataTable* SkillDataTable;
 
 	// 쿨타임 및 설정값
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat")

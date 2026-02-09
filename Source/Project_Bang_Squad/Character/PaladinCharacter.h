@@ -47,6 +47,19 @@ public:
 
     FORCEINLINE class UStaticMeshComponent* GetShieldMesh() const { return ShieldMeshComp; }
 
+    
+    // 방패 상태 관리
+    UPROPERTY(ReplicatedUsing = OnRep_IsGuarding, BlueprintReadOnly, Category = "Combat")
+    bool bIsGuarding;
+
+    UPROPERTY(Replicated, BlueprintReadOnly, Category = "Shield")
+    bool bIsShieldBroken;
+
+    UPROPERTY(Replicated, BlueprintReadOnly, Category = "Shield")
+    float CurrentShieldHP;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Shield")
+    float MaxShieldHP = 200.0f;
 protected:
     
     // ====================================================================================
@@ -121,9 +134,6 @@ protected:
     // ====================================================================================
     //  섹션 4: 스킬 시스템 (Skill System - Smash)
     // ====================================================================================
-    // 데이터 테이블 및 처리 로직
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Data")
-    UDataTable* SkillDataTable;
     
     TMap<FName, FSkillData*> SkillDataCache;
     
@@ -192,18 +202,7 @@ protected:
     UFUNCTION()
     void OnRep_IsGuarding();
 
-    // 방패 상태 관리
-    UPROPERTY(ReplicatedUsing = OnRep_IsGuarding, BlueprintReadOnly, Category = "Combat")
-    bool bIsGuarding;
-
-    UPROPERTY(Replicated, BlueprintReadOnly, Category = "Shield")
-    bool bIsShieldBroken;
-
-    UPROPERTY(Replicated, BlueprintReadOnly, Category = "Shield")
-    float CurrentShieldHP;
-
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Shield")
-    float MaxShieldHP = 200.0f;
+    
 
     // 방패 회복 및 파괴
     void RegenShield();

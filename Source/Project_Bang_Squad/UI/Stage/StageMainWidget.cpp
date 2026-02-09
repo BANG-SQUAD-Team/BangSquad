@@ -71,6 +71,77 @@ void UStageMainWidget::NativeTick(const FGeometry& MyGeometry, float DeltaTime)
 			CachedPlayerCount = GS->PlayerArray.Num();
 		}
 	}
+	
+	// 🔥 리스폰 등으로 캐릭터가 바뀌었는지 체크
+	if (APlayerController* PC = GetOwningPlayer())
+	{
+		APawn* CurrentPawn = PC->GetPawn();
+		if (CurrentPawn && CurrentPawn != CachedCharacter.Get())
+		{
+			BindCharacterDelegates(CurrentPawn);
+		}
+	}
+}
+
+void UStageMainWidget::BindCharacterDelegates(APawn* NewPawn)
+{
+	ABaseCharacter* NewChar = Cast<ABaseCharacter>(NewPawn);
+    
+	// 기존 연결 해제 (이전 캐릭터가 있다면)
+	if (CachedCharacter.IsValid())
+	{
+		CachedCharacter->OnSkillCooldownChanged.RemoveDynamic(this, &UStageMainWidget::OnSkillCooldown);
+	}
+
+	// 새 캐릭터 연결
+	if (NewChar)
+	{
+		CachedCharacter = NewChar;
+		NewChar->OnSkillCooldownChanged.AddDynamic(this, &UStageMainWidget::OnSkillCooldown);
+
+		// 캐릭터의 데이터 테이블에서 아이콘을 가져와서 UI에 세팅
+        
+		// 1번 스킬 (Q)
+		if (SkillSlot_1)
+		{
+			UTexture2D* Icon = NewChar->GetSkillIconByRowName(FName("Skill1"));
+			if (Icon) SkillSlot_1->SetIcon(Icon);
+		}
+
+		// 2번 스킬 (E)
+		if (SkillSlot_2)
+		{
+			UTexture2D* Icon = NewChar->GetSkillIconByRowName(FName("Skill2"));
+			if (Icon) SkillSlot_2->SetIcon(Icon);
+		}
+
+		// 직업 스킬 (Space/Shift)
+		if (SkillSlot_Job)
+		{
+			UTexture2D* Icon = NewChar->GetSkillIconByRowName(FName("JobAbility"));
+			if (Icon) SkillSlot_Job->SetIcon(Icon);
+		}
+	}
+}
+
+void UStageMainWidget::OnSkillCooldown(int32 SkillIndex, float CooldownTime)
+{
+	// 캐릭터 코드에서 TriggerSkillCooldown(인덱스, 시간)을 호출하면 여기가 실행됨
+    
+	switch (SkillIndex)
+	{
+	case 1: // Skill 1
+		if (SkillSlot_1) SkillSlot_1->StartCooldown(CooldownTime);
+		break;
+        
+	case 2: // Skill 2 
+		if (SkillSlot_2) SkillSlot_2->StartCooldown(CooldownTime);
+		break;
+        
+	case 3: // Job Ability 
+		if (SkillSlot_Job) SkillSlot_Job->StartCooldown(CooldownTime);
+		break;
+	}
 }
 
 void UStageMainWidget::UpdatePartyList()

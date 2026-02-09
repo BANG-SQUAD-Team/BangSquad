@@ -2,6 +2,7 @@
 #include "Project_Bang_Squad/Projectile/MageProjectile.h"
 #include "Project_Bang_Squad/Character/Player/Mage/MageSkill2Rock.h"
 #include "Project_Bang_Squad/Character/Pillar.h"
+#include "Project_Bang_Squad/Character/Base/BaseCharacter.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Camera/CameraComponent.h"
 #include "EnhancedInputComponent.h"

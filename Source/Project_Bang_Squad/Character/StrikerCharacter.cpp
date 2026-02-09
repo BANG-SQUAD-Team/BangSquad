@@ -1,4 +1,5 @@
 #include "Project_Bang_Squad/Character/StrikerCharacter.h"
+#include "Project_Bang_Squad/Character/Base/BaseCharacter.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Kismet/GameplayStatics.h"

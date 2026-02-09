@@ -1,4 +1,5 @@
 #include "Project_Bang_Squad/Character/PaladinCharacter.h"
+#include "Project_Bang_Squad/Character/Base/BaseCharacter.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Components/WidgetComponent.h"
@@ -915,8 +916,8 @@ void APaladinCharacter::OnShieldBroken()
     // ==============================================================
     // 방패(직업 스킬) 쿨타임 UI 호출
     // ==============================================================
-    // 직업 능력은 3번!
-    TriggerSkillCooldown(3, BrokenCooldown);
+    //  클라이언트에게 명령!
+    Client_TriggerSkillCooldown(3, BrokenCooldown);
     
     if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red,
         TEXT("Shield is Broken! Waiting for cooldown..."));

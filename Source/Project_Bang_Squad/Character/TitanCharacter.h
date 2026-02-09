@@ -302,9 +302,6 @@ private:
     float DefaultGroundFriction;
     float DefaultGravityScale;
 
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Data", meta = (AllowPrivateAccess = "true"))
-    class UDataTable* SkillDataTable;
-
    protected:
        // =================================================================
        // [안전장치 및 상태 복구]

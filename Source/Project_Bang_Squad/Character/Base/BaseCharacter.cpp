@@ -696,3 +696,24 @@ void ABaseCharacter::TriggerSkillCooldown(int32 SkillIndex, float CooldownTime)
 		OnSkillCooldownChanged.Broadcast(SkillIndex, CooldownTime);
 	}
 }
+
+UTexture2D* ABaseCharacter::GetSkillIconByRowName(FName RowName)
+{
+	if (!SkillDataTable) return nullptr;
+
+	static const FString ContextString(TEXT("GetSkillIcon"));
+	FSkillData* Data = SkillDataTable->FindRow<FSkillData>(RowName, ContextString);
+
+	if (Data)
+	{
+		return Data->Icon;
+	}
+	return nullptr;
+}
+
+void ABaseCharacter::Client_TriggerSkillCooldown_Implementation(int32 SkillIndex, float CooldownTime)
+{
+	// 이 함수는 서버가 호출했지만, 실행은 "클라이언트(내 컴퓨터)"에서 됩니다.
+	// 즉, 내 UI가 이 신호를 듣게 됩니다!
+	TriggerSkillCooldown(SkillIndex, CooldownTime);
+}
