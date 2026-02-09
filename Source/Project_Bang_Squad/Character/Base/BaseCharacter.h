@@ -129,6 +129,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	FText GetSkillNameTextByRowName(FName RowName);
 protected:
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
+	class UStaticMeshComponent* HeadAccessoryComponent;
+
 	virtual void BeginPlay() override;
 	
 	// 스킬 데이터 테이블
@@ -286,4 +289,8 @@ private:
 	// 최대 가속도 기준값 (50도일 때의 값)
 	UPROPERTY(EditAnywhere, Category = "Movement")
 	float MaxSlideAccel = 230.0f;
+
+public:
+	UFUNCTION(BlueprintCallable, Category = "Shop")
+	void EquipHeadAccessory(UStaticMesh* NewMesh);
 };

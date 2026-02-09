@@ -55,6 +55,25 @@ ABaseCharacter::ABaseCharacter()
 		SetReplicateMovement(true);
 		SetNetUpdateFrequency(100.0f);     // 1초에 100번 상태 갱신 시도 (서버 -> 클라)
 		SetMinNetUpdateFrequency(66.0f);   // 최소 66번은 보장 (프레임 방어)
+
+		// 1. 머리 장식용 컴포넌트 생성
+		HeadAccessoryComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("HeadAccessory"));
+
+		// 2. 캐릭터의 메쉬(GetMesh())에 붙임
+		// 중요: "Socket_HeadAccessory"는 아까 에디터에서 만든 소켓 이름과 똑같아야 합니다!
+		HeadAccessoryComponent->SetupAttachment(GetMesh(), TEXT("Socket_HeadAccessory"));
+
+		// 3. 충돌 설정 (장식품이니까 충돌은 꺼두는 게 보통입니다)
+		HeadAccessoryComponent->SetCollisionProfileName(TEXT("NoCollision"));
+}
+
+void ABaseCharacter::EquipHeadAccessory(UStaticMesh* NewMesh)
+{
+	if (HeadAccessoryComponent)
+	{
+		// 메쉬를 갈아끼웁니다.
+		HeadAccessoryComponent->SetStaticMesh(NewMesh);
+	}
 }
 
 void ABaseCharacter::BeginPlay()
