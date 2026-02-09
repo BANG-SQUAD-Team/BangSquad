@@ -59,23 +59,33 @@ ABaseCharacter::ABaseCharacter()
 		// 1. 머리 장식용 컴포넌트 생성
 		HeadAccessoryComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("HeadAccessory"));
 
-		// 2. 캐릭터의 메쉬(GetMesh())에 붙임
-		// 중요: "Socket_HeadAccessory"는 아까 에디터에서 만든 소켓 이름과 똑같아야 합니다!
-		HeadAccessoryComponent->SetupAttachment(GetMesh(), TEXT("Socket_HeadAccessory"));
+		// 2. "Head"라는 이름의 뼈(Bone)에 바로 붙입니다. (소켓 필요 없음)
+		HeadAccessoryComponent->SetupAttachment(GetMesh(), TEXT("Bip001-Head"));
 
-		// 3. 충돌 설정 (장식품이니까 충돌은 꺼두는 게 보통입니다)
+		// 3. 충돌 끄기
 		HeadAccessoryComponent->SetCollisionProfileName(TEXT("NoCollision"));
 }
 
 void ABaseCharacter::EquipHeadAccessory(UStaticMesh* NewMesh)
 {
-	if (HeadAccessoryComponent)
-	{
-		// 메쉬를 갈아끼웁니다.
-		HeadAccessoryComponent->SetStaticMesh(NewMesh);
-	}
-}
+	if (!HeadAccessoryComponent || !GetMesh()) return;
 
+	// 1. 메쉬 교체
+	HeadAccessoryComponent->SetStaticMesh(NewMesh);
+
+	// 2. [수정된 부분] Head에 따옴표를 붙여야 합니다!
+	// 기존: Head (X) -> 컴퓨터가 변수로 착각함
+	// 수정: TEXT("Head") (O) -> 문자열로 인식함
+	HeadAccessoryComponent->AttachToComponent(
+		GetMesh(),
+		FAttachmentTransformRules::SnapToTargetIncludingScale,
+		TEXT("Bip001-Head")
+	);
+
+	// (선택 사항) 위치나 회전이 이상하면 여기서 오프셋을 줍니다.
+	// 예: 머리 속에 파묻히면 위로 좀 올림
+	// HeadAccessoryComponent->SetRelativeLocation(FVector(0, 0, 10.0f));
+}
 void ABaseCharacter::BeginPlay()
 {
 	Super::BeginPlay();
