@@ -354,7 +354,15 @@ void AStrikerCharacter::Skill1()
 		{
 			static const FString ContextString(TEXT("StrikerSkill1Cooldown"));
 			FSkillData* Data = SkillDataTable->FindRow<FSkillData>(TEXT("Skill1"), ContextString);
-			if (Data && Data->Cooldown > 0.0f) ActualCooldown = Data->Cooldown;
+          
+			// Data가 있으면 해금 여부 확인
+			if (Data)
+			{
+				// 해금되지 않았다면 즉시 리턴 (쿨타임도 안 돌고 서버 요청도 안 함)
+				if (!IsSkillUnlocked(Data->RequiredStage)) return;
+
+				if (Data->Cooldown > 0.0f) ActualCooldown = Data->Cooldown;
+			}
 		}
 		Skill1ReadyTime = CurrentTime + ActualCooldown;
 		
@@ -531,7 +539,13 @@ void AStrikerCharacter::Skill2()
     	{
     		static const FString ContextString(TEXT("StrikerSkill2Cooldown_Local"));
     		FSkillData* Data = SkillDataTable->FindRow<FSkillData>(TEXT("Skill2"), ContextString);
-    		if (Data && Data->Cooldown > 0.0f) CooldownTime = Data->Cooldown;
+    		if (Data)
+    		{
+    			// 해금 체크
+    			if (!IsSkillUnlocked(Data->RequiredStage)) return;
+
+    			if (Data->Cooldown > 0.0f) CooldownTime = Data->Cooldown;
+    		}
     	}
     	
     	Skill2ReadyTime = CurrentTime + CooldownTime; // 로컬 쿨타임 적용
@@ -742,7 +756,14 @@ void AStrikerCharacter::JobAbility()
     {
         static const FString ContextString(TEXT("StrikerJobCooldown"));
         FSkillData* Data = SkillDataTable->FindRow<FSkillData>(TEXT("JobAbility"), ContextString);
-        if (Data && Data->Cooldown > 0.0f) ActualCooldown = Data->Cooldown;
+    	// Data가 있으면 해금 여부 확인
+    	if (Data)
+    	{
+    		//  해금 체크
+    		if (!IsSkillUnlocked(Data->RequiredStage)) return;
+
+    		if (Data->Cooldown > 0.0f) ActualCooldown = Data->Cooldown;
+    	}
     }
 	
 	JobAbilityCooldownTime = CurrentTime + ActualCooldown;

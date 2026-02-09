@@ -448,7 +448,7 @@ void ATitanCharacter::JobAbility()
           if (Row && Row->Cooldown > 0.0f) LocalThrowCooldown = Row->Cooldown;
        }
        
-        // 🔥 [추가] 클라이언트 UI 쿨타임 즉시 실행 (3번 슬롯)
+        // 클라이언트 UI 쿨타임 즉시 실행 (3번 슬롯)
         TriggerSkillCooldown(3, LocalThrowCooldown);
         
        GetWorldTimerManager().SetTimer(CooldownTimerHandle, this, &ATitanCharacter::ResetCooldown, LocalThrowCooldown, false);
@@ -475,7 +475,13 @@ void ATitanCharacter::Skill1()
     {
        static const FString ContextString(TEXT("TitanSkill1_Local"));
        FSkillData* Row = SkillDataTable->FindRow<FSkillData>(TEXT("Skill1"), ContextString);
-       if (Row && Row->Cooldown > 0.0f) LocalCooldown = Row->Cooldown;
+        if (Row)
+        {
+            // 해금되지 않은 스킬이면 여기서 중단! (UI도 안 뜨고 서버 요청도 안 함)
+            if (!IsSkillUnlocked(Row->RequiredStage)) return;
+
+            if (Row->Cooldown > 0.0f) LocalCooldown = Row->Cooldown;
+        }
     }
 
     TriggerSkillCooldown(1, LocalCooldown);
@@ -494,7 +500,13 @@ void ATitanCharacter::Skill2()
     {
        static const FString ContextString(TEXT("TitanSkill2_Local"));
        FSkillData* Row = SkillDataTable->FindRow<FSkillData>(TEXT("Skill2"), ContextString);
-       if (Row && Row->Cooldown > 0.0f) LocalCooldown = Row->Cooldown;
+        if (Row)
+        {
+            // 해금 체크
+            if (!IsSkillUnlocked(Row->RequiredStage)) return;
+
+            if (Row->Cooldown > 0.0f) LocalCooldown = Row->Cooldown;
+        }
     }
 
     TriggerSkillCooldown(2, LocalCooldown);

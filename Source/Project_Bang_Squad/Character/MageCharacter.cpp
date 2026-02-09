@@ -504,6 +504,7 @@ void AMageCharacter::ProcessSkill(FName SkillRowName)
 
 	if (Data)
 	{
+		
 		if (!IsSkillUnlocked(Data->RequiredStage)) return;
 
 		if (Data->SkillMontage) PlayActionMontage(Data->SkillMontage);
