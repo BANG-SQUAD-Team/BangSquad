@@ -484,121 +484,130 @@ void AMageCharacter::Skill2() { if (!bIsDead) ProcessSkill(TEXT("Skill2")); }
 
 void AMageCharacter::ProcessSkill(FName SkillRowName)
 {
-	if (!CanAttack()) return;
+    if (!CanAttack()) return;
 
-	// [최적화] 캐시에서 즉시 꺼내오기
-	FSkillData** FoundData = SkillDataCache.Find(SkillRowName);
-	FSkillData* Data = (FoundData) ? *FoundData : nullptr;
+    // 캐시에서 데이터 꺼내오기
+    FSkillData** FoundData = SkillDataCache.Find(SkillRowName);
+    FSkillData* Data = (FoundData) ? *FoundData : nullptr;
 
+    // 쿨타임 체크
+    if (SkillTimers.Contains(SkillRowName))
+    {
+       if (GetWorldTimerManager().IsTimerActive(SkillTimers[SkillRowName]))
+       {
+          return;
+       }
+    }
 
-	// 쿨타임 체크
-	if (SkillTimers.Contains(SkillRowName))
-	{
-		if (GetWorldTimerManager().IsTimerActive(SkillTimers[SkillRowName]))
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red,
-			                                 FString::Printf(TEXT("%s Cooldown!"), *SkillRowName.ToString()));
-			return;
-		}
-	}
+    if (Data)
+    {
+       // 해금 여부 확인 (필수)
+       if (!IsSkillUnlocked(Data->RequiredStage)) return;
 
-	if (Data)
-	{
-		
-		if (!IsSkillUnlocked(Data->RequiredStage)) return;
+       // 몽타주 재생 (클라/서버 공통)
+       if (Data->SkillMontage) PlayActionMontage(Data->SkillMontage);
 
-		if (Data->SkillMontage) PlayActionMontage(Data->SkillMontage);
+       if (HasAuthority())
+       {
+          if (Data->SkillMontage) Server_PlayMontage(Data->SkillMontage);
 
-		if (HasAuthority())
-		{
-			if (Data->SkillMontage) Server_PlayMontage(Data->SkillMontage);
+          // 평타 트레일
+          if (SkillRowName == TEXT("Attack_A") || SkillRowName == TEXT("Attack_B"))
+          {
+             Multicast_SetTrailActive(true);
+          }
+          
+          // =========================================================
+          // Case A: 스킬 2 (유지형 이펙트 + 바위 소환)
+          // =========================================================
+          if (SkillRowName == TEXT("Skill2")) 
+          {
+             // 1. 캐스팅 이펙트 (서버에서만 보임 - 필요시 멀티캐스트로 변경 가능)
+             if (Skill2CastEffect)
+             {
+             	// 1. 변수 먼저 선언
+             	USceneComponent* AttachTarget = nullptr;
 
-			if (SkillRowName == TEXT("Attack_A") || SkillRowName == TEXT("Attack_B"))
-			{
-				Multicast_SetTrailActive(true);
-			}
-			
-			if (SkillRowName == TEXT("Skill2")) // 데이터 테이블 RowName과 일치해야함
-			{
-				if (Skill2CastEffect)
-				{
-					// 1. 부착 대상 결정
-					USceneComponent* AttachTarget = nullptr;
-					if (CachedWeaponMesh) AttachTarget = CachedWeaponMesh;
-					else AttachTarget = GetMesh();
+             	// 2. if문으로 각각 대입 (부모 클래스인 USceneComponent로 자동 형변환됨)
+             	if (CachedWeaponMesh)
+             	{
+             		AttachTarget = CachedWeaponMesh;
+             	}
+             	else
+             	{
+             		AttachTarget = GetMesh();
+             	}
                  
-					// 2. 파티클 재생 하고 -> 변수에 저장
-					Skill2CastComp = UGameplayStatics::SpawnEmitterAttached(
-					   Skill2CastEffect,
-					   AttachTarget,           
-					   TEXT("Weapon_Root_R"),  
-					   FVector::ZeroVector,
-					   FRotator::ZeroRotator,
-					   EAttachLocation::SnapToTarget,
-					   true                    
-					);
-				}
-				
-				// 바위 소환
-				if (Data->ProjectileClass)
-				{
-					float Dmg = Data->Damage;
-					FTimerDelegate TimerDel;
-					// 바위 소환 함수 연결
-					TimerDel.BindUObject(this, &AMageCharacter::SpawnSkill2Rock, Data->ProjectileClass.Get(),Dmg);
-					
-					// 딜레이(손 동작) 후 소환
-					if (Data->ActionDelay > 0.0f)
-						GetWorldTimerManager().SetTimer(RockSpawnTimerHandle, TimerDel, Data->ActionDelay, false);
+                Skill2CastComp = UGameplayStatics::SpawnEmitterAttached(
+                   Skill2CastEffect,
+                   AttachTarget,           
+                   TEXT("Weapon_Root_R"),  
+                   FVector::ZeroVector,
+                   FRotator::ZeroRotator,
+                   EAttachLocation::SnapToTarget,
+                   true                    
+                );
+             }
+             
+             // 2. 바위 소환 타이머
+             if (Data->ProjectileClass)
+             {
+                float Dmg = Data->Damage;
+                FTimerDelegate TimerDel;
+                TimerDel.BindUObject(this, &AMageCharacter::SpawnSkill2Rock, Data->ProjectileClass.Get(), Dmg);
+                
+                if (Data->ActionDelay > 0.0f)
+                   GetWorldTimerManager().SetTimer(RockSpawnTimerHandle, TimerDel, Data->ActionDelay, false);
+                else
+                   SpawnSkill2Rock(Data->ProjectileClass, Dmg);
+             }
+          }
+          // =========================================================
+          // Case B: 스킬 1 & 평타 (즉발성 이펙트 + 투사체)
+          // =========================================================
+          else
+          {
+             // 스킬 1번이면 "쾅!" 하고 터지는 이펙트 즉시 실행
+             if (SkillRowName == TEXT("Skill1"))
+             {
+                 Multicast_PlaySkill1VFX();
+             }
 
-					else
-					{
-						SpawnSkill2Rock(Data->ProjectileClass,Dmg);
-					}
-				}
-			}
-			else
-			{
-				if (Data->ProjectileClass)
-				{
-					float Dmg = Data->Damage;
-					FTimerDelegate TimerDel;
-					TimerDel.BindUObject(this, &AMageCharacter::SpawnDelayedProjectile, Data->ProjectileClass.Get(),
-										 Dmg);
+             // 투사체 발사 로직 (기존 유지)
+             if (Data->ProjectileClass)
+             {
+                float Dmg = Data->Damage;
+                FTimerDelegate TimerDel;
+                TimerDel.BindUObject(this, &AMageCharacter::SpawnDelayedProjectile, Data->ProjectileClass.Get(), Dmg);
 
-					if (Data->ActionDelay > 0.0f)
-						GetWorldTimerManager().SetTimer(ProjectileTimerHandle, TimerDel, Data->ActionDelay, false);
-					else
-						SpawnDelayedProjectile(Data->ProjectileClass, Dmg);
-				}
-			}
-		}
-		else
-		{
-			Server_ProcessSkill(SkillRowName);
-		}
+                if (Data->ActionDelay > 0.0f)
+                   GetWorldTimerManager().SetTimer(ProjectileTimerHandle, TimerDel, Data->ActionDelay, false);
+                else
+                   SpawnDelayedProjectile(Data->ProjectileClass, Dmg);
+             }
+          }
+       }
+       else
+       {
+          Server_ProcessSkill(SkillRowName);
+       }
 
-		// 쿨타임 등록
-		if (Data->Cooldown > 0.0f)
-		{
-			FTimerHandle& Handle = SkillTimers.FindOrAdd(SkillRowName);
-			GetWorldTimerManager().SetTimer(Handle, Data->Cooldown, false);
-			
-			//============================================
-			// UI 쿨타임 델리게이트 호출
-			//============================================
-			// 1. 어떤 스킬인지 번호 매핑 (Skill1 -> 1, Skill2 -> 2)
-			int32 SkillIdx = 0;
-			if (SkillRowName == TEXT("Skill1")) SkillIdx = 1;
-			else if (SkillRowName == TEXT("Skill2")) SkillIdx = 2;
-			
-			// 2. 부모 (BaseCharacter) 함수 호출 -> UI로 방송
-			if (SkillIdx > 0)
-			{
-				TriggerSkillCooldown(SkillIdx, Data->Cooldown);
-			}
-		}
-	}
+       // 쿨타임 등록 및 UI 갱신
+       if (Data->Cooldown > 0.0f)
+       {
+          FTimerHandle& Handle = SkillTimers.FindOrAdd(SkillRowName);
+          GetWorldTimerManager().SetTimer(Handle, Data->Cooldown, false);
+          
+          int32 SkillIdx = 0;
+          if (SkillRowName == TEXT("Skill1")) SkillIdx = 1;
+          else if (SkillRowName == TEXT("Skill2")) SkillIdx = 2;
+          
+          if (SkillIdx > 0)
+          {
+             TriggerSkillCooldown(SkillIdx, Data->Cooldown);
+          }
+       }
+    }
 }
 
 void AMageCharacter::SpawnDelayedProjectile(UClass* ProjectileClass, float DamageAmount)
@@ -954,5 +963,41 @@ void AMageCharacter::Multicast_SetAuraActive_Implementation(bool bActive)
 		{
 			JobAuraComp->Deactivate(); // 끄기
 		}
+	}
+}
+
+// MageCharacter.cpp
+
+void AMageCharacter::Multicast_PlaySkill1VFX_Implementation()
+{
+	if (Skill1CastEffect)
+	{
+		// 지팡이 끝(혹은 손)에 파티클 부착하여 재생
+		// Weapon_Root_R 소켓을 사용하거나, TipSocket이 있다면 그걸 사용
+		// 1. 변수 먼저 선언
+		USceneComponent* AttachTarget = nullptr;
+
+		// 2. if문으로 각각 대입 (부모 클래스인 USceneComponent로 자동 형변환됨)
+		if (CachedWeaponMesh)
+		{
+			AttachTarget = CachedWeaponMesh;
+		}
+		else
+		{
+			AttachTarget = GetMesh();
+		}
+		FName SocketName = TEXT("Weapon_Root_R"); 
+
+		
+
+		UGameplayStatics::SpawnEmitterAttached(
+			Skill1CastEffect,
+			AttachTarget,
+			SocketName,
+			FVector::ZeroVector,
+			FRotator::ZeroRotator,
+			EAttachLocation::SnapToTarget,
+			true // AutoDestroy (재생 끝나면 자동 삭제)
+		);
 	}
 }

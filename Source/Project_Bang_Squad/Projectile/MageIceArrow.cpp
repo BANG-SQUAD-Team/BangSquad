@@ -5,7 +5,7 @@
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Components/BoxComponent.h"
-#include "NiagaraFunctionLibrary.h"
+#include "Particles/ParticleSystem.h"
 #include "Engine/World.h"
 
 AMageIceArrow::AMageIceArrow()
@@ -17,12 +17,14 @@ void AMageIceArrow::Multicast_SpawnIceVFX_Implementation(FVector Location, FRota
 {
 	if (HitImpactVFX)
 	{
-		UNiagaraFunctionLibrary::SpawnSystemAtLocation(
-			GetWorld(),
-			HitImpactVFX,
-			Location,
-			Rotation
-			);
+		UGameplayStatics::SpawnEmitterAtLocation(
+		  GetWorld(),
+		  HitImpactVFX,
+		  Location,
+		  Rotation,
+		  HitImpactScale, // Scale (기본값)
+		  true           // Auto Destroy
+		  );
 	}
 	
 	// [가짜 죽음 처리]
@@ -30,6 +32,7 @@ void AMageIceArrow::Multicast_SpawnIceVFX_Implementation(FVector Location, FRota
 	if (MeshComp) MeshComp->SetVisibility(false);
 	if (NiagaraComp) NiagaraComp->SetVisibility(false);
 	if (ProjectileMovement) ProjectileMovement->StopMovementImmediately();
+	
 	
 }
 

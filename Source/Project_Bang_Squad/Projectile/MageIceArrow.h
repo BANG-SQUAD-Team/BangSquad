@@ -6,10 +6,8 @@
 #include "Project_Bang_Squad/Projectile/MageProjectile.h"
 #include "MageIceArrow.generated.h"
 
-/**
- * 
- */
-class UNiagaraSystem;
+
+class UParticleSystem;
 
 UCLASS()
 class PROJECT_BANG_SQUAD_API AMageIceArrow : public AMageProjectile
@@ -22,10 +20,13 @@ public:
 protected:
 	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "VFX")
-	UNiagaraSystem* HitImpactVFX;
+	UParticleSystem* HitImpactVFX;
 	
 	UFUNCTION(NetMulticast, Unreliable)
 	void Multicast_SpawnIceVFX(FVector Location, FRotator Rotation);
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "VFX")
+	FVector HitImpactScale;
 	
 	// 터질 때 소환할 장판 클래스 (BP_IcePad)
 	UPROPERTY(EditDefaultsOnly, Category = "Skill")

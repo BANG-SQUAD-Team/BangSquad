@@ -90,6 +90,14 @@ protected:
     virtual void Skill1() override;
     virtual void Skill2() override;
     
+    // 스킬 1번 사용 시 재생할 파티클 (에디터에서 할당)
+    UPROPERTY(EditDefaultsOnly, Category = "VFX")
+    UParticleSystem* Skill1CastEffect;
+
+    //  모든 클라이언트에서 파티클을 재생하라고 명령하는 함수
+    UFUNCTION(NetMulticast, Unreliable)
+    void Multicast_PlaySkill1VFX();
+    
     // 에디터에서 넣을 지팡이 트레일 VFX
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "VFX")
     UNiagaraSystem* StaffTrailVFX;
