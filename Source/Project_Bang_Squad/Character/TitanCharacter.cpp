@@ -448,6 +448,9 @@ void ATitanCharacter::JobAbility()
           if (Row && Row->Cooldown > 0.0f) LocalThrowCooldown = Row->Cooldown;
        }
        
+        // 🔥 [추가] 클라이언트 UI 쿨타임 즉시 실행 (3번 슬롯)
+        TriggerSkillCooldown(3, LocalThrowCooldown);
+        
        GetWorldTimerManager().SetTimer(CooldownTimerHandle, this, &ATitanCharacter::ResetCooldown, LocalThrowCooldown, false);
        FVector ThrowOrigin = ThrowSpawnPoint->GetComponentLocation();
        Server_ThrowTarget(ThrowOrigin);
@@ -475,6 +478,7 @@ void ATitanCharacter::Skill1()
        if (Row && Row->Cooldown > 0.0f) LocalCooldown = Row->Cooldown;
     }
 
+    TriggerSkillCooldown(1, LocalCooldown);
     GetWorldTimerManager().SetTimer(Skill1CooldownTimerHandle, this, &ATitanCharacter::ResetSkill1Cooldown, LocalCooldown, false);
     Server_Skill1();
 }
@@ -493,6 +497,7 @@ void ATitanCharacter::Skill2()
        if (Row && Row->Cooldown > 0.0f) LocalCooldown = Row->Cooldown;
     }
 
+    TriggerSkillCooldown(2, LocalCooldown);
     GetWorldTimerManager().SetTimer(Skill2CooldownTimerHandle, this, &ATitanCharacter::ResetSkill2Cooldown, LocalCooldown, false);
     Server_Skill2();
 }

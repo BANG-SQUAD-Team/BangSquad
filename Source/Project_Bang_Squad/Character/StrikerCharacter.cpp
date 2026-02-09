@@ -357,6 +357,8 @@ void AStrikerCharacter::Skill1()
 			if (Data && Data->Cooldown > 0.0f) ActualCooldown = Data->Cooldown;
 		}
 		Skill1ReadyTime = CurrentTime + ActualCooldown;
+		
+		TriggerSkillCooldown(1, ActualCooldown);
 		Server_TrySkill1(Target);
 	}
 }
@@ -381,8 +383,6 @@ void AStrikerCharacter::Server_TrySkill1_Implementation(AActor* TargetActor)
 			if (Data->SkillMontage) Multicast_PlaySkill1FX(TargetChar);
 			}
 	}
-	// UI 알림용 1번스킬
-	TriggerSkillCooldown(1, CooldownTime);
 	
 	FVector TeleportLoc = TargetChar->GetActorLocation() - (TargetChar->GetActorForwardVector() * 100.f) + FVector(0, 0, 50.f);
 	SetActorLocation(TeleportLoc);
@@ -526,7 +526,20 @@ void AStrikerCharacter::Skill2()
 
     if (GetCharacterMovement()->IsFalling())
     {
-        Server_StartSkill2();
+    	float CooldownTime = 6.0f;
+    	if (SkillDataTable)
+    	{
+    		static const FString ContextString(TEXT("StrikerSkill2Cooldown_Local"));
+    		FSkillData* Data = SkillDataTable->FindRow<FSkillData>(TEXT("Skill2"), ContextString);
+    		if (Data && Data->Cooldown > 0.0f) CooldownTime = Data->Cooldown;
+    	}
+    	
+    	Skill2ReadyTime = CurrentTime + CooldownTime; // 로컬 쿨타임 적용
+
+    	// UI 쿨타임 발동
+    	TriggerSkillCooldown(2, CooldownTime);
+
+    	Server_StartSkill2();
     }
 }
 
@@ -545,8 +558,6 @@ void AStrikerCharacter::Server_StartSkill2_Implementation()
 	
     Skill2ReadyTime = CurrentTime + CooldownTime;
 	
-	// UI 알림용 2번스킬
-	TriggerSkillCooldown(2, CooldownTime);
 
     // 2. 여기서 Multicast_Skill2()를 부르지 않습니다! (아직 구르면 안됨)
     // 대신 그냥 떨어지는 힘만 가합니다.
@@ -733,9 +744,11 @@ void AStrikerCharacter::JobAbility()
         FSkillData* Data = SkillDataTable->FindRow<FSkillData>(TEXT("JobAbility"), ContextString);
         if (Data && Data->Cooldown > 0.0f) ActualCooldown = Data->Cooldown;
     }
-
+	
+	JobAbilityCooldownTime = CurrentTime + ActualCooldown;
+	TriggerSkillCooldown(3, ActualCooldown);
     Server_UseJobAbility();
-    JobAbilityCooldownTime = CurrentTime + ActualCooldown;
+    
 }
 
 void AStrikerCharacter::Server_UseJobAbility_Implementation()
@@ -757,8 +770,7 @@ void AStrikerCharacter::Server_UseJobAbility_Implementation()
 		}
 	}
 	
-	// UI한테 3번 스킬 쿨타임 돌리라고 명령
-	TriggerSkillCooldown(3, CooldownTime);
+
 	
     // 몽타주 재생 명령만 내림 (노티파이가 타점 잡음)
     Multicast_JobAbility();
