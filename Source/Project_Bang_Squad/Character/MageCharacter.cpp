@@ -1,4 +1,4 @@
-#include "Project_Bang_Squad/Character/MageCharacter.h"
+﻿#include "Project_Bang_Squad/Character/MageCharacter.h"
 #include "Project_Bang_Squad/Projectile/MageProjectile.h"
 #include "Project_Bang_Squad/Character/Player/Mage/MageSkill2Rock.h"
 #include "Project_Bang_Squad/Character/Pillar.h"
@@ -21,6 +21,7 @@
 #include "Net/UnrealNetwork.h"
 #include "Player/Mage/MageSkill2Rock.h"
 #include "Player/Mage/MagicBoat.h"
+#include "Player/Mage/MovePillar.h"
 
 // ====================================================================================
 //  섹션 1: 생성자 및 초기화 (Constructor & Initialization)
@@ -726,6 +727,13 @@ void AMageCharacter::JobAbility()
 
 		bIsBoatMode = true;
 		CurrentControlledActor = HoveredActor;
+
+
+		if (Cast<AMovePillar>(HoveredActor))
+		{
+			// MovePillar는 우클릭 즉시 반응해야 하므로 강제 신호 발송
+			Server_InteractActor(CurrentControlledActor, FVector(1.0f, 0.0f, 0.0f));
+		}
 
 		if (TargetBoat)
 		{
