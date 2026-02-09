@@ -37,6 +37,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Base|Stats")
 	float WalkSpeed = 300.0f;
 
+
 	// 공격 범위
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Base|Stats")
 	float AttackRange = 150.0f;

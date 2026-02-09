@@ -72,4 +72,25 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Stage2_Mage")
     TObjectPtr<UAnimMontage> AreaSkillMontage;
+
+    // =============================================================
+    // [4] Stage 2 전용 (Spider - 여기를 추가해야 오류가 해결됩니다!)
+    // =============================================================
+
+    // 거미줄 투사체 클래스 (BP_WebProjectile 할당용)
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Stage2_Spider")
+    TSubclassOf<AActor> WebProjectileClass;
+
+    // 거미줄 발사 몽타주
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Stage2_Spider")
+    TObjectPtr<UAnimMontage> WebShotMontage;
+
+    // 양발 찍기(QTE) 전조 몽타주
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Stage2_Spider")
+    TObjectPtr<UAnimMontage> QTEAttackMontage;
+
+    // 전멸기 포효 몽타주
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Stage2_Spider")
+    TObjectPtr<UAnimMontage> WipePatternMontage;
+
 };
