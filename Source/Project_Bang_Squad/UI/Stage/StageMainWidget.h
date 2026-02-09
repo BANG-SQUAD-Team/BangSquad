@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
 #include "Components/VerticalBox.h"
+#include "Components/TextBlock.h"
 #include "Project_Bang_Squad/UI/Stage/PlayerRow.h"
 #include "Project_Bang_Squad/UI/Stage/SkillSlotWidget.h" 
 #include "Project_Bang_Squad/Character/Base/BaseCharacter.h"
@@ -41,6 +42,15 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "BS|UI")
 	TSubclassOf<UPlayerRow> PlayerRowClass;
 
+	UPROPERTY(meta = (BindWidget))
+	class UTextBlock* Skill1Text;
+
+	UPROPERTY(meta = (BindWidget))
+	class UTextBlock* Skill2Text;
+
+	UPROPERTY(meta = (BindWidget))
+	class UTextBlock* JobAbilityText;
+	
 	void UpdatePartyList();
 	
 	// 델리게이트 바인딩 함수

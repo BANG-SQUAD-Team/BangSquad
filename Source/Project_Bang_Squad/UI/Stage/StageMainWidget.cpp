@@ -121,6 +121,27 @@ void UStageMainWidget::BindCharacterDelegates(APawn* NewPawn)
 			UTexture2D* Icon = NewChar->GetSkillIconByRowName(FName("JobAbility"));
 			if (Icon) SkillSlot_Job->SetIcon(Icon);
 		}
+		
+		// 스킬 1 이름 
+		if (Skill1Text)
+		{
+			FText Name = NewChar->GetSkillNameTextByRowName(FName("Skill1"));
+			Skill1Text->SetText(Name);
+		}
+
+		// 스킬 2 이름 
+		if (Skill2Text)
+		{
+			FText Name = NewChar->GetSkillNameTextByRowName(FName("Skill2"));
+			Skill2Text->SetText(Name);
+		}
+
+		// 직업 스킬 이름 
+		if (JobAbilityText)
+		{
+			FText Name = NewChar->GetSkillNameTextByRowName(FName("JobAbility"));
+			JobAbilityText->SetText(Name);
+		}
 	}
 }
 

@@ -717,3 +717,18 @@ void ABaseCharacter::Client_TriggerSkillCooldown_Implementation(int32 SkillIndex
 	// 즉, 내 UI가 이 신호를 듣게 됩니다!
 	TriggerSkillCooldown(SkillIndex, CooldownTime);
 }
+
+FText ABaseCharacter::GetSkillNameTextByRowName(FName RowName)
+{
+	if (!SkillDataTable) return FText::GetEmpty();
+
+	static const FString ContextString(TEXT("GetSkillName"));
+	FSkillData* Data = SkillDataTable->FindRow<FSkillData>(RowName, ContextString);
+
+	if (Data)
+	{
+		// FName(내부 이름)을 FText(UI 표시용)로 변환해서 반환
+		return FText::FromName(Data->SkillName);
+	}
+	return FText::FromString(TEXT("Unknown"));
+}

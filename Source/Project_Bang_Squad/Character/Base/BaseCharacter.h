@@ -125,6 +125,9 @@ public:
 	// UI가 호출할 헬퍼 함수
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	UTexture2D* GetSkillIconByRowName(FName RowName);
+	
+	UFUNCTION(BlueprintCallable, Category = "UI")
+	FText GetSkillNameTextByRowName(FName RowName);
 protected:
 	virtual void BeginPlay() override;
 	
