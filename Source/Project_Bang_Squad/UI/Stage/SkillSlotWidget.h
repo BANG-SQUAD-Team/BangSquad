@@ -28,7 +28,8 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void SetSlotLockedState(bool bIsLocked);
 	
-	
+	// 초기화 함수 오버라이드 (머티리얼 인스턴스 생성을 위해)
+	virtual void NativeConstruct() override;
 protected:
 	UPROPERTY(meta = (BindWidget))
 	UImage* Img_Icon; // 스킬 아이콘
@@ -42,8 +43,14 @@ protected:
 	UPROPERTY(meta = (BindWidgetOptional))
 	UProgressBar* PB_Cooldown; // 쿨타임 게이지
 	
+	UPROPERTY(meta = (BindWidgetOptional))
+	class UTextBlock* Txt_Locked;
+	
 private:
 	bool bIsCoolingDown = false;
 	float CurrentCooldownTime = 0.0f;
 	float MaxCooldownTime = 1.0f;
+	// 머티리얼 값을 실시간으로 바꾸기 위한 동적 인스턴스
+	UPROPERTY()
+	class UMaterialInstanceDynamic* CooldownMatDynamic;
 };
