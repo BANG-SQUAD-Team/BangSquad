@@ -130,6 +130,9 @@ public:
 	// 2. 줌 처리 함수
 	void Zoom(const FInputActionValue& Value);
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
+	TObjectPtr<class UStaticMeshComponent> OverheadMarkerMesh;
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void Landed(const FHitResult& Hit) override;

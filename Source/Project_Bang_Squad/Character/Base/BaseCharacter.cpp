@@ -12,6 +12,7 @@
 #include "InputActionValue.h"
 #include "Kismet/GameplayStatics.h" // [필수] 데미지 처리를 위해 필요
 #include "Project_Bang_Squad/Game/Stage/StagePlayerController.h"
+#include "Components/StaticMeshComponent.h"
 
 ABaseCharacter::ABaseCharacter()
 {
@@ -77,6 +78,19 @@ ABaseCharacter::ABaseCharacter()
 		HeadSkeletalComp = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("HeadSkeletalComp"));
 		HeadSkeletalComp->SetupAttachment(GetMesh(), TEXT("Bip001-Head"));
 		HeadSkeletalComp->SetCollisionProfileName(TEXT("NoCollision"));
+
+		OverheadMarkerMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("OverheadMarkerMesh"));
+		OverheadMarkerMesh->SetupAttachment(GetMesh(), FName("Head")); // 'Head' 소켓에 부착 (소켓 이름 확인 필요)
+
+		// 위치/회전/스케일 조정 (세모가 머리 위에 예쁘게 뜨도록)
+		OverheadMarkerMesh->SetRelativeLocation(FVector(0.0f, 0.0f, 30.0f));
+		OverheadMarkerMesh->SetRelativeScale3D(FVector(0.5f));
+
+		// 중요: 기본적으로는 아무에게도 안 보이게 설정 (나중에 나한테만 켬)
+		OverheadMarkerMesh->SetVisibility(false);
+
+		// 충돌은 필요 없으므로 끔
+		OverheadMarkerMesh->SetCollisionProfileName(TEXT("NoCollision"));
 }
 
 void ABaseCharacter::EquipShopItem(const FShopItemData& ItemData)
@@ -115,6 +129,8 @@ void ABaseCharacter::EquipShopItem(const FShopItemData& ItemData)
 
 		HeadAccessoryComponent->SetVisibility(true); // 켜기
 	}
+
+
 }
 
 void ABaseCharacter::Server_EquipShopItem_Implementation(const FShopItemData& ItemData)
@@ -186,6 +202,18 @@ void ABaseCharacter::BeginPlay()
 		if (MapName.Contains(TEXT("LobbyMap")))
 		{
 			UnlockedStageLevel = 3;
+		}
+	}
+
+	if (IsLocallyControlled())
+	{
+		if (OverheadMarkerMesh)
+		{
+			// 나한테만 보이도록 켜기
+			OverheadMarkerMesh->SetVisibility(true);
+
+			// (선택) 그림자 생기면 이상하니까 끄기
+			OverheadMarkerMesh->SetCastShadow(false);
 		}
 	}
 }
