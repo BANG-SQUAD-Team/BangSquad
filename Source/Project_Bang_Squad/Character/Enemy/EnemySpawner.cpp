@@ -172,13 +172,11 @@ void AEnemySpawner::OnEnemyDestroyed(AActor* DestroyedActor)
 
 	if (TotalSpawnLimit > 0 && TotalSpawnedCount >= TotalSpawnLimit && CurrentAliveCount <= 0)
 	{
-		if (bIsActive)
+		SetSpawnerActive(false);
+
+		if (OnSpawnerCleared.IsBound())
 		{
-			SetSpawnerActive(false);
-			if (OnSpawnerCleared.IsBound())
-			{
-				OnSpawnerCleared.Broadcast();
-			}
+			OnSpawnerCleared.Broadcast();
 		}
 	}
 }

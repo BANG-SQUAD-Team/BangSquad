@@ -1,81 +1,75 @@
 ﻿#include "Project_Bang_Squad/MapPuzzle/CenterStatueManager.h"
-#include "Project_Bang_Squad/Character/Enemy/EnemySpawner.h"
+#include "Project_Bang_Squad/Character/Enemy/EnemySpawner.h" 
 #include "Components/StaticMeshComponent.h"
+#include "Net/UnrealNetwork.h"
 
 ACenterStatueManager::ACenterStatueManager()
 {
-	PrimaryActorTick.bCanEverTick = false;
+	bReplicates = true; // [필수]
 
-	// 1. 메인 석상 메쉬
 	StatueMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("StatueMesh"));
 	RootComponent = StatueMesh;
 
-	// [수정] 2. 왼쪽 불꽃 메쉬
 	LeftFireMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("LeftFireMesh"));
 	LeftFireMesh->SetupAttachment(RootComponent);
-	LeftFireMesh->SetCollisionProfileName(TEXT("NoCollision"));
 	LeftFireMesh->SetHiddenInGame(true);
-	LeftFireMesh->SetCastShadow(false);
 
-	// [수정] 3. 오른쪽 불꽃 메쉬
 	RightFireMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("RightFireMesh"));
 	RightFireMesh->SetupAttachment(RootComponent);
-	RightFireMesh->SetCollisionProfileName(TEXT("NoCollision"));
 	RightFireMesh->SetHiddenInGame(true);
-	RightFireMesh->SetCastShadow(false);
+}
+
+void ACenterStatueManager::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME(ACenterStatueManager, bLeftActive);
+	DOREPLIFETIME(ACenterStatueManager, bRightActive);
 }
 
 void ACenterStatueManager::BeginPlay()
 {
 	Super::BeginPlay();
-
-	if (BossSpawner)
+	if (HasAuthority() && BossSpawner)
 	{
-		BossSpawner->SetActorEnableCollision(false);
+		BossSpawner->SetActorEnableCollision(false); // 서버에서만 충돌 끔
 	}
 }
 
 void ACenterStatueManager::ActivateLeftGoblet()
 {
-	if (bLeftActive) return;
+	if (!HasAuthority() || bLeftActive) return;
+
 	bLeftActive = true;
-
-	if (LeftFireMesh)
-	{
-		LeftFireMesh->SetHiddenInGame(false);
-	}
-
-	UE_LOG(LogTemp, Warning, TEXT("Left Goblet Ignited (Mesh Visible)!"));
+	OnRep_LeftActive(); // 서버 갱신
 	CheckPuzzleCompletion();
 }
 
 void ACenterStatueManager::ActivateRightGoblet()
 {
-	if (bRightActive) return;
+	if (!HasAuthority() || bRightActive) return;
+
 	bRightActive = true;
-
-	if (RightFireMesh)
-	{
-		RightFireMesh->SetHiddenInGame(false);
-	}
-
-	UE_LOG(LogTemp, Warning, TEXT("Right Goblet Ignited (Mesh Visible)!"));
+	OnRep_RightActive(); // 서버 갱신
 	CheckPuzzleCompletion();
+}
+
+void ACenterStatueManager::OnRep_LeftActive()
+{
+	if (LeftFireMesh) LeftFireMesh->SetHiddenInGame(false);
+}
+
+void ACenterStatueManager::OnRep_RightActive()
+{
+	if (RightFireMesh) RightFireMesh->SetHiddenInGame(false);
 }
 
 void ACenterStatueManager::CheckPuzzleCompletion()
 {
-	// 좌우 불꽃이 모두 켜졌고, 아직 완료 처리가 안 됐다면
 	if (bLeftActive && bRightActive && !bPuzzleCompleted)
 	{
 		bPuzzleCompleted = true;
+		if (BossSpawner) BossSpawner->SetActorEnableCollision(true);
 
-		UE_LOG(LogTemp, Warning, TEXT("Puzzle Completed! Activating Boss Spawner Immediately."));
-
-		// [핵심] 트리거 활성화 대신, 보스 스포너를 바로 켜버림
-		if (BossSpawner)
-		{
-			BossSpawner->SetActorEnableCollision(true);
-		}
+		UE_LOG(LogTemp, Warning, TEXT("Network Puzzle Completed!"));
 	}
 }

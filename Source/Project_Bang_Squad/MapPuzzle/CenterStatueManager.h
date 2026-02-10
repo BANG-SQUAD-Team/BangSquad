@@ -5,7 +5,6 @@
 #include "CenterStatueManager.generated.h"
 
 class UStaticMeshComponent;
-class USphereComponent;
 class AEnemySpawner;
 
 UCLASS()
@@ -15,29 +14,24 @@ class PROJECT_BANG_SQUAD_API ACenterStatueManager : public AActor
 
 public:
 	ACenterStatueManager();
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 protected:
 	virtual void BeginPlay() override;
 
 public:
-	// =================================================================
-	// 컴포넌트
-	// =================================================================
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	UStaticMeshComponent* StatueMesh;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	UStaticMeshComponent* LeftFireMesh;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	UStaticMeshComponent* RightFireMesh;
 
 	UPROPERTY(EditInstanceOnly, BlueprintReadWrite, Category = "Link")
 	AEnemySpawner* BossSpawner;
 
-	// =================================================================
-	// 기능 함수
-	// =================================================================
 	UFUNCTION(BlueprintCallable)
 	void ActivateLeftGoblet();
 
@@ -45,9 +39,16 @@ public:
 	void ActivateRightGoblet();
 
 private:
+	// 상태 변수 동기화
+	UPROPERTY(ReplicatedUsing = OnRep_LeftActive)
 	bool bLeftActive = false;
-	bool bRightActive = false;
-	bool bPuzzleCompleted = false;
 
+	UPROPERTY(ReplicatedUsing = OnRep_RightActive)
+	bool bRightActive = false;
+
+	UFUNCTION() void OnRep_LeftActive();
+	UFUNCTION() void OnRep_RightActive();
+
+	bool bPuzzleCompleted = false;
 	void CheckPuzzleCompletion();
 };

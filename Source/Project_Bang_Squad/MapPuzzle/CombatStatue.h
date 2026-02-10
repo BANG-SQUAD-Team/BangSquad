@@ -7,7 +7,7 @@
 
 class UBoxComponent;
 class AEnemySpawner;
-class ACenterStatueManager; // (나중에 만들 중앙 석상 전방 선언)
+class ACenterStatueManager;
 class UCurveFloat;
 
 UCLASS()
@@ -57,8 +57,12 @@ public:
 	FName MaterialParamName = FName("EmissivePower");
 
 private:
-	// 내부 상태
+
+	UPROPERTY(ReplicatedUsing = OnRep_IsActivated)
 	bool bIsActivated = false;
+
+	UFUNCTION()
+	void OnRep_IsActivated();
 
 	// 머터리얼 인스턴스 (런타임 변경용)
 	UPROPERTY()
@@ -76,7 +80,4 @@ private:
 
 	UFUNCTION()
 	void HandleTimelineProgress(float Value); // 타임라인 진행 중 호출
-
-	UFUNCTION()
-	void OnTimelineFinished(); // 타임라인 끝났을 때
 };
