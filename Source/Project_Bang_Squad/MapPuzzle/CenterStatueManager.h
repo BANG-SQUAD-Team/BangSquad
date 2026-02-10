@@ -2,14 +2,14 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "Components/TimelineComponent.h"
 #include "CenterStatueManager.generated.h"
 
 class UStaticMeshComponent;
 class AEnemySpawner;
 class UCurveFloat;
 class USceneComponent;
-class UArrowComponent;
-class AStage3PuzzleManager;
+class UArrowComponent; // [추가] 화살표 컴포넌트
 
 UCLASS()
 class PROJECT_BANG_SQUAD_API ACenterStatueManager : public AActor
@@ -26,23 +26,23 @@ protected:
 
 public:
 	// =================================================================
-	// 컴포넌트
+	// 컴포넌트 (계층 구조가 핵심)
 	// =================================================================
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-	USceneComponent* DefaultSceneRoot; // 고정된 루트
+	USceneComponent* DefaultSceneRoot; // 부동의 루트
 
-	// 넘어질 방향을 지정하는 화살표
+	// [추가] 에디터에서 넘어질 방향을 지정하는 화살표
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	UArrowComponent* FallDirectionArrow;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-	UStaticMeshComponent* StatueMesh;
+	UStaticMeshComponent* StatueMesh; // 넘어질 놈
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-	UStaticMeshComponent* LeftFireMesh;
+	UStaticMeshComponent* LeftFireMesh; // 안 넘어질 놈 1
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-	UStaticMeshComponent* RightFireMesh;
+	UStaticMeshComponent* RightFireMesh; // 안 넘어질 놈 2
 
 	// =================================================================
 	// 설정
@@ -50,10 +50,6 @@ public:
 	UPROPERTY(EditInstanceOnly, BlueprintReadWrite, Category = "Link")
 	AEnemySpawner* BossSpawner;
 
-	UPROPERTY(EditInstanceOnly, BlueprintReadWrite, Category = "Link")
-	AStage3PuzzleManager* PuzzleManager;
-
-	// 넘어지는 동작 커브 (필수 할당)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Effect")
 	UCurveFloat* FallCurve;
 
@@ -67,7 +63,6 @@ public:
 	void ActivateRightGoblet();
 
 private:
-	// 네트워크 변수
 	UPROPERTY(ReplicatedUsing = OnRep_LeftActive)
 	bool bLeftActive = false;
 
@@ -80,28 +75,25 @@ private:
 	bool bPuzzleCompleted = false;
 	void CheckPuzzleCompletion();
 
-	// --- [낙하 로직] ---
+	// --- [보스 처치 및 낙하 로직] ---
 	UFUNCTION() void OnBossDefeated();
 
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_StartFallSequence();
 
-	// 직접 시간 계산을 위한 변수들
-	bool bIsFalling = false;       // 지금 넘어지는 중인가?
-	float CurrentCurveTime = 0.0f; // 경과 시간
-	float MaxCurveTime = 0.0f;     // 커브 총 길이
+	UFUNCTION()
+	void HandleFallProgress(float Value);
 
+	UFUNCTION()
 	void OnFallFinished();
-
-	void StartDestroyTimer();
-
-	// 액터는 살리고 메쉬만 지우는 함수
-	UFUNCTION(NetMulticast, Reliable)
-	void Multicast_DestroyStatueMesh();
-
+	void DestroyStatue();
 	FTimerHandle DestroyTimerHandle;
 
-	// 회전 계산용
+	bool bIsFalling = false;       // 지금 넘어지는 중인가?
+	float CurrentCurveTime = 0.0f; // 경과 시간 (0초 -> 2초)
+	float MaxCurveTime = 0.0f;     // 커브의 총 길이 (끝나는 시간)
+
+	// 회전 계산용 쿼터니언
 	FQuat StartQuat;
 	FQuat EndQuat;
 };
