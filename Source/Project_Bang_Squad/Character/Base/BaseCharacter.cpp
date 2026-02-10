@@ -56,36 +56,63 @@ ABaseCharacter::ABaseCharacter()
 		SetNetUpdateFrequency(100.0f);     // 1초에 100번 상태 갱신 시도 (서버 -> 클라)
 		SetMinNetUpdateFrequency(66.0f);   // 최소 66번은 보장 (프레임 방어)
 
-		// 1. 머리 장식용 컴포넌트 생성
 		HeadAccessoryComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("HeadAccessory"));
-
-		// 2. "Head"라는 이름의 뼈(Bone)에 바로 붙입니다. (소켓 필요 없음)
 		HeadAccessoryComponent->SetupAttachment(GetMesh(), TEXT("Bip001-Head"));
-
-		// 3. 충돌 끄기
 		HeadAccessoryComponent->SetCollisionProfileName(TEXT("NoCollision"));
+
+		HeadSkeletalComp = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("HeadSkeletalComp"));
+		HeadSkeletalComp->SetupAttachment(GetMesh(), TEXT("Bip001-Head"));
+		HeadSkeletalComp->SetCollisionProfileName(TEXT("NoCollision"));
 }
 
-void ABaseCharacter::EquipHeadAccessory(UStaticMesh* NewMesh)
+void ABaseCharacter::EquipShopItem(const FShopItemData& ItemData)
 {
-	if (!HeadAccessoryComponent || !GetMesh()) return;
+	// 1. 일단 둘 다 숨김 (초기화)
+	if (HeadAccessoryComponent) HeadAccessoryComponent->SetVisibility(false);
+	if (HeadSkeletalComp) HeadSkeletalComp->SetVisibility(false);
 
-	// 1. 메쉬 교체
-	HeadAccessoryComponent->SetStaticMesh(NewMesh);
+	// 2. 스켈레탈 메쉬(움직이는 것)가 들어있는 아이템인가?
+	if (ItemData.SkeletalMesh != nullptr && HeadSkeletalComp)
+	{
+		HeadSkeletalComp->SetSkeletalMesh(ItemData.SkeletalMesh);
+		HeadSkeletalComp->SetRelativeTransform(ItemData.AdjustTransform); // 조절값 적용
 
-	// 2. [수정된 부분] Head에 따옴표를 붙여야 합니다!
-	// 기존: Head (X) -> 컴퓨터가 변수로 착각함
-	// 수정: TEXT("Head") (O) -> 문자열로 인식함
-	HeadAccessoryComponent->AttachToComponent(
-		GetMesh(),
-		FAttachmentTransformRules::SnapToTargetIncludingScale,
-		TEXT("Bip001-Head")
-	);
+		// 머리 뼈에 붙이기
+		HeadSkeletalComp->AttachToComponent(
+			GetMesh(),
+			FAttachmentTransformRules::SnapToTargetIncludingScale,
+			TEXT("Bip001-Head")
+		);
 
-	// (선택 사항) 위치나 회전이 이상하면 여기서 오프셋을 줍니다.
-	// 예: 머리 속에 파묻히면 위로 좀 올림
-	// HeadAccessoryComponent->SetRelativeLocation(FVector(0, 0, 10.0f));
+		HeadSkeletalComp->SetVisibility(true); // 켜기
+	}
+	// 3. 아니면 스태틱 메쉬(딱딱한 것)인가?
+	else if (ItemData.StaticMesh != nullptr && HeadAccessoryComponent)
+	{
+		HeadAccessoryComponent->SetStaticMesh(ItemData.StaticMesh);
+		HeadAccessoryComponent->SetRelativeTransform(ItemData.AdjustTransform); // 조절값 적용
+
+		// 머리 뼈에 붙이기
+		HeadAccessoryComponent->AttachToComponent(
+			GetMesh(),
+			FAttachmentTransformRules::SnapToTargetIncludingScale,
+			TEXT("Bip001-Head")
+		);
+
+		HeadAccessoryComponent->SetVisibility(true); // 켜기
+	}
 }
+
+void ABaseCharacter::Server_EquipShopItem_Implementation(const FShopItemData& ItemData)
+{
+	Multicast_EquipShopItem(ItemData);
+}
+
+void ABaseCharacter::Multicast_EquipShopItem_Implementation(const FShopItemData& ItemData)
+{
+	EquipShopItem(ItemData); 
+}
+
 void ABaseCharacter::BeginPlay()
 {
 	Super::BeginPlay();
