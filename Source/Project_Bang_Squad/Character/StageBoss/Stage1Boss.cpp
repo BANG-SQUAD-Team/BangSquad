@@ -78,27 +78,26 @@ void AStage1Boss::BeginPlay()
 
 float AStage1Boss::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
-	// [�ٽ� ����] Ʈ�� ������(ó��)���� ���� �ĺ��մϴ�.
-	// Ʈ�� �������� ����, QTE ����, �Ʊ� ���ο� ������� ������ �հ� ���� �մϴ�.
+	
 	bool bIsTrueDamage = (DamageEvent.DamageTypeClass == UTrueDamageType::StaticClass());
 
-	// 1. [��� ����] Ʈ�� �������� "�ƴ� ����" ��� ������ �۵��մϴ�.
+	
 	if (!bIsTrueDamage)
 	{
-		// ���� ���� ���� OR QTE ���� �� OR ���� ���¶�� ������ 0 (�Ϲ� ���� ��ȿȭ)
+		
 		if (!HasAuthority() || bHasTriggeredQTE_10 || bIsInvincible) return 0.0f;
 
-		// GameState ������ QTE �ƽ� ������ üũ
+		
 		AStageBossGameState* GS = GetWorld()->GetGameState<AStageBossGameState>();
 		if (GS && GS->bIsQTEActive) return 0.0f;
 
-		// ��ų ����
+		
 		AActor* Attacker = DamageCauser;
 		if (EventInstigator && EventInstigator->GetPawn()) Attacker = EventInstigator->GetPawn();
 		if (Attacker && (Attacker == this || Attacker->IsA(AEnemyCharacterBase::StaticClass()))) return 0.0f;
 	}
 
-	// 2. [ü�� ��� �� ��� �ߵ�]
+	
 	float ActualDamage = DamageAmount;
 
 	if (UHealthComponent* HC = FindComponentByClass<UHealthComponent>())
@@ -106,7 +105,7 @@ float AStage1Boss::TakeDamage(float DamageAmount, FDamageEvent const& DamageEven
 		float CurrentHP = HC->GetHealth();
 		float MaxHP = HC->MaxHealth;
 
-		// --- [��� 1] ü�� 50% ���� (���� ����) ---
+		
 		if (!bHasTriggeredCrystal_50 && (CurrentHP - DamageAmount) / MaxHP <= 0.5f)
 		{
 			if (bIsDeathWallSequenceActive) FinishDeathWallPattern();
@@ -121,17 +120,16 @@ float AStage1Boss::TakeDamage(float DamageAmount, FDamageEvent const& DamageEven
 			}
 		}
 
-		// --- [��� 2] ü�� 1 ���� ��ȣ (QTE ����) ---
-		// [����] Ʈ�� �������� �ƴ� ���� ��ȣ (Ʈ�� �������� �׳� ����ؼ� �װ� ��)
+		
 		if (!bIsTrueDamage && (CurrentHP - DamageAmount) <= 1.0f && !bHasTriggeredQTE_10)
 		{
-			// ü���� 1.0f������ ���̵��� ������ ����
+			
 			ActualDamage = FMath::Max(0.0f, CurrentHP - 1.0f);
 
-			// ������ ������ ����
+			
 			Super::TakeDamage(ActualDamage, DamageEvent, EventInstigator, DamageCauser);
 
-			// QTE ��� ���� (���� �� ����)
+			// QTE
 			bHasTriggeredQTE_10 = true;
 			if (AStageBossGameState* GS = GetWorld()->GetGameState<AStageBossGameState>())
 				GS->SetQTEActive(true);
@@ -140,20 +138,18 @@ float AStage1Boss::TakeDamage(float DamageAmount, FDamageEvent const& DamageEven
 
 			if (AAIController* AIC = Cast<AAIController>(GetController())) AIC->StopMovement();
 
-			// GameMode�� QTE ���� ��û
+			// GameMode-QTE 
 			if (AStageBossGameMode* GM = GetWorld()->GetAuthGameMode<AStageBossGameMode>())
 			{
 				GM->TriggerSpearQTE(this);
 				UE_LOG(LogTemp, Warning, TEXT("[BOSS] HP 1 Reached! Finale QTE Triggered!"));
 			}
 
-			// ���⼭ �����Ͽ� 1HP ���� ����
+			//
 			return ActualDamage;
 		}
 	}
-
-	// 3. ���� ������ ����
-	// Ʈ�� ������(99999)�� �� if������ ��� ����Ͽ� ���⿡ ���� -> ���
+		
 	return Super::TakeDamage(ActualDamage, DamageEvent, EventInstigator, DamageCauser);
 }
 
@@ -193,7 +189,6 @@ void AStage1Boss::PlayQTEVisuals(float Duration)
 	}
 }
 
-// GameMode ȣ��: ��� ó��
 void AStage1Boss::HandleQTEResult(bool bSuccess)
 {
 	if (!HasAuthority()) return;
@@ -203,17 +198,14 @@ void AStage1Boss::HandleQTEResult(bool bSuccess)
 		GS->SetQTEActive(false);
 	}
 	
-	// �ִϸ��̼� �ٽ� ���
 	Multicast_FreezeAnimation(false);
 
 	if (bSuccess)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[BOSS] QTE SUCCESS -> EXECUTION"));
 
-		// QTE ��ü ���� ���� (���� ��)
 		if (ActiveQTEObject) ActiveQTEObject->TriggerSuccess();
 
-		// ���� ���� �� Ʈ�� �������� ���
 		bIsInvincible = false;
 		UGameplayStatics::ApplyDamage(this, 999999.f, GetController(), this, UTrueDamageType::StaticClass());
 	}
@@ -221,10 +213,8 @@ void AStage1Boss::HandleQTEResult(bool bSuccess)
 	{
 		UE_LOG(LogTemp, Error, TEXT("[BOSS] QTE FAILED -> WIPE"));
 
-		// QTE ��ü ���� ���� (��)
 		if (ActiveQTEObject) ActiveQTEObject->TriggerFailure();
 
-		// ����� ����
 		PerformWipeAttack();
 	}
 }
@@ -242,13 +232,11 @@ void AStage1Boss::EnterPhase2()
 
 void AStage1Boss::PerformWipeAttack()
 {
-	// �÷��̾� �������� Ʈ�� ������ ���
 	TArray<AActor*> Players;
 	UGameplayStatics::GetAllActorsOfClass(GetWorld(), ACharacter::StaticClass(), Players);
 
 	for (AActor* P : Players)
 	{
-		// �� �ڽ�(����)�̳� ���ʹ� �����ϰ� �÷��̾
 		if (P && P != this && !P->IsA(AEnemyCharacterBase::StaticClass()))
 		{
 			UGameplayStatics::ApplyDamage(P, 99999.f, GetController(), this, UTrueDamageType::StaticClass());
@@ -549,7 +537,6 @@ void AStage1Boss::SpawnCrystals()
 {
 	if (!HasAuthority()) return;
 
-	// [ũ���� ����] ���� ����Ʈ�� �������� �ʾ����� �ߴ�
 	if (CrystalSpawnPoints.Num() == 0)
 	{
 		UE_LOG(LogTemp, Error, TEXT("[BOSS] CrystalSpawnPoints is EMPTY! Please check Blueprint/Level settings."));
@@ -655,3 +642,4 @@ void AStage1Boss::OnDeathStarted()
 	TArray<AActor*> Walls; UGameplayStatics::GetAllActorsOfClass(GetWorld(), ADeathWall::StaticClass(), Walls);
 	for (AActor* W : Walls) W->SetActorTickEnabled(false);
 }
+

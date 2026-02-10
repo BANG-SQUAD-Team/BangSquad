@@ -15,6 +15,9 @@ class PROJECT_BANG_SQUAD_API ABSPlayerController : public APlayerController
 public:
 	void RegisterManagedWidget(UUserWidget* InWidget);
 
+	UFUNCTION(Server, Reliable)
+	void Server_ReportQTEResult(AStage2Boss* TargetBoss, bool bSuccess);
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
