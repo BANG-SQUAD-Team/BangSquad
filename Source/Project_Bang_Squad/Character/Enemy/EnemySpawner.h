@@ -1,10 +1,12 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "EnemySpawner.generated.h"
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnSpawnerCleared);
 
 class UBoxComponent;
 class AEnemyNormal;
@@ -24,6 +26,10 @@ public:
 	// 스포너 활성화 비활성화
 	UFUNCTION(BlueprintCallable)
 	void SetSpawnerActive(bool bActive);
+
+	// 웨이브 클리어 시 방송할 이벤트
+	UPROPERTY(BlueprintAssignable, Category = "Spawner")
+	FOnSpawnerCleared OnSpawnerCleared;
 	
 protected:
 	// 구역

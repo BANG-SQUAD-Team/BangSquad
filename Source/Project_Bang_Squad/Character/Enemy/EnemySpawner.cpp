@@ -1,4 +1,4 @@
-
+﻿
 #include "Project_Bang_Squad/Character/Enemy/EnemySpawner.h"
 #include "Project_Bang_Squad/Character/Enemy/EnemyNormal.h"
 #include "Components/BoxComponent.h"
@@ -168,6 +168,18 @@ void AEnemySpawner::OnEnemyDestroyed(AActor* DestroyedActor)
 	if (CurrentAliveCount > 0)
 	{
 		CurrentAliveCount--;
+	}
+
+	if (TotalSpawnLimit > 0 && TotalSpawnedCount >= TotalSpawnLimit && CurrentAliveCount <= 0)
+	{
+		if (bIsActive)
+		{
+			SetSpawnerActive(false);
+			if (OnSpawnerCleared.IsBound())
+			{
+				OnSpawnerCleared.Broadcast();
+			}
+		}
 	}
 }
 
