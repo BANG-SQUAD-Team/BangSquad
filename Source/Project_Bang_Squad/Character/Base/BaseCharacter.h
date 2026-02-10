@@ -122,6 +122,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	FText GetSkillNameTextByRowName(FName RowName);
 	bool IsSkillUnlockedByRowName(FName RowName);
+	
+	// 줌 입력 액션
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+	class UInputAction* ZoomAction;
+
+	// 2. 줌 처리 함수
+	void Zoom(const FInputActionValue& Value);
 
 protected:
 	virtual void BeginPlay() override;
@@ -234,6 +241,15 @@ protected:
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_SetMaxWalkSpeed(float NewSpeed, float NewRatio);
 
+	UPROPERTY(EditAnywhere, Category = "Camera")
+	float MinTargetArmLength = 150.0f; // 너무 가까우면 캐릭터 뚫음
+
+	UPROPERTY(EditAnywhere, Category = "Camera")
+	float MaxTargetArmLength = 800.0f; // 너무 멀면 안 보임
+
+	UPROPERTY(EditAnywhere, Category = "Camera")
+	float ZoomStep = 50.0f; // 휠 한 칸당 이동 거리
+	
 private:
 	float OriginalBrakingDeceleration = 0.0f;
 	void ApplySlopeSlide(float DeltaTime);

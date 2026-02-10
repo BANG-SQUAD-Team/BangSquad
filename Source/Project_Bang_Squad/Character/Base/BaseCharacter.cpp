@@ -43,6 +43,20 @@ ABaseCharacter::ABaseCharacter()
 		SpringArm->bUsePawnControlRotation = true;
 		SpringArm->bEnableCameraLag = true;
 		SpringArm->CameraLagSpeed = 10.f;
+	
+	// 1. 충돌 테스트 강제 활성화
+	SpringArm->bDoCollisionTest = true; 
+
+	// 2. [핵심] 감지 채널을 'Camera' -> 'Visibility'로 변경
+	// (대부분의 벽은 Visibility를 막기 때문에 이게 훨씬 확실합니다.)
+	SpringArm->ProbeChannel = ECC_Visibility;
+
+	// 3. 감지 구체 크기 (벽 틈새로 뚫리는 것 방지)
+	SpringArm->ProbeSize = 15.0f; 
+
+	// 4. 카메라 렉(부드러운 이동)
+	SpringArm->bEnableCameraLag = true;
+	SpringArm->CameraLagSpeed = 10.f;
 
 		Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
 		Camera->SetupAttachment(SpringArm);
@@ -501,6 +515,7 @@ void ABaseCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 	if (Skill1Action) EIC->BindAction(Skill1Action, ETriggerEvent::Started, this, &ABaseCharacter::Skill1);
 	if (Skill2Action) EIC->BindAction(Skill2Action, ETriggerEvent::Started, this, &ABaseCharacter::Skill2);
 	if (JobAbilityAction) EIC->BindAction(JobAbilityAction, ETriggerEvent::Started, this, &ABaseCharacter::JobAbility);
+	if (ZoomAction){EIC->BindAction(ZoomAction, ETriggerEvent::Triggered, this, &ABaseCharacter::Zoom);}
 }
 
 void ABaseCharacter::Move(const FInputActionValue& Value)
@@ -540,6 +555,30 @@ void ABaseCharacter::Jump()
 }
 
 void ABaseCharacter::ResetJump() { bCanJump = true; }
+
+
+void ABaseCharacter::Zoom(const FInputActionValue& Value)
+{
+	// 입력값 가져오기 (휠 올림: 1.0, 휠 내림: -1.0)
+	float InputValue = Value.Get<float>();
+    
+	if (SpringArm && InputValue != 0.0f)
+	{
+		// 현재 길이 가져오기
+		float CurrentLength = SpringArm->TargetArmLength;
+
+		// 목표 길이 계산
+		// 휠을 올리면(1.0) -> 가까워져야 함 -> 길이를 줄임 (-)
+		// 휠을 내리면(-1.0) -> 멀어져야 함 -> 길이를 늘림 (+)
+		float NewLength = CurrentLength + (InputValue * -ZoomStep);
+
+		// 최소/최대 범위 제한 (Clamp)
+		NewLength = FMath::Clamp(NewLength, MinTargetArmLength, MaxTargetArmLength);
+
+		// 적용
+		SpringArm->TargetArmLength = NewLength;
+	}
+}
 
 bool ABaseCharacter::IsSkillUnlocked(int32 RequiredStage)
 {
