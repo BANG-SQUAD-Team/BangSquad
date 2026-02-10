@@ -62,3 +62,23 @@ void USkillSlotWidget::SetIcon(UTexture2D* NewIcon)
 		Img_Icon->SetBrushFromTexture(NewIcon);
 	}
 }
+
+void USkillSlotWidget::SetSlotLockedState(bool bIsLocked)
+{
+	if (!Img_Icon) return;
+	
+	if (bIsLocked)
+	{
+		// 잠김
+		Img_Icon->SetColorAndOpacity(FLinearColor(0.15f, 0.15f, 0.15f, 0.5f));
+		
+		// 잠긴 상태라면 쿨타임 UI들은 확실하게 숨기기
+		if (Img_Dim) Img_Dim->SetVisibility(ESlateVisibility::Hidden);
+		if (Txt_Time) Txt_Time->SetVisibility(ESlateVisibility::Hidden);
+	}
+	else
+	{
+		// 해금됨
+		Img_Icon->SetColorAndOpacity(FLinearColor(1.0f, 1.0f, 1.0f, 1.0f));
+	}
+}

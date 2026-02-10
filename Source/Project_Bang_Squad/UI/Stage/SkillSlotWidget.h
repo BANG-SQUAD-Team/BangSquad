@@ -24,6 +24,11 @@ public:
 	
 	// 스킬 아이콘 변경 함수
 	void SetIcon(UTexture2D* NewIcon);
+	
+	UFUNCTION(BlueprintCallable)
+	void SetSlotLockedState(bool bIsLocked);
+	
+	
 protected:
 	UPROPERTY(meta = (BindWidget))
 	UImage* Img_Icon; // 스킬 아이콘

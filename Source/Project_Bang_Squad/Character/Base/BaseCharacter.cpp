@@ -788,3 +788,19 @@ FText ABaseCharacter::GetSkillNameTextByRowName(FName RowName)
 	}
 	return FText::FromString(TEXT("Unknown"));
 }
+
+bool ABaseCharacter::IsSkillUnlockedByRowName(FName RowName)
+{
+	if (!SkillDataTable) return false;
+
+	static const FString ContextString(TEXT("CheckUnlockStatus"));
+	FSkillData* Data = SkillDataTable->FindRow<FSkillData>(RowName, ContextString);
+
+	if (Data)
+	{
+		// 데이터 테이블의 요구 스테이지와 현재 캐릭터의 해금 레벨 비교
+		return IsSkillUnlocked(Data->RequiredStage);
+	}
+
+	return false; // 데이터가 없으면 잠긴 것으로 간주
+}
