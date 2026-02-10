@@ -121,6 +121,7 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	FText GetSkillNameTextByRowName(FName RowName);
+	bool IsSkillUnlockedByRowName(FName RowName);
 
 protected:
 	virtual void BeginPlay() override;

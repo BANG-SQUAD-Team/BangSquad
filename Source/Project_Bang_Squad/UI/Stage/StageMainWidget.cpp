@@ -101,25 +101,46 @@ void UStageMainWidget::BindCharacterDelegates(APawn* NewPawn)
 
 		// 캐릭터의 데이터 테이블에서 아이콘을 가져와서 UI에 세팅
         
-		// 1번 스킬 (Q)
 		if (SkillSlot_1)
 		{
-			UTexture2D* Icon = NewChar->GetSkillIconByRowName(FName("Skill1"));
+			FName RowName = FName("Skill1");
+          
+			// 1. 아이콘 설정
+			UTexture2D* Icon = NewChar->GetSkillIconByRowName(RowName);
 			if (Icon) SkillSlot_1->SetIcon(Icon);
+          
+			// 2.  잠금 상태 확인 및 적용
+			// (BaseCharacter에 IsSkillUnlockedByRowName 함수가 있어야 합니다!)
+			bool bUnlocked = NewChar->IsSkillUnlockedByRowName(RowName);
+          
+			// 해금되지 않았으면(!bUnlocked) -> 잠금 상태(true)로 설정
+			SkillSlot_1->SetSlotLockedState(!bUnlocked); 
 		}
 
-		// 2번 스킬 (E)
+		// [스킬 2] 
 		if (SkillSlot_2)
 		{
-			UTexture2D* Icon = NewChar->GetSkillIconByRowName(FName("Skill2"));
+			FName RowName = FName("Skill2");
+          
+			UTexture2D* Icon = NewChar->GetSkillIconByRowName(RowName);
 			if (Icon) SkillSlot_2->SetIcon(Icon);
+
+			// 잠금 상태 적용
+			bool bUnlocked = NewChar->IsSkillUnlockedByRowName(RowName);
+			SkillSlot_2->SetSlotLockedState(!bUnlocked);
 		}
 
-		// 직업 스킬 (Space/Shift)
+		// [직업 스킬] (Space/Shift)
 		if (SkillSlot_Job)
 		{
-			UTexture2D* Icon = NewChar->GetSkillIconByRowName(FName("JobAbility"));
+			FName RowName = FName("JobAbility");
+          
+			UTexture2D* Icon = NewChar->GetSkillIconByRowName(RowName);
 			if (Icon) SkillSlot_Job->SetIcon(Icon);
+
+			//  잠금 상태 적용
+			bool bUnlocked = NewChar->IsSkillUnlockedByRowName(RowName);
+			SkillSlot_Job->SetSlotLockedState(!bUnlocked);
 		}
 		
 		// 스킬 1 이름 
