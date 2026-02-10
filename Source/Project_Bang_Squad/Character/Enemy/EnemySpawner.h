@@ -10,6 +10,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnSpawnerCleared);
 
 class UBoxComponent;
 class AEnemyNormal;
+class AEnemyCharacterBase;
 
 UCLASS()
 class PROJECT_BANG_SQUAD_API AEnemySpawner : public AActor
@@ -43,9 +44,14 @@ protected:
 	UBoxComponent* TriggerVolume;
 	
 	// 스폰 규칙
-	// 생성할 적 클래스
+	// 일반 몬스터 클래스
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawner")
 	TSubclassOf<AEnemyNormal> EnemyClass;
+	
+	// 중간 보스 클래스
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawner|Boss")
+	TSubclassOf<class AEnemyCharacterBase>  MidBossClass;
+	
 	
 	// 스폰 주기
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawner")
@@ -78,6 +84,8 @@ private:
 	FTimerHandle SpawnTimerHandle;
 	bool bIsActive = false;
 	
+	bool bHasSpawnedMidBoss = false;
+	
 	// 현재 맵에 살아있는 적 (동시 유지 제한용)
 	int32 CurrentAliveCount = 0;
 	
@@ -85,7 +93,7 @@ private:
 	int32 TotalSpawnedCount = 0;
 	
 	void SpawnEnemy();
-	FVector GetRandomPointInVolume();
+	FVector GetRandomPointInVolume(float HalfHeight = 90.0f);
 	
 	UFUNCTION()
 	void OnEnemyDestroyed(AActor* DestroyedActor);
