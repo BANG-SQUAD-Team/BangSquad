@@ -179,6 +179,11 @@ void AMageCharacter::BeginPlay()
 
 	// [최적화] 인터랙션 감지 타이머 시작 (0.1초마다)
 	GetWorldTimerManager().SetTimer(InteractionTimerHandle, this, &AMageCharacter::CheckInteractableTarget, 0.1f, true);
+
+	if (IsLocallyControlled())
+	{
+		GetWorldTimerManager().SetTimer(InteractionTimerHandle, this, &AMageCharacter::CheckInteractableTarget, 0.1f, true);
+	}
 }
 
 void AMageCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -253,6 +258,13 @@ void AMageCharacter::Tick(float DeltaTime)
 
 void AMageCharacter::CheckInteractableTarget()
 {
+	if (!IsLocallyControlled())
+	{
+		// 혹시라도 타이머가 돌고 있다면 강제로 꺼버림 (확실한 사살)
+		GetWorldTimerManager().ClearTimer(InteractionTimerHandle);
+		return;
+	}
+
 	// 조종 중엔 타겟 변경 금지
 	if (bIsPillarMode || bIsBoatMode) return;
 
@@ -314,7 +326,7 @@ void AMageCharacter::CheckInteractableTarget()
 
 			// 새 기둥 켜기
 			HitPillar->PillarMesh->SetRenderCustomDepth(true);
-			HitPillar->PillarMesh->SetCustomDepthStencilValue(251);
+			HitPillar->PillarMesh->SetCustomDepthStencilValue(255);
 			FocusedPillar = HitPillar;
 		}
 	}

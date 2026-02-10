@@ -168,7 +168,7 @@ void APillarRotate::SetMageHighlight(bool bActive)
 			return;
 		}
 		PillarMesh->SetRenderCustomDepth(bActive);
-		PillarMesh->SetCustomDepthStencilValue(bActive ? 250 : 0);
+		PillarMesh->SetCustomDepthStencilValue(bActive ? 251 : 0);
 	}
 }
 

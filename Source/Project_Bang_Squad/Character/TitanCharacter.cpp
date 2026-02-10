@@ -15,6 +15,7 @@
 #include "Project_Bang_Squad/Character/Enemy/EnemyNormal.h"
 #include "Project_Bang_Squad/Character/Player/Titan/TitanRock.h"
 #include "Project_Bang_Squad/Character/Player/Titan/TitanThrowableActor.h"
+#include "Project_Bang_Squad/Character/MageCharacter.h"
 #include "Enemy/EnemyMidBoss.h"
 #include "StageBoss/StageBossBase.h"
 #include "Engine/StaticMeshActor.h"
@@ -1322,25 +1323,25 @@ void ATitanCharacter::StopCharge()
 
 void ATitanCharacter::UpdateHoverHighlight()
 {
+    // [안전장치] 타이탄도 내 캐릭터 아니면 감지 로직 돌리지 않음
+    if (!IsLocallyControlled()) return;
+
     if (!Camera) return;
 
     FVector Start = Camera->GetComponentLocation();
     FVector End = Start + (Camera->GetForwardVector() * 600.0f);
 
-    // 구체(Sphere) 모양으로 쏘기
     FCollisionShape Shape = FCollisionShape::MakeSphere(70.0f);
 
     TArray<FHitResult> HitResults;
     FCollisionQueryParams Params;
-    Params.AddIgnoredActor(this); // 나 자신은 무시
+    Params.AddIgnoredActor(this);
 
-    // 감지할 물리 타입 설정
     FCollisionObjectQueryParams ObjectParams;
     ObjectParams.AddObjectTypesToQuery(ECC_Pawn);
     ObjectParams.AddObjectTypesToQuery(ECC_PhysicsBody);
     ObjectParams.AddObjectTypesToQuery(ECC_WorldDynamic);
 
-    // SweepMulti로 경로상의 모든 물체 검사
     bool bHit = GetWorld()->SweepMultiByObjectType(
         HitResults, Start, End, FQuat::Identity, ObjectParams, Shape, Params
     );
@@ -1349,30 +1350,29 @@ void ATitanCharacter::UpdateHoverHighlight()
 
     if (bHit)
     {
-        // 가까운 순서대로 확인
         for (const FHitResult& Hit : HitResults)
         {
             AActor* HitActor = Hit.GetActor();
             if (!HitActor) continue;
 
             // =========================================================
-            // [최종 수정] Whitelist 방식: 딱 3가지만 허용!
+            // [화이트리스트] 타이탄이 상호작용 가능한 것만!
             // =========================================================
 
-            // 1. 던질 수 있는 물건 (버섯, 바위 등 -> ATitanThrowableActor 상속받음)
+            // 1. 던질 수 있는 물건 (바위, 버섯 등)
             bool bIsThrowable = (Cast<ATitanThrowableActor>(HitActor) != nullptr);
 
-            // 2. 플레이어 (아군)
+            // 2. 플레이어 (메이지를 잡을 수 있으므로 포함)
             bool bIsPlayer = (Cast<ABaseCharacter>(HitActor) != nullptr);
 
-            // 3. 일반 몬스터 (Normal) -> 보스는 여기에 포함 안 됨
+            // 3. 일반 몬스터
             bool bIsNormalEnemy = (Cast<AEnemyNormal>(HitActor) != nullptr);
 
-            // [결론] 위 3개 중 하나면 타겟팅 (보스 제외 로직 따로 필요 없음)
+            // 기둥(Pillar) 같은 건 여기 없으므로 타이탄은 무시하게 됨 -> 하이라이트 안 됨
             if (bIsThrowable || bIsPlayer || bIsNormalEnemy)
             {
                 NewTarget = HitActor;
-                break; // 찾았으면 루프 종료
+                break;
             }
         }
     }
@@ -1380,8 +1380,8 @@ void ATitanCharacter::UpdateHoverHighlight()
     // 하이라이트 갱신
     if (HoveredActor != NewTarget)
     {
-        if (HoveredActor) SetHighlight(HoveredActor, false);
-        if (NewTarget) SetHighlight(NewTarget, true);
+        if (HoveredActor) SetHighlight(HoveredActor, false); // 끄기
+        if (NewTarget) SetHighlight(NewTarget, true); // 켜기
         HoveredActor = NewTarget;
     }
 }
@@ -1394,8 +1394,11 @@ void ATitanCharacter::SetHighlight(AActor* Target, bool bEnable)
 
     for (auto Comp : Components)
     {
-       Comp->SetRenderCustomDepth(bEnable);
-       if (bEnable) Comp->SetCustomDepthStencilValue(250);
+        Comp->SetRenderCustomDepth(bEnable);
+        if (bEnable)
+        {
+            Comp->SetCustomDepthStencilValue(250);
+        }
     }
 }
 
