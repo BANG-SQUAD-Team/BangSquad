@@ -1,8 +1,11 @@
 #include "Project_Bang_Squad/Character/PaladinCharacter.h"
 #include "Project_Bang_Squad/Character/Base/BaseCharacter.h"
+#include "Project_Bang_Squad/Character/Player/Paladin/PaladinSkill2Hammer.h"
+
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Components/WidgetComponent.h"
+#include "Components/CapsuleComponent.h"
 #include "EnhancedInputComponent.h"
 #include "Net/UnrealNetwork.h"
 #include "Engine/DataTable.h"
@@ -12,149 +15,121 @@
 #include "Engine/DamageEvents.h"
 #include "DrawDebugHelpers.h" 
 #include "NiagaraFunctionLibrary.h"
-#include "Project_Bang_Squad/Character/Player/Paladin/PaladinSkill2Hammer.h"
-#include "Components/CapsuleComponent.h"
 
 // ====================================================================================
-//  섹션 1: 생성자 및 초기화 (Constructor & Initialization)
+//  [Section 1] 생성자 및 초기화 (Constructor & Initialization)
 // ====================================================================================
 
 APaladinCharacter::APaladinCharacter()
 {
     PrimaryActorTick.bCanEverTick = true;
-    
     bReplicates = true;
     SetReplicateMovement(true);
-    
-    // 1. 공격 및 이동 설정
+
+    // 1. 기본 스탯 및 물리 설정
     AttackCooldownTime = 1.f;
+    
+    // 컨트롤러 회전 설정 (캐릭터는 이동 방향을 봄)
     bUseControllerRotationYaw = true;
     bUseControllerRotationPitch = false;
     bUseControllerRotationRoll = false;
-    
-        // CharacterMovement 컴포넌트 설정 (한 번만 가져와서 사용)
-        if (UCharacterMovementComponent* CharMove = GetCharacterMovement())
-        {
-            CharMove->MaxWalkSpeed = 550.f;
-            CharMove->bOrientRotationToMovement = false;
-            CharMove->RotationRate = FRotator(0.0f, 720.0f, 0.0f);
-        }
-    
-    // 2. 카메라 설정
-    if (SpringArm) 
+
+    if (UCharacterMovementComponent* CharMove = GetCharacterMovement())
     {
-       SpringArm->TargetOffset = FVector(0.0f, 0.0f, 150.0f); 
-       SpringArm->ProbeSize = 12.0f; 
+        CharMove->MaxWalkSpeed = 550.f;
+        CharMove->bOrientRotationToMovement = false; // 컨트롤러 방향을 따르므로 false
+        CharMove->RotationRate = FRotator(0.0f, 720.0f, 0.0f);
     }
-    
-    // 3. 방패 컴포넌트 (초기화 및 부착)
+
+    // 2. 카메라 설정
+    if (SpringArm)
+    {
+        SpringArm->TargetOffset = FVector(0.0f, 0.0f, 150.0f);
+        SpringArm->ProbeSize = 12.0f;
+    }
+
+    // 3. 방패 컴포넌트 설정
     ShieldMeshComp = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ShieldMesh"));
-    ShieldMeshComp->SetupAttachment(GetMesh(), TEXT("Weapon_HitCenter"));
+    ShieldMeshComp->SetupAttachment(GetMesh(), TEXT("Weapon_HitCenter")); // 소켓 부착
     ShieldMeshComp->SetVisibility(false);
     ShieldMeshComp->SetCollisionProfileName(TEXT("NoCollision")); // 기본은 충돌 없음
-    
-    // 임시 메쉬 할당 (Cube)
+
+    // (임시) 큐브 메쉬 할당
     static ConstructorHelpers::FObjectFinder<UStaticMesh> CubeMesh(TEXT("/Engine/BasicShapes/Cube.Cube"));
     if (CubeMesh.Succeeded())
     {
         ShieldMeshComp->SetStaticMesh(CubeMesh.Object);
-        ShieldMeshComp->SetRelativeScale3D(FVector(0.1f, 2.5f, 3.5f)); 
+        ShieldMeshComp->SetRelativeScale3D(FVector(0.1f, 2.5f, 3.5f));
         ShieldMeshComp->SetRelativeLocation(FVector(50.0f, 0.0f, 0.0f));
     }
 
-    // 4. 방패 체력바 UI
+    // 4. UI 및 VFX 설정
     ShieldBarWidgetComp = CreateDefaultSubobject<UWidgetComponent>(TEXT("ShieldBarWidget"));
     ShieldBarWidgetComp->SetupAttachment(ShieldMeshComp);
     ShieldBarWidgetComp->SetWidgetSpace(EWidgetSpace::World);
     ShieldBarWidgetComp->SetDrawSize(FVector2D(100.0f, 15.0f));
     ShieldBarWidgetComp->SetVisibility(false);
-    
-    // 🔥 나이아가라 이펙트 크기 기본값 설정 (1.0배)
+
     SmashVFXScale = FVector(1.0f, 1.0f, 1.0f);
 }
-
 
 void APaladinCharacter::BeginPlay()
 {
     Super::BeginPlay();
-    
-    // [서버] 방패 체력 초기화
+
+    // [Server] 방패 상태 초기화
     if (HasAuthority())
     {
         CurrentShieldHP = MaxShieldHP;
         bIsShieldBroken = false;
     }
-    
-    // [물리] 내 몸(Capsule)과 방패가 서로 밀어내지 않도록 무시 설정
+
+    // [Physics] 캐릭터 캡슐과 방패 간의 충돌 무시 (밀려남 방지)
     if (GetCapsuleComponent() && ShieldMeshComp)
     {
         GetCapsuleComponent()->IgnoreComponentWhenMoving(ShieldMeshComp, true);
     }
-    
-    // [최적화] 무기 메쉬 컴포넌트 미리 찾아서 캐싱 (매번 FindComponent 방지)
+
+    // [Optimization] 무기 메쉬 및 소켓 캐싱
     TArray<UStaticMeshComponent*> StaticComps;
     GetComponents<UStaticMeshComponent>(StaticComps);
     for (UStaticMeshComponent* Comp : StaticComps)
     {
-        if (Comp && Comp->DoesSocketExist(TEXT("Weapon_HitCenter"))) 
-        { 
-            CachedWeaponMesh = Comp; 
-            break; 
+        if (Comp && Comp->DoesSocketExist(TEXT("Weapon_HitCenter")))
+        {
+            CachedWeaponMesh = Comp;
+            break;
         }
     }
-    
+
+    // [VFX] 무기 트레일 컴포넌트 생성 및 초기화 (꺼둠)
     if (CachedWeaponMesh && WeaponTrailVFX)
     {
         WeaponTrailComp = UNiagaraFunctionLibrary::SpawnSystemAttached(
             WeaponTrailVFX,
             CachedWeaponMesh,
-            NAME_None, // 소켓 이름 (무기 전체를 따라가려면 None, 특정 소켓이면 이름 입력)
+            NAME_None,
             FVector::ZeroVector,
             FRotator::ZeroRotator,
             EAttachLocation::SnapToTarget,
-            false // Auto Destroy (계속 쓸거니까 false)
+            false // Auto Destroy Off
         );
-        // 시작하자마자는 꺼둠
-        if (WeaponTrailComp)
-        {
-            WeaponTrailComp->Deactivate();
-        }
+        if (WeaponTrailComp) WeaponTrailComp->Deactivate();
     }
-    
-    // 시작 시 방패 비활성화 (확실하게 끄기)
+
+    // 시작 시 방패 비활성화
     SetShieldActive(false);
-    
-    // 🔥 [추가] 데이터 테이블 캐싱 (시작할 때 한 번만 수행)
+
+    // [Data] 스킬 데이터 테이블 캐싱
     if (SkillDataTable)
     {
-        // 1. 테이블에 있는 모든 행(Row)의 이름을 가져옴
         TArray<FName> RowNames = SkillDataTable->GetRowNames();
+        static const FString ContextString(TEXT("SkillDataCacheContext"));
 
         for (const FName& RowName : RowNames)
         {
-            // 2. 이름으로 데이터 찾기
-            static const FString ContextString(TEXT("SkillDataCacheContext"));
             FSkillData* Data = SkillDataTable->FindRow<FSkillData>(RowName, ContextString);
-
-            // 3. 찾았으면 내 주머니(Map)에 저장
-            if (Data)
-            {
-                SkillDataCache.Add(RowName, Data);
-            }
-        }
-    }
-}
-
-void APaladinCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
-{
-    Super::SetupPlayerInputComponent(PlayerInputComponent);
-    
-    if (UEnhancedInputComponent* EIC = Cast<UEnhancedInputComponent>(PlayerInputComponent))
-    {
-        // 직업 능력 (방어) 키 바인딩
-        if (JobAbilityAction)
-        {
-            EIC->BindAction(JobAbilityAction, ETriggerEvent::Completed, this, &APaladinCharacter::EndJobAbility);
+            if (Data) SkillDataCache.Add(RowName, Data);
         }
     }
 }
@@ -162,64 +137,71 @@ void APaladinCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 void APaladinCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
     Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-    
-    // 리플리케이션 변수 등록
+
     DOREPLIFETIME(APaladinCharacter, bIsGuarding);
     DOREPLIFETIME(APaladinCharacter, CurrentShieldHP);
     DOREPLIFETIME(APaladinCharacter, bIsShieldBroken);
 }
 
+void APaladinCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
+{
+    Super::SetupPlayerInputComponent(PlayerInputComponent);
+
+    if (UEnhancedInputComponent* EIC = Cast<UEnhancedInputComponent>(PlayerInputComponent))
+    {
+        // 직업 능력 (방어 해제)
+        if (JobAbilityAction)
+        {
+            EIC->BindAction(JobAbilityAction, ETriggerEvent::Completed, this, &APaladinCharacter::EndJobAbility);
+        }
+    }
+}
+
 // ====================================================================================
-//  섹션 2: 상태 변경 및 이벤트 오버라이드 (State & Event Overrides)
+//  [Section 2] 상태 관리 및 이벤트 (State & Events)
 // ====================================================================================
 
 void APaladinCharacter::OnDeath()
 {
-    // 사망 시 모든 전투 상태 해제
+    // 사망 시 모든 전투 상태 강제 해제
     SetShieldActive(false);
     bIsGuarding = false;
     StopAnimMontage();
-    
+
     Super::OnDeath();
 }
 
 void APaladinCharacter::Landed(const FHitResult& Hit)
 {
     Super::Landed(Hit);
-    
-    // 분쇄 스킬(점프) 사용 후 착지했을 때 처리
+
+    // [Smash Skill] 분쇄 스킬 사용 후 착지 시 상태 초기화
     if (bIsSmashing)
     {
-        bIsSmashing = false; // 상태 초기화
-        
-        // *주의: 데미지 로직은 PerformSmashDamage 타이머가 처리하므로 여기엔 절대 넣지 않음.
-        // 필요하다면 착지 이펙트(VFX)나 사운드만 재생.
+        bIsSmashing = false;
+        // 참고: 데미지 로직은 PerformSmashDamage 타이머가 처리함
     }
 }
 
 // ====================================================================================
-//  섹션 3: 기본 공격 및 콤보 (Basic Attack & Combo System)
+//  [Section 3] 기본 공격 및 콤보 (Combat: Basic Attack)
 // ====================================================================================
 
 void APaladinCharacter::Attack()
 {
     if (!CanAttack()) return;
     if (bIsGuarding) return; // 방어 중 공격 불가
-    
-    // 콤보에 따른 스킬 이름 결정
-    FName SkillName;
-    if (CurrentComboIndex == 0) SkillName = TEXT("Attack_A");
-    else SkillName = TEXT("Attack_B");
-    
+
+    // 콤보 인덱스에 따른 스킬명 결정
+    FName SkillName = (CurrentComboIndex == 0) ? TEXT("Attack_A") : TEXT("Attack_B");
     ProcessSkill(SkillName);
-    
+
     StartAttackCooldown();
-    
-    
-    // 콤보 카운트 증가 및 리셋 타이머 설정
+
+    // 콤보 로직 업데이트
     CurrentComboIndex++;
     if (CurrentComboIndex > 1) CurrentComboIndex = 0;
-    
+
     GetWorldTimerManager().ClearTimer(ComboResetTimer);
     GetWorldTimerManager().SetTimer(ComboResetTimer, this, &APaladinCharacter::ResetCombo, 1.5f, false);
 }
@@ -229,46 +211,33 @@ void APaladinCharacter::ResetCombo()
     CurrentComboIndex = 0;
 }
 
-// [평타 판정 1단계] 궤적 검사 시작
+// ------------------------------------------------------------------------------------
+// Melee Trace Logic (근접 공격 판정)
+// ------------------------------------------------------------------------------------
+
 void APaladinCharacter::StartMeleeTrace()
 {
     SwingDamagedActors.Empty();
 
-    // 무기 위치 찾기 (캐싱된 것 우선 사용)
-    USceneComponent* WeaponComp = GetMesh();
-    if (CachedWeaponMesh) WeaponComp = CachedWeaponMesh;
-    else 
-    {
-        // 캐싱 실패 시 재검색
-        TArray<UStaticMeshComponent*> StaticComps;
-        GetComponents<UStaticMeshComponent>(StaticComps);
-        for (UStaticMeshComponent* Comp : StaticComps)
-        {
-            if (Comp && Comp->DoesSocketExist(TEXT("Weapon_HitCenter"))) { WeaponComp = Comp; break; }
-        }
-    }
-
+    // 무기 위치 파악
+    USceneComponent* WeaponComp = (CachedWeaponMesh) ? (USceneComponent*)CachedWeaponMesh : GetMesh();
     if (WeaponComp) LastHammerLocation = WeaponComp->GetSocketLocation(TEXT("Weapon_HitCenter"));
     else LastHammerLocation = GetActorLocation() + GetActorForwardVector() * 100.f;
 
-    // 공격 시작 시 트레일 활성화 (서버 -> 모든 클라)
+    // 트레일 켜기
     Multicast_SetTrailActive(true);
-    
-    // 반복 검사 타이머 시작 (0.015초마다 궤적 스윕)
+
+    // 판정 루프 시작 (0.015초 간격)
     GetWorldTimerManager().SetTimer(HitLoopTimerHandle, this, &APaladinCharacter::PerformMeleeTrace, 0.015f, true);
     
-    // 일정 시간 후 판정 종료
+    // 자동 종료 타이머
     FTimerHandle StopTimer;
     GetWorldTimerManager().SetTimer(StopTimer, this, &APaladinCharacter::StopMeleeTrace, HitDuration, false);
 }
 
-// [평타 판정 2단계] 궤적 스윕 및 데미지 적용
 void APaladinCharacter::PerformMeleeTrace()
 {
-    // 무기 컴포넌트 확보
-    USceneComponent* WeaponComp = GetMesh();
-    if (CachedWeaponMesh) WeaponComp = CachedWeaponMesh;
-
+    USceneComponent* WeaponComp = (CachedWeaponMesh) ? (USceneComponent*)CachedWeaponMesh : GetMesh();
     FVector CurrentLoc;
     FQuat CurrentRot;
 
@@ -283,12 +252,11 @@ void APaladinCharacter::PerformMeleeTrace()
         CurrentRot = GetActorQuat();
     }
 
-    // 스윕 파라미터
+    // Box Sweep 실행
     TArray<FHitResult> HitResults;
     FCollisionQueryParams Params;
     Params.AddIgnoredActor(this);
 
-    // 이전 위치 -> 현재 위치로 박스 스윕
     bool bHit = GetWorld()->SweepMultiByChannel(
         HitResults, LastHammerLocation, CurrentLoc, CurrentRot,
         ECC_Pawn, FCollisionShape::MakeBox(HammerHitBoxSize), Params
@@ -300,18 +268,16 @@ void APaladinCharacter::PerformMeleeTrace()
         {
             AActor* HitActor = Hit.GetActor();
             
-            // 아군(Player)이면 무시하고 넘어감
-            if (HitActor && HitActor->ActorHasTag(TEXT("Player")))
-            {
-                continue;
-            }
-            
-            // 중복 피격 방지 (한 번 휘두를 때 한 번만 맞도록)
-            if (HitActor && HitActor != this && !SwingDamagedActors.Contains(HitActor))
+            // 아군(Player)은 타격 제외
+            if (!HitActor || HitActor == this || HitActor->ActorHasTag(TEXT("Player"))) continue;
+
+            // 중복 타격 방지
+            if (!SwingDamagedActors.Contains(HitActor))
             {
                 UGameplayStatics::ApplyDamage(HitActor, CurrentSkillDamage, GetController(), this, UDamageType::StaticClass());
                 SwingDamagedActors.Add(HitActor);
-                
+
+                // 타격감 (Hit Stop)
                 Client_TriggerHitStop();
             }
         }
@@ -319,209 +285,133 @@ void APaladinCharacter::PerformMeleeTrace()
     LastHammerLocation = CurrentLoc;
 }
 
-// [평타 판정 3단계] 종료 및 초기화
 void APaladinCharacter::StopMeleeTrace()
 {
     GetWorldTimerManager().ClearTimer(HitLoopTimerHandle);
     SwingDamagedActors.Empty();
-    
     Multicast_SetTrailActive(false);
 }
 
+// ====================================================================================
+//  [Section 4] 타격감 및 역경직 (Feel: Hit Stop)
+// ====================================================================================
+
 void APaladinCharacter::Client_TriggerHitStop_Implementation()
 {
-    // 여기서 시간을 멈추면 나에게만 보임
-    
-    // 1. 나 자신이 로컬 플레이어인지 확인
     if (!IsLocallyControlled()) return;
-    // 2. 시간 조작 (Hit Stop)
+
+    // 1. 시간 느리게
     CustomTimeDilation = HitStopTimeDilation;
-    // 3. 복구 타이머 설정
+
+    // 2. 복구 타이머
     GetWorldTimerManager().ClearTimer(HitStopTimer);
     GetWorldTimerManager().SetTimer(HitStopTimer, this, &APaladinCharacter::RestoreTimeDilation, HitStopDuration, false);
-    
-    // 여기서 카메라 흔들림을 넣어야 나만 화면이 흔들림
+
+    // 3. 카메라 흔들림
     if (APlayerController* PC = Cast<APlayerController>(GetController()))
     {
-        if (HitShakeClass)
-        {
-            PC->ClientStartCameraShake(HitShakeClass);
-        }
+        if (HitShakeClass) PC->ClientStartCameraShake(HitShakeClass);
     }
 }
 
 void APaladinCharacter::RestoreTimeDilation()
 {
-    // 시간을 원래 속도로 복구
     CustomTimeDilation = 1.0f;
 }
 
 // ====================================================================================
-//  섹션 4: 스킬 시스템 (Skill System - ProcessSkill & Smash)
+//  [Section 5] 스킬 시스템 (Combat: Skill System)
 // ====================================================================================
 
-void APaladinCharacter::Skill1()
-{
-    if (bIsDead || bIsGuarding) return;
-    ProcessSkill(FName("Skill1"));
-}
-
-void APaladinCharacter::Skill2()
-{
-    if (!CanAttack()) return;
-    if (bIsDead || bIsGuarding) return;
-    
-    // 로컬 쿨타임 체크
-    float CurrentTime = GetWorld()->GetTimeSeconds();
-    if (CurrentTime < Skill2ReadyTime) return;
-
-    // ================================================================
-    // 클라이언트(나)도 몽타주를 직접 재생해야 함!
-    // ================================================================
-    if (SkillDataTable)
-    {
-        static const FString ContextString(TEXT("PaladinSkill2_Client"));
-        FSkillData* Data = SkillDataTable->FindRow<FSkillData>(TEXT("Skill2"), ContextString);
-        
-        // 데이터가 있고, 몽타주가 있다면 즉시 재생
-        if (Data && IsSkillUnlocked(Data->RequiredStage))
-        {
-            if (Data->SkillMontage)
-            {
-                // BaseCharacter에 있는 함수 사용 (ProcessSkill과 동일하게)
-                PlayActionMontage(Data->SkillMontage);
-            }    
-            if (Skill2CastVFX)
-            {
-                FVector SpawnLoc = GetActorLocation();
-                SpawnLoc.Z -= GetCapsuleComponent()->GetScaledCapsuleHalfHeight(); // 발밑
-
-                UNiagaraFunctionLibrary::SpawnSystemAttached(
-                    Skill2CastVFX, 
-                    GetMesh(),
-                    TEXT("Hand_R_Root"),
-                    FVector::ZeroVector,
-                    FRotator::ZeroRotator, 
-                    EAttachLocation::SnapToTarget,
-                    true
-                );
-            }
-
-            // 서버에게 스킬 사용 요청 (여기서 망치 소환 및 다른 사람들에게 몽타주 전송)
-            Server_Skill2();
-        }
-    }
-}
 void APaladinCharacter::ProcessSkill(FName SkillRowName)
 {
     if (!CanAttack()) return;
-    
-    
-    // 캐시에서 데이터 꺼내오기
+
+    // 1. 데이터 조회
     FSkillData** FoundData = SkillDataCache.Find(SkillRowName);
     FSkillData* Data = (FoundData) ? *FoundData : nullptr;
-    
+
     if (Data)
     {
         if (!IsSkillUnlocked(Data->RequiredStage)) return;
-       
-        // 데이터 테이블 값 로드
+
+        // 스탯 로드
         CurrentSkillDamage = Data->Damage;
         CurrentActionDelay = Data->ActionDelay;
-       
-        // 쿨타임 중이면 실행 취소
+
+        // 쿨타임 체크
         if (SkillTimers.Contains(SkillRowName) && GetWorldTimerManager().IsTimerActive(SkillTimers[SkillRowName])) return;
-        
+
         // 몽타주 재생 (Client/Server 공통)
         if (Data->SkillMontage) PlayActionMontage(Data->SkillMontage);
 
-        // 쿨타임 타이머 등록
+        // 쿨타임 등록 & UI 갱신
         if (Data->Cooldown > 0.0f)
         {
             FTimerHandle& Handle = SkillTimers.FindOrAdd(SkillRowName);
             GetWorldTimerManager().SetTimer(Handle, Data->Cooldown, false);
-            
-            // ==============================================================
-            //  UI 쿨타임 델리게이트 
-            // ==============================================================
-            int32 SkillIdx = 0;
-            if (SkillRowName == FName("Skill1")) SkillIdx = 1; 
-            // else if (SkillRowName == FName("Skill2")) SkillIdx = 2; 
-            
-            if (SkillIdx > 0)
-            {
-                TriggerSkillCooldown(SkillIdx, Data->Cooldown);
-            }
+
+            int32 SkillIdx = (SkillRowName == FName("Skill1")) ? 1 : 0;
+            if (SkillIdx > 0) TriggerSkillCooldown(SkillIdx, Data->Cooldown);
         }
-        
-        // [서버 로직] 실제 판정 처리
+
+        // [Server Logic] 실제 데미지 및 물리 처리
         if (HasAuthority())
         {
             if (Data->SkillMontage) Server_PlayMontage(Data->SkillMontage);
-            
+
             // ----------------------------------------------------
-            // Case A: 스킬1 분쇄 (점프 공격)
+            // [Case A] Skill1: 분쇄 (Smash - Jump Attack)
             // ----------------------------------------------------
             if (SkillRowName == FName("Skill1"))
             {
-                
-                // [필수] "아직 데미지 안 줬음" 플래그 초기화
                 bHasDealtSmashDamage = false; 
 
-                // [중요] 혹시 실행 중일 평타 판정 강제 종료 (중복 데미지 방지)
+                // 평타 캔슬 (중복 데미지 방지)
                 GetWorldTimerManager().ClearTimer(AttackHitTimerHandle);
                 GetWorldTimerManager().ClearTimer(HitLoopTimerHandle);
                 StopMeleeTrace();
-                
-                Multicast_SetTrailActive(true);
-                
-                // 1. 점프 높이 계산 (체공 시간 기준 역산)
-                float JumpDuration = CurrentActionDelay;
-                if (JumpDuration <= 0.0f) JumpDuration = 1.0f;
 
+                Multicast_SetTrailActive(true);
+
+                // 1. 도약 물리 계산
+                float JumpDuration = (CurrentActionDelay > 0.f) ? CurrentActionDelay : 1.0f;
                 float Gravity = 980.0f;
-                UCharacterMovementComponent* CharMove = GetCharacterMovement();
-                if (CharMove) Gravity *= CharMove->GravityScale;
+                if (UCharacterMovementComponent* CharMove = GetCharacterMovement())
+                {
+                    Gravity *= CharMove->GravityScale;
+                    CharMove->SetMovementMode(MOVE_Falling);
+                }
                 float RequiredLaunchZ = (JumpDuration * Gravity) / 2.0f;
 
                 // 2. 캐릭터 발사
                 FVector LaunchDir = (GetActorForwardVector() * 800.0f) + (FVector::UpVector * RequiredLaunchZ);
-                //무조건 날아가게 하기
-                if (CharMove)
-                {
-                    CharMove->SetMovementMode(MOVE_Falling);
-                }
-                // 그 후에 발사
                 LaunchCharacter(LaunchDir, true, true);
-            
-                // [핵심] 타이머 호출 시, 현재 데미지 값을 고정(Capture)해서 전달
+
+                // 3. 착지 시 데미지 타이머 설정
                 float FinalDamage = Data->Damage;
-                
+                bIsSmashing = true; 
+
                 if (CurrentActionDelay > 0.0f)
                 {
                     FTimerHandle SmashTimer;
                     FTimerDelegate TimerDel;
-
-                    // "PerformSmashDamage 함수를 실행할 때 FinalDamage 값을 인자로 넣어라"
                     TimerDel.BindUFunction(this, FName("PerformSmashDamage"), FinalDamage);
-
                     GetWorldTimerManager().SetTimer(SmashTimer, TimerDel, CurrentActionDelay, false);
                 }
                 else
                 {
                     PerformSmashDamage(FinalDamage);
                 }
-
-                bIsSmashing = true; // 착지 로직 활성화
             }
             // ----------------------------------------------------
-            // Case B: 일반 공격 (평타)
+            // [Case B] Normal Attack: 일반 공격
             // ----------------------------------------------------
             else
             {
                 GetWorldTimerManager().ClearTimer(AttackHitTimerHandle);
                 GetWorldTimerManager().ClearTimer(HitLoopTimerHandle);
-               
+
                 if (CurrentActionDelay > 0.0f)
                 {
                     GetWorldTimerManager().SetTimer(AttackHitTimerHandle, this, &APaladinCharacter::StartMeleeTrace, CurrentActionDelay, false);
@@ -532,9 +422,9 @@ void APaladinCharacter::ProcessSkill(FName SkillRowName)
                 }
             }
         }
-        else 
+        else
         {
-            // 클라이언트라면 서버에 요청
+            // [Client] 서버에 실행 요청
             Server_ProcessSkill(SkillRowName);
         }
     }
@@ -545,144 +435,32 @@ void APaladinCharacter::Server_ProcessSkill_Implementation(FName SkillRowName)
     ProcessSkill(SkillRowName);
 }
 
-void APaladinCharacter::SpawnSkill2Hammer(float FinalDamage)
+// ------------------------------------------------------------------------------------
+// Skill 1: 분쇄 (Smash)
+// ------------------------------------------------------------------------------------
+
+void APaladinCharacter::Skill1()
 {
-    if (!HasAuthority()) return; // 서버만 실행 가능
-
-    if (Skill2HammerClass)
-    {
-        FVector MyLoc = GetActorLocation();
-        FVector Forward = GetActorForwardVector();
-        
-        // 1. 이상적인 위치
-        FVector IdealLoc = MyLoc + (Forward * 800.0f) + FVector(0.f, 0.f, 1000.f);
-        
-        // 2. 벽/천장 검사 
-        FHitResult HitResult;
-        FCollisionQueryParams QueryParams;
-        QueryParams.AddIgnoredActor(this);
-
-        bool bHit = GetWorld()->LineTraceSingleByChannel(
-            HitResult, MyLoc, IdealLoc, ECC_Visibility, QueryParams
-        );
-
-        FVector FinalSpawnLoc = bHit ? (HitResult.Location - (HitResult.ImpactNormal * 50.0f)) : IdealLoc;
-
-        // 3. 디버그 표시
-        DrawDebugSphere(GetWorld(), FinalSpawnLoc, 30.0f, 12, FColor::Red, false, 3.0f);
-
-        // 4. 회전 동기화
-        FRotator MyRot = GetActorRotation();
-        FRotator SpawnRot = FRotator(0.0f, MyRot.Yaw, 0.0f);
-
-        // 5. 진짜 소환
-        FActorSpawnParameters Params;
-        Params.Owner = this;
-        Params.Instigator = this;
-        Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-        APaladinSkill2Hammer* Hammer = GetWorld()->SpawnActor<APaladinSkill2Hammer>(
-            Skill2HammerClass, FinalSpawnLoc, SpawnRot, Params
-        );
-
-        if (Hammer)
-        {
-            Hammer->InitializeHammer(FinalDamage, this);
-        }
-    }
-}
-
-
-void APaladinCharacter::Server_Skill2_Implementation()
-{
-    // 1. 데이터 테이블 값 가져오기
-    float FinalCooldown = 10.0f;
-    float FinalDamage = 70.0f;
-    float DelayTime = 0.0f; // 딜레이 시간 변수 추가
-
-    if (SkillDataTable)
-    {
-        static const FString ContextString(TEXT("PaladinSkill2"));
-        FSkillData* Data = SkillDataTable->FindRow<FSkillData>(TEXT("Skill2"), ContextString);
-        if (Data)
-        {
-            if (!IsSkillUnlocked(Data->RequiredStage)) return;
-            
-            FinalDamage = Data->Damage; 
-            if (Data->Cooldown > 0.0f) FinalCooldown = Data->Cooldown;
-            DelayTime = Data->ActionDelay; // ✅ 여기서 딜레이 시간을 가져옵니다!
-            
-            // 서버에서도 몽타주 재생 (다른 클라들에게 보임)
-            if (Data->SkillMontage) Multicast_PlayMontage(Data->SkillMontage);
-        }
-    }
-
-    // 2. 쿨타임 적용 및 UI 알림
-    Skill2ReadyTime = GetWorld()->GetTimeSeconds() + FinalCooldown;
-    TriggerSkillCooldown(2, FinalCooldown); 
-
-    Multicast_PlaySkill2CastVFX();
-    
-    // 3. 타이머 설정 (ActionDelay 적용)
-    // 기존의 소환 로직을 다 지우고, 만들어둔 SpawnSkill2Hammer 함수를 타이머로 호출합니다.
-    if (DelayTime > 0.0f)
-    {
-        FTimerHandle SpawnTimerHandle;
-        FTimerDelegate TimerDel;
-        
-        // "SpawnSkill2Hammer 함수를 실행하되, 인자로 FinalDamage를 넘겨라"
-        TimerDel.BindUFunction(this, FName("SpawnSkill2Hammer"), FinalDamage);
-
-        // 딜레이 시간만큼 기다렸다가 발사!
-        GetWorldTimerManager().SetTimer(SpawnTimerHandle, TimerDel, DelayTime, false);
-    }
-    else
-    {
-        // 딜레이가 0이면 즉시 발사
-        SpawnSkill2Hammer(FinalDamage);
-    }
-}
-
-void APaladinCharacter::Multicast_PlaySkill2CastVFX_Implementation()
-{
-    // 주인(Local)은 Skill2() 함수에서 이미 틀었으니 중복 재생 방지
-    if (IsLocallyControlled()) return;
-
-    if (Skill2CastVFX)
-    {
-        // 발밑에 소환 (캡슐 높이만큼 빼줌)
-        FVector SpawnLoc = GetActorLocation();
-        SpawnLoc.Z -= GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
-
-        UNiagaraFunctionLibrary::SpawnSystemAttached(
-            Skill2CastVFX,
-            GetMesh(),
-            TEXT("Hand_R_Root"),
-            FVector::ZeroVector,
-            FRotator::ZeroRotator,
-            EAttachLocation::SnapToTarget,
-            true
-        );
-    }
+    if (bIsDead || bIsGuarding) return;
+    ProcessSkill(FName("Skill1"));
 }
 
 void APaladinCharacter::PerformSmashDamage(float SmashingDamage)
 {
-    // 1. 서버 권한 체크
     if (!HasAuthority()) return;
+    if (bHasDealtSmashDamage) return; // 중복 방지
 
-    // 2. [중복 방지] 이미 데미지를 줬다면 즉시 종료
-    if (bHasDealtSmashDamage) return;
-    bHasDealtSmashDamage = true; // "데미지 줌" 체크
-    
+    bHasDealtSmashDamage = true;
     Multicast_SetTrailActive(false);
-   
-    // 3. 광역 데미지 로직
-    FVector ImpactLocation = GetActorLocation(); 
+
+    FVector ImpactLocation = GetActorLocation();
     Multicast_PlaySmashVFX(ImpactLocation);
+
+    // 디버그 구체
     float AttackRadius = 350.0f;
     DrawDebugSphere(GetWorld(), ImpactLocation, AttackRadius, 12, FColor::Red, false, 3.0f);
-    
+
+    // 광역 판정 (Sphere Sweep)
     TArray<FHitResult> HitResults;
     FCollisionShape SphereShape = FCollisionShape::MakeSphere(AttackRadius);
     FCollisionQueryParams Params;
@@ -692,7 +470,7 @@ void APaladinCharacter::PerformSmashDamage(float SmashingDamage)
         HitResults, ImpactLocation, ImpactLocation, FQuat::Identity, ECC_Pawn, SphereShape, Params
     );
 
-    TSet<AActor*> HitActors; 
+    TSet<AActor*> HitActors;
 
     if (bHit)
     {
@@ -700,41 +478,30 @@ void APaladinCharacter::PerformSmashDamage(float SmashingDamage)
         {
             AActor* Victim = Hit.GetActor();
             if (!Victim || Victim == this || HitActors.Contains(Victim)) continue;
-            
             HitActors.Add(Victim);
-            
-            // =========================================================
-            // 1. [물리] 넉백 효과 (적 & 아군 모두 적용)
-            // =========================================================
+
+            // 1. 넉백 (적 & 아군 모두 적용될 수 있음, 필요시 필터링)
             ACharacter* VictimChar = Cast<ACharacter>(Victim);
             if (VictimChar)
             {
-                // 밀쳐낼 방향 계산 (중심-> 대상 방향)
                 FVector KnockbackDir = (Victim->GetActorLocation() - ImpactLocation).GetSafeNormal();
-                KnockbackDir.Z = 0.0f;// 수평 방향만 고려 (위로 뜨는건 별도)
+                KnockbackDir.Z = 0.0f; 
                 KnockbackDir.Normalize();
-                
-                // 힘 조절 
-                FVector LaunchForce = (KnockbackDir * 1000.0f) + FVector (0.0f, 0.0f, 400.0f);
-                
-                // 확실하게 띄우기 위해 바닥 마찰력 무시
+
+                FVector LaunchForce = (KnockbackDir * 1000.0f) + FVector(0.0f, 0.0f, 400.0f);
+
                 if (VictimChar->GetCharacterMovement())
                 {
                     VictimChar->GetCharacterMovement()->StopMovementImmediately();
                     VictimChar->GetCharacterMovement()->SetMovementMode(MOVE_Falling);
                 }
-                
                 VictimChar->LaunchCharacter(LaunchForce, true, true);
             }
-            
-            // =========================================================
-            // 2. [데미지] (적군만 적용!)
-            // =========================================================
-            // 플레이어 태그가 없는 경우에만 데미지
+
+            // 2. 데미지 (적군만)
             if (!Victim->ActorHasTag(TEXT("Player")))
             {
-                UGameplayStatics::ApplyDamage(Victim, SmashingDamage, GetController(),
-                    this, UDamageType::StaticClass());
+                UGameplayStatics::ApplyDamage(Victim, SmashingDamage, GetController(), this, UDamageType::StaticClass());
             }
         }
     }
@@ -744,55 +511,175 @@ void APaladinCharacter::Multicast_PlaySmashVFX_Implementation(FVector Location)
 {
     if (SmashImpactVFX)
     {
-        // 캐릭터 발밑(Z축 0)에서 터지게 조정
         FVector SpawnLocation = Location;
-        SpawnLocation.Z -= GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+        SpawnLocation.Z -= GetCapsuleComponent()->GetScaledCapsuleHalfHeight(); // 바닥에서 터지게
 
         UNiagaraFunctionLibrary::SpawnSystemAtLocation(
-            GetWorld(), 
-            SmashImpactVFX, 
-            SpawnLocation, 
-            FRotator::ZeroRotator,
-            SmashVFXScale,
-            true,true, ENCPoolMethod::None, true
+            GetWorld(), SmashImpactVFX, SpawnLocation, FRotator::ZeroRotator,
+            SmashVFXScale, true, true, ENCPoolMethod::None, true
         );
     }
 }
 
+// ------------------------------------------------------------------------------------
+// Skill 2: 망치 소환 (Hammer Spawn)
+// ------------------------------------------------------------------------------------
+
+void APaladinCharacter::Skill2()
+{
+    if (!CanAttack()) return;
+    if (bIsDead || bIsGuarding) return;
+
+    // 로컬 쿨타임 체크
+    if (GetWorld()->GetTimeSeconds() < Skill2ReadyTime) return;
+
+    // 클라이언트: 몽타주 및 VFX 선행 재생
+    if (SkillDataTable)
+    {
+        static const FString ContextString(TEXT("PaladinSkill2_Client"));
+        FSkillData* Data = SkillDataTable->FindRow<FSkillData>(TEXT("Skill2"), ContextString);
+
+        if (Data && IsSkillUnlocked(Data->RequiredStage))
+        {
+            if (Data->SkillMontage) PlayActionMontage(Data->SkillMontage);
+
+            if (Skill2CastVFX)
+            {
+                FVector SpawnLoc = GetActorLocation();
+                SpawnLoc.Z -= GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+                UNiagaraFunctionLibrary::SpawnSystemAttached(
+                    Skill2CastVFX, GetMesh(), TEXT("Hand_R_Root"),
+                    FVector::ZeroVector, FRotator::ZeroRotator, EAttachLocation::SnapToTarget, true
+                );
+            }
+            // 서버에 실제 소환 요청
+            Server_Skill2();
+        }
+    }
+}
+
+void APaladinCharacter::Server_Skill2_Implementation()
+{
+    float FinalCooldown = 10.0f;
+    float FinalDamage = 70.0f;
+    float DelayTime = 0.0f;
+
+    if (SkillDataTable)
+    {
+        static const FString ContextString(TEXT("PaladinSkill2"));
+        FSkillData* Data = SkillDataTable->FindRow<FSkillData>(TEXT("Skill2"), ContextString);
+        if (Data)
+        {
+            if (!IsSkillUnlocked(Data->RequiredStage)) return;
+
+            FinalDamage = Data->Damage;
+            if (Data->Cooldown > 0.0f) FinalCooldown = Data->Cooldown;
+            DelayTime = Data->ActionDelay;
+
+            // 타 클라이언트 동기화
+            if (Data->SkillMontage) Multicast_PlayMontage(Data->SkillMontage);
+        }
+    }
+
+    // 쿨타임 및 VFX 처리
+    Skill2ReadyTime = GetWorld()->GetTimeSeconds() + FinalCooldown;
+    TriggerSkillCooldown(2, FinalCooldown);
+    Multicast_PlaySkill2CastVFX();
+
+    // 딜레이 후 망치 소환
+    if (DelayTime > 0.0f)
+    {
+        FTimerHandle SpawnTimerHandle;
+        FTimerDelegate TimerDel;
+        TimerDel.BindUFunction(this, FName("SpawnSkill2Hammer"), FinalDamage);
+        GetWorldTimerManager().SetTimer(SpawnTimerHandle, TimerDel, DelayTime, false);
+    }
+    else
+    {
+        SpawnSkill2Hammer(FinalDamage);
+    }
+}
+
+void APaladinCharacter::SpawnSkill2Hammer(float FinalDamage)
+{
+    if (!HasAuthority() || !Skill2HammerClass) return;
+
+    FVector MyLoc = GetActorLocation();
+    FVector Forward = GetActorForwardVector();
+
+    // 위치 계산 (전방 8m, 상공 10m)
+    FVector IdealLoc = MyLoc + (Forward * 800.0f) + FVector(0.f, 0.f, 1000.f);
+
+    // 벽/천장 충돌 보정
+    FHitResult HitResult;
+    FCollisionQueryParams QueryParams;
+    QueryParams.AddIgnoredActor(this);
+    bool bHit = GetWorld()->LineTraceSingleByChannel(HitResult, MyLoc, IdealLoc, ECC_Visibility, QueryParams);
+    
+    FVector FinalSpawnLoc = bHit ? (HitResult.Location - (HitResult.ImpactNormal * 50.0f)) : IdealLoc;
+
+    // 디버그
+    DrawDebugSphere(GetWorld(), FinalSpawnLoc, 30.0f, 12, FColor::Red, false, 3.0f);
+
+    // 소환
+    FRotator SpawnRot = FRotator(0.0f, GetActorRotation().Yaw, 0.0f);
+    FActorSpawnParameters Params;
+    Params.Owner = this;
+    Params.Instigator = this;
+    Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+    APaladinSkill2Hammer* Hammer = GetWorld()->SpawnActor<APaladinSkill2Hammer>(
+        Skill2HammerClass, FinalSpawnLoc, SpawnRot, Params
+    );
+
+    if (Hammer)
+    {
+        Hammer->InitializeHammer(FinalDamage, this);
+    }
+}
+
+void APaladinCharacter::Multicast_PlaySkill2CastVFX_Implementation()
+{
+    if (IsLocallyControlled()) return; // 주인은 이미 재생함
+
+    if (Skill2CastVFX)
+    {
+        UNiagaraFunctionLibrary::SpawnSystemAttached(
+            Skill2CastVFX, GetMesh(), TEXT("Hand_R_Root"),
+            FVector::ZeroVector, FRotator::ZeroRotator, EAttachLocation::SnapToTarget, true
+        );
+    }
+}
 
 // ====================================================================================
-//  섹션 5: 방어 시스템 (Job Ability - Shield Logic)
+//  [Section 6] 직업 능력 - 방어 (Job Ability: Shield)
 // ====================================================================================
 
 void APaladinCharacter::JobAbility()
 {
     if (!CanAttack()) return;
-    
     if (!IsSkillUnlocked(1)) return;
-    
-    // 방패가 깨졌거나 HP 0이면 사용 불가
     if (bIsShieldBroken || CurrentShieldHP <= 0.0f) return;
-    
+
+    // 데이터 조회
     UAnimMontage* MontageToPlay = nullptr;
     float ActivationDelay = 0.0f;
-
-    // 캐시에서 조회
-    FSkillData** FoundData = SkillDataCache.Find(FName("JobAbility"));
-    FSkillData* Data = (FoundData) ? *FoundData : nullptr;
-    if (Data)
-    {
-        MontageToPlay = Data->SkillMontage;
-        ActivationDelay = Data->ActionDelay;
-    }
     
-    // 1. 애니메이션 즉시 재생
+    FSkillData** FoundData = SkillDataCache.Find(FName("JobAbility"));
+    if (FoundData && *FoundData)
+    {
+        MontageToPlay = (*FoundData)->SkillMontage;
+        ActivationDelay = (*FoundData)->ActionDelay;
+    }
+
+    // 1. 애니메이션
     if (MontageToPlay)
     {
         PlayActionMontage(MontageToPlay);
         Server_PlayMontage(MontageToPlay);
     }
-    
-    // 2. 딜레이 후 방패 활성화
+
+    // 2. 방패 활성화 (딜레이 적용)
     if (ActivationDelay > 0.0f)
     {
         GetWorldTimerManager().SetTimer(ShieldActivationTimer, this, &APaladinCharacter::ActivateGuard, ActivationDelay, false);
@@ -805,7 +692,7 @@ void APaladinCharacter::JobAbility()
 
 void APaladinCharacter::EndJobAbility()
 {
-    // 버튼 떼면 타이머 취소 및 방어 해제
+    // 버튼 뗄 때 방어 해제
     GetWorldTimerManager().ClearTimer(ShieldActivationTimer);
     Server_SetGuard(false);
 }
@@ -817,29 +704,26 @@ void APaladinCharacter::ActivateGuard()
 
 void APaladinCharacter::Server_SetGuard_Implementation(bool bNewGuarding)
 {
-    // 깨진 상태에서는 방어 불가
     if (bIsShieldBroken && bNewGuarding) return;
-    
+
     bIsGuarding = bNewGuarding;
-    
+
     if (bIsGuarding)
     {
-        // 방어 시작: 회복 중단
+        // 방어 시작: 회복 타이머 중단
         GetWorldTimerManager().ClearTimer(ShieldRegenTimer);
     }
     else
     {
-        // 방어 해제: 몽타주 정지 및 회복 로직 시작
+        // 방어 해제: 몽타주 종료 및 회복 시작
         Multicast_StopMontage(0.25f);
-        
-        bool bIsWaitingForRepair = GetWorldTimerManager().IsTimerActive(ShieldRegenTimer);
-        if (!bIsWaitingForRepair && !GetWorldTimerManager().IsTimerActive(ShieldRegenTimer))
+
+        if (!GetWorldTimerManager().IsTimerActive(ShieldRegenTimer))
         {
-            // 깨지지 않았다면 즉시 서서히 회복
             GetWorldTimerManager().SetTimer(ShieldRegenTimer, this, &APaladinCharacter::RegenShield, 0.1f, true, ShieldRegenDelay);
         }
     }
-    OnRep_IsGuarding();
+    OnRep_IsGuarding(); // 서버에서도 상태 반영 함수 호출
 }
 
 void APaladinCharacter::OnRep_IsGuarding()
@@ -847,96 +731,74 @@ void APaladinCharacter::OnRep_IsGuarding()
     SetShieldActive(bIsGuarding);
 }
 
-// 방패의 물리적/시각적 활성화 처리
 void APaladinCharacter::SetShieldActive(bool bActive)
 {
     if (!ShieldMeshComp) return;
 
     ShieldMeshComp->SetVisibility(bActive);
 
-    // 로컬 플레이어에게만 UI 표시
-    if (ShieldBarWidgetComp) 
+    // UI는 본인 화면에만 표시
+    if (ShieldBarWidgetComp)
     {
         ShieldBarWidgetComp->SetVisibility(bActive && IsLocallyControlled());
     }
 
     if (bActive)
     {
-        // [ON] 방패 켜기: 충돌 채널 설정
+        // [ON] 물리 충돌 활성화
         ShieldMeshComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
         ShieldMeshComp->SetCollisionObjectType(ECC_WorldDynamic);
-        ShieldMeshComp->SetCollisionProfileName(TEXT("Custom")); 
+        ShieldMeshComp->SetCollisionProfileName(TEXT("Custom"));
 
         ShieldMeshComp->SetCollisionResponseToAllChannels(ECR_Ignore);
-        ShieldMeshComp->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
-        ShieldMeshComp->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);   
-        
         ShieldMeshComp->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Block);
-
-        // 아군 투사체는 통과, 적군은 차단
-        ShieldMeshComp->SetCollisionResponseToChannel(ECC_GameTraceChannel1, ECR_Ignore); 
+        
+        // 투사체 처리 (아군은 통과, 적군은 차단)
+        ShieldMeshComp->SetCollisionResponseToChannel(ECC_GameTraceChannel1, ECR_Ignore);
         ShieldMeshComp->SetCollisionResponseToChannel(ECC_GameTraceChannel2, ECR_Block);
         ShieldMeshComp->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
     }
     else
     {
-        // [OFF] 방패 끄기: 모든 충돌 제거
+        // [OFF] 충돌 끄기
         ShieldMeshComp->SetCollisionProfileName(TEXT("NoCollision"));
-        ShieldMeshComp->SetCollisionResponseToAllChannels(ECR_Ignore);
         ShieldMeshComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     }
 }
 
-// 방패 파괴 시 로직 (Cooling Down)
 void APaladinCharacter::OnShieldBroken()
 {
     bIsShieldBroken = true;
     CurrentShieldHP = 0.0f;
-    
-    Server_SetGuard(false); // 강제 해제
-    
+
+    Server_SetGuard(false);
     GetWorldTimerManager().ClearTimer(ShieldRegenTimer);
-    
-    // 데이터 테이블에서 쿨타임 가져오기
+
+    // 쿨타임 데이터 조회
     float BrokenCooldown = 5.0f;
-    
-    // 캐시에서 조회
     FSkillData** FoundData = SkillDataCache.Find(FName("JobAbility"));
-    FSkillData* Data = (FoundData) ? *FoundData : nullptr;
-    
-    if (Data && Data->Cooldown > 0.0f)
+    if (FoundData && (*FoundData)->Cooldown > 0.0f)
     {
-        BrokenCooldown = Data->Cooldown;
+        BrokenCooldown = (*FoundData)->Cooldown;
     }
-    
-    // 수리 대기 타이머 시작
+
+    // 복구 타이머 및 UI 알림
     GetWorldTimerManager().SetTimer(ShieldBrokenTimerHandle, this, &APaladinCharacter::RestoreShieldAfterCooldown, BrokenCooldown, false);
-    
-    if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, TEXT("Shield is Broken! Waiting for cooldown..."));
-
-    // ==============================================================
-    // 방패(직업 스킬) 쿨타임 UI 호출
-    // ==============================================================
-    //  클라이언트에게 명령!
     Client_TriggerSkillCooldown(3, BrokenCooldown);
-    
-    if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red,
-        TEXT("Shield is Broken! Waiting for cooldown..."));
 
+    if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, TEXT("Shield Broken!"));
 }
 
 void APaladinCharacter::RestoreShieldAfterCooldown()
 {
     GetWorldTimerManager().ClearTimer(ShieldActivationTimer);
-    
-    // 방패 완전 복구
+
     CurrentShieldHP = MaxShieldHP;
     bIsShieldBroken = false;
-    
-    if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Blue, TEXT("Shield Fully Restored!"));
+
+    if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Blue, TEXT("Shield Restored!"));
 }
 
-// 방패 서서히 회복 (Regeneration)
 void APaladinCharacter::RegenShield()
 {
     if (bIsGuarding) return;
@@ -951,32 +813,30 @@ void APaladinCharacter::RegenShield()
     }
     else if (bIsShieldBroken && CurrentShieldHP > MaxShieldHP * 0.3f)
     {
-        // 30% 이상 차면 사용 가능 상태로 복구
+        // 30% 복구 시 사용 가능
         bIsShieldBroken = false;
     }
 }
 
 // ====================================================================================
-//  섹션 6: 데미지 처리 (Damage Handling)
+//  [Section 7] 데미지 처리 및 네트워크 유틸 (Damage & Network)
 // ====================================================================================
 
 float APaladinCharacter::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
     float ActualDamage = DamageAmount;
 
-    // [방어 로직] 서버 & 방어 중 & 방패 유효함
+    // [Defense Logic] 방어 중일 때 전방 공격 차단
     if (HasAuthority() && bIsGuarding && !bIsShieldBroken && DamageCauser)
     {
-        // 적이 앞쪽에 있는지 확인 (로컬 X 좌표가 양수면 앞)
         FVector LocalEnemyLoc = GetActorTransform().InverseTransformPosition(DamageCauser->GetActorLocation());
         
+        // 적이 내 앞쪽(X > 100)에 있는가?
         if (LocalEnemyLoc.X > 100.0f)
         {
-            // 방어 성공: 본체 데미지 0, 방패 체력 감소
-            ActualDamage = 0.0f; 
+            ActualDamage = 0.0f; // 본체 데미지 무효화
             CurrentShieldHP -= DamageAmount;
-            
-            // 방패 파괴 체크
+
             if (CurrentShieldHP <= 0.0f)
             {
                 OnShieldBroken();
@@ -984,13 +844,28 @@ float APaladinCharacter::TakeDamage(float DamageAmount, FDamageEvent const& Dama
         }
     }
 
-    // 최종 데미지 적용
     return Super::TakeDamage(ActualDamage, DamageEvent, EventInstigator, DamageCauser);
 }
 
-// ====================================================================================
-//  섹션 7: 네트워크 및 유틸리티 (Network RPCs & Utils)
-// ====================================================================================
+bool APaladinCharacter::IsBlockingDirection(FVector IncomingDirection) const
+{
+    if (!bIsGuarding || bIsShieldBroken) return false;
+
+    // 내적 계산: 서로 마주보는 방향일 때(값이 음수) 방어 성공
+    float DotResult = FVector::DotProduct(GetActorForwardVector(), IncomingDirection.GetSafeNormal());
+    return DotResult < -0.2f;
+}
+
+void APaladinCharacter::ConsumeShield(float Amount)
+{
+    if (!HasAuthority()) return;
+
+    CurrentShieldHP -= Amount;
+    if (CurrentShieldHP <= 0.0f)
+    {
+        OnShieldBroken();
+    }
+}
 
 void APaladinCharacter::Server_PlayMontage_Implementation(UAnimMontage* MontageToPlay)
 {
@@ -1001,14 +876,14 @@ void APaladinCharacter::Multicast_PlayMontage_Implementation(UAnimMontage* Monta
 {
     if (MontageToPlay && !IsLocallyControlled())
     {
-       PlayAnimMontage(MontageToPlay);
+        PlayAnimMontage(MontageToPlay);
     }
 }
 
 void APaladinCharacter::Multicast_StopMontage_Implementation(float BlendOutTime)
 {
     if (IsDead()) return;
-    
+
     UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
     if (AnimInstance && AnimInstance->GetCurrentActiveMontage())
     {
@@ -1017,49 +892,11 @@ void APaladinCharacter::Multicast_StopMontage_Implementation(float BlendOutTime)
     }
 }
 
-// 1. 방향 판정 헬퍼 (내적 활용)
-bool APaladinCharacter::IsBlockingDirection(FVector IncomingDirection) const
-{
-    // 방어 중이 아니거나 방패가 깨졌으면 못 막음
-    if (!bIsGuarding || bIsShieldBroken) return false;
-
-    // 내적(Dot Product) 계산
-    // 내 정면(Forward)과 들어오는 힘(Direction)이 서로 마주봐야 함 (반대 방향)
-    // 예: 바람이 남쪽(↓)으로 불 때, 나는 북쪽(↑)을 봐야 막아짐 -> 내적 값은 -1.0
-    float DotResult = FVector::DotProduct(GetActorForwardVector(), IncomingDirection.GetSafeNormal());
-
-    // -0.2 이하면 대략 전방 160도 정도 커버 (수치가 -1에 가까울수록 정면만 막음)
-    return DotResult < -0.2f;
-}
-
-// 2. 방패 체력 소모 (서버 전용)
-void APaladinCharacter::ConsumeShield(float Amount)
-{
-    if (!HasAuthority()) return; // 서버만 처리
-
-    CurrentShieldHP -= Amount;
-    
-
-    // 깨짐 체크
-    if (CurrentShieldHP <= 0.0f)
-    {
-        OnShieldBroken();
-    }
-}
-
 void APaladinCharacter::Multicast_SetTrailActive_Implementation(bool bActive)
 {
     if (WeaponTrailComp)
     {
-        if (bActive)
-        {
-            // 트레일 켜기 (리셋하면서 켜야 깔끔함)
-            WeaponTrailComp->Activate(true);
-        }
-        else
-        {
-            // 트레일 끄기
-            WeaponTrailComp->Deactivate();
-        }
+        if (bActive) WeaponTrailComp->Activate(true);
+        else WeaponTrailComp->Deactivate();
     }
 }

@@ -10,70 +10,66 @@ UCLASS()
 class PROJECT_BANG_SQUAD_API APaladinCharacter : public ABaseCharacter
 {
     GENERATED_BODY()
-    
+
 public:
     // ====================================================================================
-    //  섹션 1: 생성자 및 필수 오버라이드 (Constructor & Essentials)
+    //  [Section 1] 생성자 및 필수 오버라이드 (Constructor & Essentials)
     // ====================================================================================
     APaladinCharacter();
-    
 
-    // 리플리케이션 변수 등록 (네트워크)
     virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;
-    
-    // 데미지 처리 함수 (서버 권한)
-    virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent,
-        class AController* EventInstigator, AActor* DamageCauser) override;
+    virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
 
     // ====================================================================================
-    //  섹션 7: 네트워크 및 애니메이션 유틸리티 (Network RPCs)
-    //  (외부에서 호출될 가능성이 있어 public에 배치)
+    //  [Section 2] 방어 및 기믹 처리 (Defense & Interaction)
+    // ====================================================================================
+    // 특정 방향에서 오는 공격 방어 여부 확인 (내적 계산)
+    bool IsBlockingDirection(FVector IncomingDirection) const;
+
+    // 외부(기믹 등)에서 방패 체력 소모 시 호출
+    void ConsumeShield(float Amount);
+
+    // 방패 메쉬 접근자
+    FORCEINLINE class UStaticMeshComponent* GetShieldMesh() const { return ShieldMeshComp; }
+
+    // ====================================================================================
+    //  [Section 3] 네트워크 RPC (Network Utilities)
     // ====================================================================================
     UFUNCTION(Server, Reliable)
     void Server_PlayMontage(UAnimMontage* MontageToPlay);
-    
+
     UFUNCTION(NetMulticast, Reliable)
     void Multicast_PlayMontage(UAnimMontage* MontageToPlay);
-    
-    UFUNCTION(NetMulticast, Reliable) 
+
+    UFUNCTION(NetMulticast, Reliable)
     void Multicast_StopMontage(float BlendOutTime = 0.25f);
-    void Multicast_StopMontage_Implementation(float BlendOutTime);
 
-    //  특정 방향에서 오는 힘을 막고 있는지 검사 (바람, 투사체 등 공용)
-    bool IsBlockingDirection(FVector IncomingDirection) const;
-
-    // [ 외부(기믹)에서 방패 체력을 깎기 위한 함수
-    void ConsumeShield(float Amount);
-
-    FORCEINLINE class UStaticMeshComponent* GetShieldMesh() const { return ShieldMeshComp; }
-
-    
-    // 방패 상태 관리
-    UPROPERTY(ReplicatedUsing = OnRep_IsGuarding, BlueprintReadOnly, Category = "Combat")
+    // ====================================================================================
+    //  [Section 4] 방패 상태 변수 (Replicated Properties)
+    // ====================================================================================
+    UPROPERTY(ReplicatedUsing = OnRep_IsGuarding, BlueprintReadOnly, Category = "Combat|Shield")
     bool bIsGuarding;
 
-    UPROPERTY(Replicated, BlueprintReadOnly, Category = "Shield")
+    UPROPERTY(Replicated, BlueprintReadOnly, Category = "Combat|Shield")
     bool bIsShieldBroken;
 
-    UPROPERTY(Replicated, BlueprintReadOnly, Category = "Shield")
+    UPROPERTY(Replicated, BlueprintReadOnly, Category = "Combat|Shield")
     float CurrentShieldHP;
 
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Shield")
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat|Shield")
     float MaxShieldHP = 200.0f;
+
 protected:
-    
     // ====================================================================================
-    //  섹션 2: 초기화 및 상태 이벤트 (Initialization & State Events)
+    //  [Section 5] 라이프사이클 및 이벤트 (Lifecycle & Events)
     // ====================================================================================
     virtual void BeginPlay() override;
     virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
     virtual void OnDeath() override;
-    
-    // 착지 시점 감지 (분쇄 스킬 VFX 처리용)
-    virtual void Landed(const FHitResult& Hit) override;
+    virtual void Landed(const FHitResult& Hit) override; // 분쇄 스킬 착지 감지용
 
     // ====================================================================================
-    //  섹션 3: 기본 공격 및 콤보 (Basic Attack & Combo)
+    //  [Section 6] 기본 공격 및 콤보 (Basic Attack & Combo)
     // ====================================================================================
     virtual void Attack() override;
 
@@ -82,117 +78,106 @@ protected:
     FTimerHandle ComboResetTimer;
     void ResetCombo();
 
-    // 공격 판정 (Melee Trace)
+    // 근접 공격 판정 (Trace)
     void StartMeleeTrace();
     void PerformMeleeTrace();
     void StopMeleeTrace();
 
-    // 공격 판정 관련 변수
+    // 판정 관련 변수
     FTimerHandle AttackHitTimerHandle;
     FTimerHandle HitLoopTimerHandle;
     FVector LastHammerLocation;
+    
+    UPROPERTY()
     TSet<AActor*> SwingDamagedActors;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
-    FVector HammerHitBoxSize = FVector(30.0f, 30.0f, 30.0f);                       
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat|Trace")
+    FVector HammerHitBoxSize = FVector(30.0f, 30.0f, 30.0f);
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
-    float HitDuration = 0.25f; 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat|Trace")
+    float HitDuration = 0.25f;
 
-    // [네트워크] 서버가 클라이언트에게 "타격감 연출해!"라고 명령하는 함수
+    // ====================================================================================
+    //  [Section 7] 타격감 및 VFX (Feel & Visual Effects)
+    // ====================================================================================
+    // [역경직] 클라이언트 화면 멈춤 및 카메라 흔들림
     UFUNCTION(Client, Reliable)
     void Client_TriggerHitStop();
-    void Client_TriggerHitStop_Implementation(); // 언리얼이 자동으로 생성하는 구현부
     
-    // [역경직] 시간을 원래대로 복구하는 함수
     void RestoreTimeDilation();
-    // [역경직] 시간 복구용 타이머 핸들
     FTimerHandle HitStopTimer;
-    // [역경직] 멈추는 시간
+
     UPROPERTY(EditAnywhere, Category = "Combat|Feel")
     float HitStopDuration = 0.1f;
-    // [역경직] 얼마나 느려질지
+
     UPROPERTY(EditAnywhere, Category = "Combat|Feel")
     float HitStopTimeDilation = 0.01f;
-    // 에디터에서 카메라 흔들림 블루프린트를 넣을 변수
+
     UPROPERTY(EditAnywhere, Category = "Combat|Feel")
     TSubclassOf<class UCameraShakeBase> HitShakeClass;
-    
-    
-    // 에디터에서 할당할 트레일 이펙트 에셋 (나이아가라 시스템)
+
+    // 무기 트레일 이펙트
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "VFX")
     UNiagaraSystem* WeaponTrailVFX;
 
-    // 실제 게임에서 생성되어 무기에 붙어있을 컴포넌트
     UPROPERTY()
     UNiagaraComponent* WeaponTrailComp;
-    
-    // 서버가 모든 클라이언트에게 "트레일 켜/꺼" 명령을 내리는 함수
+
     UFUNCTION(NetMulticast, Unreliable)
     void Multicast_SetTrailActive(bool bActive);
-    
+
     // ====================================================================================
-    //  섹션 4: 스킬 시스템 (Skill System - Smash)
+    //  [Section 8] 스킬 시스템 (Skill System)
     // ====================================================================================
-    
+    // 스킬 데이터 캐싱
     TMap<FName, FSkillData*> SkillDataCache;
-    
     void ProcessSkill(FName SkillRowName);
 
     UFUNCTION(Server, Reliable)
     void Server_ProcessSkill(FName SkillRowName);
+
+    // --- Skill 1: 분쇄 (Smash) ---
+    virtual void Skill1() override;
     
-    // 스킬 1
-    virtual void Skill1() override; // 분쇄
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "VFX")
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "VFX|Smash")
     UNiagaraSystem* SmashImpactVFX;
-    
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "VFX")
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "VFX|Smash")
     FVector SmashVFXScale;
-    
+
     UFUNCTION(NetMulticast, Unreliable)
     void Multicast_PlaySmashVFX(FVector Location);
-    
-    // 스킬 딜레이 및 데미지 변수
-    float CurrentActionDelay = 0.0f;
-    float CurrentSkillDamage = 0.0f;
-    bool bHasDealtSmashDamage = false;
 
-    // 타이머가 끝나면 실제로 폭발 데미지를 주는 함수 (인자 추가됨)
     UFUNCTION()
-    void PerformSmashDamage(float SmashingDamage);
-    
-    // 스킬 2
+    void PerformSmashDamage(float SmashingDamage); // 타이머 호출용
+
+    // --- Skill 2: 망치 소환 (Hammer) ---
     virtual void Skill2() override;
-    // 서버 RPC
+
     UFUNCTION(Server, Reliable)
     void Server_Skill2();
-    
-    // 스킬 2 시전 이펙트
-    UPROPERTY(EditAnywhere, Category= "VFX")
+
+    UPROPERTY(EditAnywhere, Category = "VFX|Skill2")
     UNiagaraSystem* Skill2CastVFX;
-    
+
     UFUNCTION(NetMulticast, Reliable)
     void Multicast_PlaySkill2CastVFX();
-    
-    // 타이머가 끝나면 실제로 망치를 소환할 함수
+
     UFUNCTION()
     void SpawnSkill2Hammer(float FinalDamage);
-    
-    // 망치 액터 클래스
+
     UPROPERTY(EditAnywhere, Category = "Combat|Skill")
     TSubclassOf<class APaladinSkill2Hammer> Skill2HammerClass;
-    
-    // 쿨타임 체크용 변수
-    float Skill2ReadyTime = 0.0f;
- 
+
+    float Skill2ReadyTime = 0.0f; // 로컬 쿨타임 체크용
+
     // ====================================================================================
-    //  섹션 5: 방어 시스템 (Job Ability - Shield)
+    //  [Section 9] 직업 능력 - 방패 (Job Ability)
     // ====================================================================================
     virtual void JobAbility() override;
     void EndJobAbility();
 
-    // 방패 활성화 로직 (타이머 -> ActivateGuard -> Server_SetGuard)
+    // 방패 활성화 로직
     FTimerHandle ShieldActivationTimer;
     void ActivateGuard();
 
@@ -202,9 +187,7 @@ protected:
     UFUNCTION()
     void OnRep_IsGuarding();
 
-    
-
-    // 방패 회복 및 파괴
+    // 방패 상태 관리
     void RegenShield();
     void OnShieldBroken();
     void RestoreShieldAfterCooldown();
@@ -213,39 +196,37 @@ protected:
     FTimerHandle ShieldRegenTimer;
     FTimerHandle ShieldBrokenTimerHandle;
 
-    UPROPERTY(EditAnywhere, Category = "Shield")
+    UPROPERTY(EditAnywhere, Category = "Combat|Shield")
     float ShieldRegenRate = 5.0f;
-    
-    UPROPERTY(EditAnywhere, Category = "Shield")
+
+    UPROPERTY(EditAnywhere, Category = "Combat|Shield")
     float ShieldRegenDelay = 2.0f;
 
-    float GuardWalkSpeed = 250.0f;
-
     // 방패 컴포넌트
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat")
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
     class UStaticMeshComponent* ShieldMeshComp;
-    
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
     class UWidgetComponent* ShieldBarWidgetComp;
 
 private:
     // ====================================================================================
-    //  Internal Helpers & State (Private)
+    //  [Internal] 내부 변수 (Private Variables)
     // ====================================================================================
-    
     // 무기 컴포넌트 캐싱 (최적화)
     UPROPERTY()
     UStaticMeshComponent* CachedWeaponMesh;
-    
-    // 분쇄 점프 상태 확인용 플래그
-    bool bIsSmashing = false;
-    
-    // 이번 스킬 데미지 임시 저장 (CPP 로직에서 사용)
+
+    // 상태 플래그
+    bool bIsSmashing = false;           // 분쇄 점프 중인지
+    bool bHasDealtSmashDamage = false;  // 분쇄 데미지 중복 방지
+
+    // 스킬 관련 임시 변수
     float CurrentSmashDamage = 0.0f;
-    
-    // 스킬 쿨타임 관리 맵
+    float CurrentActionDelay = 0.0f;
+    float CurrentSkillDamage = 0.0f;
+
+    // 쿨타임 관리 맵
     UPROPERTY()
     TMap<FName, FTimerHandle> SkillTimers;
-    
-    
 };
