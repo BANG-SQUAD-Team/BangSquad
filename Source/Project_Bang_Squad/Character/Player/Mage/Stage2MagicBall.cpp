@@ -51,10 +51,22 @@ void AStage2MagicBall::BeginPlay()
 {
     Super::BeginPlay();
 
+    if (BallMesh)
+    {
+        BallMesh->SetRenderCustomDepth(false);
+    }
+    
+    
     if (HasAuthority())
     {
-        DamageTrigger->OnComponentBeginOverlap.AddDynamic(this, &AStage2MagicBall::OnOverlapBegin);
-        BallMesh->OnComponentBeginOverlap.AddDynamic(this, &AStage2MagicBall::OnOverlapBegin);
+        if (DamageTrigger)
+        {
+            DamageTrigger->OnComponentBeginOverlap.AddDynamic(this, &AStage2MagicBall::OnOverlapBegin);
+        }
+        if (BallMesh)
+        {
+            BallMesh->OnComponentBeginOverlap.AddDynamic(this, &AStage2MagicBall::OnOverlapBegin);
+        }
     }
 }
 
