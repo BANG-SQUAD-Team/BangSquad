@@ -32,6 +32,9 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Spawner")
 	FOnSpawnerCleared OnSpawnerCleared;
 	
+	UFUNCTION(BlueprintCallable, Category = "Spawner")
+	int32 GetCurrentEnemyCount() const { return CurrentAliveCount; }
+	
 protected:
 	// 구역
 	

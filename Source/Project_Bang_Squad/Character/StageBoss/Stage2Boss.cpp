@@ -36,7 +36,7 @@ float AStage2Boss::TakeDamage(float DamageAmount, FDamageEvent const& DamageEven
 
     float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
 
-    // Ã¼·Â ÆäÀÌÁî Ã¼Å©
+    // Ã¼ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ Ã¼Å©
     CheckHealthPhase();
 
     return ActualDamage;
@@ -46,12 +46,12 @@ void AStage2Boss::CheckHealthPhase()
 {
     if (!HealthComponent) return;
 
-    // [¼öÁ¤] HealthComponent ³»ºÎ ¼öÁ¤ ¾øÀÌ Á÷Á¢ ºñÀ² °è»ê
+    // [ï¿½ï¿½ï¿½ï¿½] HealthComponent ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½
     float MaxHP = HealthComponent->GetMaxHealth();
     float CurHP = HealthComponent->GetHealth();
     float HPRatio = (MaxHP > 0.0f) ? (CurHP / MaxHP) : 0.0f;
 
-    // 70% ÆäÀÌÁî
+    // 70% ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
     if (!bPhase70Triggered && HPRatio <= 0.7f)
     {
         bPhase70Triggered = true;
@@ -60,7 +60,7 @@ void AStage2Boss::CheckHealthPhase()
         if (auto* AI = Cast<AStage2SpiderAIController>(GetController()))
             AI->StartPhasePattern();
 
-        // [¼öÁ¤] StartSpawning -> SetSpawnerActive
+        // [ï¿½ï¿½ï¿½ï¿½] StartSpawning -> SetSpawnerActive
         if (MinionSpawner)
             MinionSpawner->SetSpawnerActive(true);
 
@@ -69,7 +69,7 @@ void AStage2Boss::CheckHealthPhase()
 
         UE_LOG(LogTemp, Warning, TEXT("Boss Phase 1 (70 Percent) Started!"));
     }
-    // 30% ÆäÀÌÁî
+    // 30% ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
     else if (!bPhase30Triggered && HPRatio <= 0.3f)
     {
         bPhase30Triggered = true;
@@ -90,7 +90,7 @@ void AStage2Boss::CheckHealthPhase()
 
 void AStage2Boss::CheckMinionsStatus()
 {
-    // [ÇÊ¿ä] EnemySpawner¿¡ GetCurrentEnemyCount() ÇÔ¼ö°¡ ÇÊ¿äÇÕ´Ï´Ù.
+    // [ï¿½Ê¿ï¿½] EnemySpawnerï¿½ï¿½ GetCurrentEnemyCount() ï¿½Ô¼ï¿½ï¿½ï¿½ ï¿½Ê¿ï¿½ï¿½Õ´Ï´ï¿½.
     if (MinionSpawner && MinionSpawner->GetCurrentEnemyCount() <= 0)
     {
         bIsInvincible = false;
@@ -140,7 +140,7 @@ void AStage2Boss::PerformSmashAttack(AActor* Target)
 
 void AStage2Boss::StartQTEPattern(AActor* Target)
 {
-    // QTE ½ÃÀÛ ·ÎÁ÷
+    // QTE ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 }
 
 void AStage2Boss::OnQTEResult(bool bSuccess)
@@ -148,12 +148,12 @@ void AStage2Boss::OnQTEResult(bool bSuccess)
     if (bSuccess)
     {
         UE_LOG(LogTemp, Log, TEXT("QTE Success!"));
-        // ±×·Î±â »óÅÂ µî Ã³¸®
+        // ï¿½×·Î±ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ Ã³ï¿½ï¿½
     }
     else
     {
         UE_LOG(LogTemp, Log, TEXT("QTE Failed!"));
-        // Àü¸ê±â µî Ã³¸®
+        // ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ Ã³ï¿½ï¿½
     }
 }
 
@@ -164,4 +164,15 @@ float AStage2Boss::PlayMeleeAttackAnim()
         return PlayAnimMontage(BossData->AttackMontages[0]);
     }
     return 0.0f;
+}
+
+void AStage2Boss::ServerRPC_QTEResult_Implementation(APlayerController* Player, bool bSuccess)
+{
+    // ì„œë²„ ë¡œê·¸ ì¶œë ¥
+    UE_LOG(LogTemp, Warning, TEXT("[Server] Received QTE Result from %s : %s"), 
+        *Player->GetName(), 
+        bSuccess ? TEXT("Success") : TEXT("Fail"));
+
+    // ê¸°ì¡´ì— ë§Œë“¤ì–´ë‘ì‹  OnQTEResult í•¨ìˆ˜ë¥¼ í˜¸ì¶œí•˜ì—¬ ë¡œì§ ì²˜ë¦¬
+    OnQTEResult(bSuccess);
 }

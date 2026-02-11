@@ -5,6 +5,7 @@
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "Stage2Boss.h"
+#include "Project_Bang_Squad/Character/StageBoss/Stage2Boss.h"
 #include "Project_Bang_Squad/UI/Stage/Boss/QTEWidget.h"
 
 AStage2BossPlayerController::AStage2BossPlayerController()
@@ -111,6 +112,15 @@ void AStage2BossPlayerController::Client_EndQTE_Implementation(bool bSuccess)
 
 	// 참조 해제 (메모리 누수 방지)
 	CurrentBossRef = nullptr;
+}
+
+void ABSPlayerController::Server_ReportQTEResult_Implementation(AStage2Boss* Boss, bool bSuccess)
+{
+	if (Boss)
+	{
+		// 보스에게 결과 전달 (이전에 만든 보스의 RPC 호출)
+		Boss->ServerRPC_QTEResult(this, bSuccess);
+	}
 }
 
 void AStage2BossPlayerController::OnQTETapInput()
