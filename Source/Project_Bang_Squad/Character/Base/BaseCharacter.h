@@ -144,6 +144,9 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
 	class UStaticMeshComponent* HeadAccessoryComponent;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Socket")
+	FName AccessorySocketName;
+
 	// 2. 스켈레탈 메쉬용 (망토, 꼬리 등)
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
 	class USkeletalMeshComponent* HeadSkeletalComp;

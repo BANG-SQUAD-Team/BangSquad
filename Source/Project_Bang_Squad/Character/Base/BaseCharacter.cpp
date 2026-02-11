@@ -71,16 +71,18 @@ ABaseCharacter::ABaseCharacter()
 		SetNetUpdateFrequency(100.0f);     // 1초에 100번 상태 갱신 시도 (서버 -> 클라)
 		SetMinNetUpdateFrequency(66.0f);   // 최소 66번은 보장 (프레임 방어)
 
+		AccessorySocketName = FName("Bip001-Head");
+
 		HeadAccessoryComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("HeadAccessory"));
-		HeadAccessoryComponent->SetupAttachment(GetMesh(), TEXT("Bip001-Head"));
+		HeadAccessoryComponent->SetupAttachment(GetMesh(), AccessorySocketName);
 		HeadAccessoryComponent->SetCollisionProfileName(TEXT("NoCollision"));
 
 		HeadSkeletalComp = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("HeadSkeletalComp"));
-		HeadSkeletalComp->SetupAttachment(GetMesh(), TEXT("Bip001-Head"));
+		HeadSkeletalComp->SetupAttachment(GetMesh(), AccessorySocketName); // 여기도 변수로!
 		HeadSkeletalComp->SetCollisionProfileName(TEXT("NoCollision"));
 
 		OverheadMarkerMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("OverheadMarkerMesh"));
-		OverheadMarkerMesh->SetupAttachment(GetMesh(), FName("Head")); // 'Head' 소켓에 부착 (소켓 이름 확인 필요)
+		OverheadMarkerMesh->SetupAttachment(GetMesh(), FName("Bip001-Head"));
 
 		// 위치/회전/스케일 조정 (세모가 머리 위에 예쁘게 뜨도록)
 		OverheadMarkerMesh->SetRelativeLocation(FVector(0.0f, 0.0f, 30.0f));
@@ -91,6 +93,8 @@ ABaseCharacter::ABaseCharacter()
 
 		// 충돌은 필요 없으므로 끔
 		OverheadMarkerMesh->SetCollisionProfileName(TEXT("NoCollision"));
+
+
 }
 
 void ABaseCharacter::EquipShopItem(const FShopItemData& ItemData)
@@ -103,34 +107,32 @@ void ABaseCharacter::EquipShopItem(const FShopItemData& ItemData)
 	if (ItemData.SkeletalMesh != nullptr && HeadSkeletalComp)
 	{
 		HeadSkeletalComp->SetSkeletalMesh(ItemData.SkeletalMesh);
-		HeadSkeletalComp->SetRelativeTransform(ItemData.AdjustTransform); // 조절값 적용
+		HeadSkeletalComp->SetRelativeTransform(ItemData.AdjustTransform);
 
-		// 머리 뼈에 붙이기
+		// [수정] "Bip001-Head" 대신 변수(AccessorySocketName) 사용!
 		HeadSkeletalComp->AttachToComponent(
 			GetMesh(),
 			FAttachmentTransformRules::SnapToTargetIncludingScale,
-			TEXT("Bip001-Head")
+			AccessorySocketName // << 이렇게 변수를 넣어주세요
 		);
 
-		HeadSkeletalComp->SetVisibility(true); // 켜기
+		HeadSkeletalComp->SetVisibility(true);
 	}
 	// 3. 아니면 스태틱 메쉬(딱딱한 것)인가?
 	else if (ItemData.StaticMesh != nullptr && HeadAccessoryComponent)
 	{
 		HeadAccessoryComponent->SetStaticMesh(ItemData.StaticMesh);
-		HeadAccessoryComponent->SetRelativeTransform(ItemData.AdjustTransform); // 조절값 적용
+		HeadAccessoryComponent->SetRelativeTransform(ItemData.AdjustTransform);
 
-		// 머리 뼈에 붙이기
+		// [수정] 여기도 "Bip001-Head" 대신 변수 사용!
 		HeadAccessoryComponent->AttachToComponent(
 			GetMesh(),
 			FAttachmentTransformRules::SnapToTargetIncludingScale,
-			TEXT("Bip001-Head")
+			AccessorySocketName // << 변수 사용
 		);
 
-		HeadAccessoryComponent->SetVisibility(true); // 켜기
+		HeadAccessoryComponent->SetVisibility(true);
 	}
-
-
 }
 
 void ABaseCharacter::Server_EquipShopItem_Implementation(const FShopItemData& ItemData)
@@ -224,26 +226,17 @@ void ABaseCharacter::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 	ApplySlopeSlide(DeltaTime);
 	
-
-	// 디버그: 현재 밟고 있는 바닥 액터 이름 출력
-	/*if (GetCharacterMovement() && GetCharacterMovement()->CurrentFloor.bBlockingHit)
+	if (OverheadMarkerMesh)
 	{
-		AActor* FloorActor = GetCharacterMovement()->CurrentFloor.HitResult.GetActor();
-		if (FloorActor)
+		if (APlayerCameraManager* CamManager = UGameplayStatics::GetPlayerCameraManager(GetWorld(), 0))
 		{
-			// 화면 왼쪽 상단에 초록색으로 0초(매 프레임 갱신)동안 표시
-			// Key값(123)을 고정해서 메시지가 쌓이지 않고 한 줄로 갱신되게 함
-			GEngine->AddOnScreenDebugMessage(123, 0.f, FColor::Green,
-				FString::Printf(TEXT("Floor: %s"), *FloorActor->GetName()));
+			FRotator CamRot = CamManager->GetCameraRotation();
+
+			CamRot.Add(0.0f, 0.0f, 180.0f);
+
+			OverheadMarkerMesh->SetWorldRotation(CamRot);
 		}
 	}
-	else
-	{
-		// 공중에 떠있거나 바닥이 없으면 "None" 출력
-		GEngine->AddOnScreenDebugMessage(123, 0.f, FColor::Red, TEXT("Floor: None"));
-	}
-	*/
-
 }
 
 float ABaseCharacter::TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser)
