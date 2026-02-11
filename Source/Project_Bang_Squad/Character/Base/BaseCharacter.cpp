@@ -27,7 +27,7 @@ ABaseCharacter::ABaseCharacter()
 		bUseControllerRotationRoll = false;
 		
 		UCharacterMovementComponent* MoveComp = GetCharacterMovement();
-		MoveComp->bOrientRotationToMovement = true;
+		MoveComp->bOrientRotationToMovement = false;
 		MoveComp->RotationRate = FRotator(0.f, 720.f, 0.f);
 		MoveComp->MaxWalkSpeed = 550.f;
 		MoveComp->JumpZVelocity = 500.f;
