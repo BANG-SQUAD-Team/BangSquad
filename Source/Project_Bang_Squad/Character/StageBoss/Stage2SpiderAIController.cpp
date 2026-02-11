@@ -5,6 +5,9 @@
 #include "NavigationSystem.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/Character.h"
+#include "Components/CapsuleComponent.h"
+#include "Project_Bang_Squad/Character/MonsterBase/EnemyBossData.h"
+
 
 AStage2SpiderAIController::AStage2SpiderAIController()
 {
@@ -56,9 +59,47 @@ void AStage2SpiderAIController::Tick(float DeltaTime)
         UpdateRetreat(DeltaTime);
         break;
 
+    case ESpiderPatternState::SmashQTE:
+    {
+        // StateTimer가 -1.0f면 "아직 도착 안 함(돌진 중)" 상태로 간주
+        if (StateTimer < 0.0f)
+        {
+            // 1. 타겟에게 맹렬히 다시 접근
+            MoveToActor(TargetActor, 1.0f);
+
+            // 2. 공격 사거리 체크 (UpdateChase와 동일 로직)
+            float WeaponReach = 150.0f;
+            if (SpiderBoss && SpiderBoss->GetBossData())
+                WeaponReach = SpiderBoss->GetBossData()->AttackRange;
+
+            float BossRadius = SpiderBoss->GetCapsuleComponent()->GetScaledCapsuleRadius();
+            float Dist = FVector::Dist(SpiderBoss->GetActorLocation(), TargetActor->GetActorLocation());
+
+            // 표면 거리가 사거리 안쪽이면? -> 찍기 발동!
+            // (더 바짝 붙게 하려고 -50.0f 함)
+            if (Dist <= (BossRadius + WeaponReach - 50.0f))
+            {
+                StopMovement();
+                SpiderBoss->PerformSmashAttack(TargetActor); // 쾅!
+                StateTimer = 3.0f; // 공격 후 3초간 대기 (후딜레이)
+            }
+        }
+        // StateTimer가 양수면 "이미 찍었고 쉬는 중"
+        else
+        {
+            StateTimer -= DeltaTime;
+            if (StateTimer <= 0.0f)
+            {
+                FindNearestTarget();
+                CurrentState = ESpiderPatternState::Chase; // 다시 평타 추격 모드로
+            }
+        }
+    }
+    break;
+
+    // 나머지 패턴(평타, 거미줄)은 기존 타이머 방식 유지
     case ESpiderPatternState::Attack:
     case ESpiderPatternState::WebShot:
-    case ESpiderPatternState::SmashQTE:
         if (StateTimer > 0.0f)
         {
             StateTimer -= DeltaTime;
@@ -67,14 +108,15 @@ void AStage2SpiderAIController::Tick(float DeltaTime)
         {
             if (CurrentState == ESpiderPatternState::Attack)
             {
+                // 평타 때리고 나면 -> 후퇴(Retreat) 시작
                 CurrentState = ESpiderPatternState::Retreat;
-                StateTimer = 2.0f;
+                StateTimer = 2.0f; // 2초 동안 뒤로 도망감
 
                 FRotator BackRot = SpiderBoss->GetActorRotation();
                 BackRot.Yaw += 180.0f;
                 SpiderBoss->SetActorRotation(BackRot);
             }
-            else
+            else // WebShot 끝남
             {
                 FindNearestTarget();
                 CurrentState = ESpiderPatternState::Chase;
@@ -88,11 +130,26 @@ void AStage2SpiderAIController::UpdateChase(float DeltaTime)
 {
     if (!IsValid(TargetActor)) return;
 
-    // [Fix: .Get() 제거]
-    float Dist = FVector::Dist(SpiderBoss->GetActorLocation(), TargetActor->GetActorLocation());
-    float AttackRange = 250.0f;
+    // 사거리 데이터 가져오기
+    float BaseRange = 150.0f;
+    if (SpiderBoss && SpiderBoss->GetBossData())
+        BaseRange = SpiderBoss->GetBossData()->AttackRange;
 
-    if (Dist <= AttackRange)
+    // 덩치 가져오기
+    float BossRadius = 0.0f;
+    if (SpiderBoss && SpiderBoss->GetCapsuleComponent())
+        BossRadius = SpiderBoss->GetCapsuleComponent()->GetScaledCapsuleRadius();
+
+    float TargetRadius = 40.0f;
+    if (TargetActor->FindComponentByClass<UCapsuleComponent>())
+        TargetRadius = TargetActor->FindComponentByClass<UCapsuleComponent>()->GetScaledCapsuleRadius();
+
+    // 표면 거리 계산
+    float CenterDist = FVector::Dist(SpiderBoss->GetActorLocation(), TargetActor->GetActorLocation());
+    float SurfaceDist = CenterDist - BossRadius - TargetRadius;
+
+    // 바짝 붙어서(-10) 평타 때리기
+    if (SurfaceDist <= (BaseRange - 10.0f))
     {
         StopMovement();
         CurrentState = ESpiderPatternState::Attack;
@@ -102,12 +159,13 @@ void AStage2SpiderAIController::UpdateChase(float DeltaTime)
     }
     else
     {
-        MoveToActor(TargetActor, AttackRange - 50.0f);
+        MoveToActor(TargetActor, 1.0f);
     }
 }
 
 void AStage2SpiderAIController::UpdateRetreat(float DeltaTime)
 {
+    // 후퇴 중...
     if (StateTimer > 0.0f)
     {
         StateTimer -= DeltaTime;
@@ -120,25 +178,30 @@ void AStage2SpiderAIController::UpdateRetreat(float DeltaTime)
         else
         {
             StopMovement();
-            StateTimer = 0.0f;
+            StateTimer = 0.0f; // 막히면 바로 다음 패턴으로
         }
     }
+    // 후퇴 끝! 이제 뭐 할까?
     else
     {
         StopMovement();
         FindNearestTarget();
 
+        // 짝수: 거미줄 (얘는 원거리니까 제자리에서 쏴도 됨)
         if (PatternCycleIndex % 2 == 0)
         {
             CurrentState = ESpiderPatternState::WebShot;
             SpiderBoss->PerformWebShot(TargetActor);
             StateTimer = 2.0f;
         }
+        // 홀수: 찍기 (얘는 다시 달려가야 함!)
         else
         {
             CurrentState = ESpiderPatternState::SmashQTE;
-            SpiderBoss->PerformSmashAttack(TargetActor);
-            StateTimer = 3.0f;
+
+            // [핵심] 여기서 바로 PerformSmashAttack을 부르지 않습니다.
+            // 대신 타이머를 -1로 설정하여 "Tick 함수에서 다시 돌진해라"라고 신호를 줍니다.
+            StateTimer = -1.0f;
         }
 
         PatternCycleIndex++;
@@ -163,13 +226,31 @@ bool AStage2SpiderAIController::IsSafeToRetreat(FVector Direction, float CheckDi
 
 void AStage2SpiderAIController::FindNearestTarget()
 {
-    TArray<AActor*> Players;
-    UGameplayStatics::GetAllActorsOfClass(GetWorld(), ACharacter::StaticClass(), Players);
+    TArray<AActor*> Candidates;
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), ACharacter::StaticClass(), Candidates);
 
-    if (Players.Num() > 0)
+    TArray<AActor*> ValidPlayers;
+
+    for (AActor* Actor : Candidates)
     {
-        int32 Idx = FMath::RandRange(0, Players.Num() - 1);
-        TargetActor = Players[Idx];
+        // 1. 나 자신은 제외
+        if (Actor == SpiderBoss) continue;
+
+        // 2. 같은 몬스터 진영 제외 (EnemyCharacterBase 상속 여부로 판단)
+        // (EnemyCharacterBase 헤더가 필요할 수 있음. 없으면 태그나 클래스 이름으로 체크)
+        if (Actor->ActorHasTag(TEXT("Enemy"))) continue;
+
+        // 3. 죽은 플레이어 제외 (선택사항)
+         //if (Change to your specific player class -> IsDead()) continue;
+
+        ValidPlayers.Add(Actor);
+    }
+
+    if (ValidPlayers.Num() > 0)
+    {
+        // 랜덤 타겟 (또는 가장 가까운 타겟 로직 추가 가능)
+        int32 Idx = FMath::RandRange(0, ValidPlayers.Num() - 1);
+        TargetActor = ValidPlayers[Idx];
     }
 }
 
