@@ -3,47 +3,48 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Project_Bang_Squad/Character/MonsterBase/MidBossAIController.h"
+#include "AIController.h"
 #include "Stage2AIController.generated.h"
 
 class AStage2MidBoss;
 
-// [NEW] 마법사 보스 행동 패턴 정의
-UENUM(BlueprintType)
-enum class EStage2Pattern : uint8
+UENUM()
+enum class EBossPatternState : uint8
 {
-    MagicBarrage,   // 1. 원거리 마법 3회 발사
-    Teleport,       // 2. 플레이어 근처로 순간이동
-    MeleeChase,     // 3. (텔포 후 or 실패 시) 근접 추격
-    MeleeAttack     // 4. 근접 공격 후 타겟 변경
+	RangedBarrage, // 원거리 3회
+	Teleporting,   // 접근
+	MeleeSmash,    // 근접 공격
+	Waiting        // 대기
 };
 
 UCLASS()
-class PROJECT_BANG_SQUAD_API AStage2AIController : public AMidBossAIController
+class PROJECT_BANG_SQUAD_API AStage2AIController : public AAIController
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
 public:
-    virtual void OnPossess(APawn* InPawn) override;
-    virtual void Tick(float DeltaTime) override;
-
-protected:
-    // 부모의 추격 시작을 가로채서 패턴 초기화
-    virtual void StartChasing() override;
-
-    // 메인 패턴 로직
-    void UpdateMagePattern(float DeltaTime);
+	virtual void OnPossess(APawn* InPawn) override;
+	virtual void Tick(float DeltaTime) override;
 
 private:
-    UPROPERTY()
-    TObjectPtr<AStage2MidBoss> MyPawn;
+	void RunPatternLogic();
+	void SetNextPatternStep();
+	void FindNewTarget();
 
-    // 현재 진행 중인 패턴
-    EStage2Pattern CurrentPattern;
+	// 타이머 델리게이트 함수
+	UFUNCTION()
+	void OnActionFinished();
 
-    // 마법 발사 횟수 카운터
-    int32 MagicFireCount = 0;
+private:
+	UPROPERTY()
+	TObjectPtr<AStage2MidBoss> MyPawn;
 
-    // 쿨타임 타이머
-    float PatternCooldown = 0.0f;
+	UPROPERTY()
+	AActor* CurrentTarget;
+
+	EBossPatternState CurrentState;
+	int32 RangedAttackCount = 0; // 발사 횟수 카운트
+
+	FTimerHandle ActionTimer;
+	bool bIsBusy = false; // 행동 중인지 체크
 };

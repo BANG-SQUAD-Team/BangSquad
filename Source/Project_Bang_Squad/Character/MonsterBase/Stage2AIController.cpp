@@ -1,167 +1,152 @@
 // Source/Project_Bang_Squad/Character/MonsterBase/Stage2AIController.cpp
 
-#include "Stage2AIController.h"
+#include "Project_Bang_Squad/Character/MonsterBase/Stage2AIController.h"
 #include "Project_Bang_Squad/Character/Enemy/Stage2MidBoss.h"
-#include "TimerManager.h"
-
+#include "Kismet/GameplayStatics.h"
+#include "GameFramework/Character.h"
+#include "GameFramework/PlayerController.h" // 필수 헤더 추가
+#include "Project_Bang_Squad/Character/Component/HealthComponent.h"
 void AStage2AIController::OnPossess(APawn* InPawn)
 {
-    Super::OnPossess(InPawn);
-    MyPawn = Cast<AStage2MidBoss>(InPawn);
+	Super::OnPossess(InPawn);
+	MyPawn = Cast<AStage2MidBoss>(InPawn);
 
-    // 기본 설정
-    //SetAttackRange(800.0f);
-    // // 대신 초기값 0이면 안전장치로 세팅 (선택 사항)
-    if (AttackRange <= 0.0f)
-    {
-        AttackRange = 800.0f;
-    }
-    MagicFireCount = 0;
-    CurrentPattern = EStage2Pattern::MagicBarrage; // 시작은 마법부터
+	CurrentState = EBossPatternState::RangedBarrage;
+	RangedAttackCount = 0;
+	bIsBusy = false;
+
+	// 시작 시 타겟 찾기
+	FindNewTarget();
 }
 
 void AStage2AIController::Tick(float DeltaTime)
 {
-    // 부모 Tick 로직 (타겟 유효성 검사 등)
-    if (!TargetActor || IsTargetDead(TargetActor))
-    {
-        CurrentAIState = EMidBossAIState::Idle;
-        StopMovement();
-        return;
-    }
+	Super::Tick(DeltaTime);
 
-    // 마법사 전용 패턴 실행
-    UpdateMagePattern(DeltaTime);
+	if (!MyPawn || !HasAuthority()) return;
+
+	// 타겟 바라보기 (공격 중이 아닐 때만 or 원거리 공격 준비 중일 때)
+	if (CurrentTarget && !bIsBusy)
+	{
+		FVector Dir = CurrentTarget->GetActorLocation() - MyPawn->GetActorLocation();
+		Dir.Z = 0.f;
+		MyPawn->SetActorRotation(FMath::RInterpTo(MyPawn->GetActorRotation(), Dir.Rotation(), DeltaTime, 5.0f));
+	}
+
+	RunPatternLogic();
 }
 
-void AStage2AIController::StartChasing()
+void AStage2AIController::RunPatternLogic()
 {
-    // [Bug Fix] 피격(Hit) 상태에서 복귀하는 경우인지 체크
-    // OnDamaged에서 StartChasing을 호출할 때, CurrentAIState는 아직 'Hit' 상태입니다.
-    bool bResumingFromHit = (CurrentAIState == EMidBossAIState::Hit);
+	// 행동 중이거나 타겟이 없으면 패스
+	if (bIsBusy || !CurrentTarget)
+	{
+		if (!CurrentTarget) FindNewTarget();
+		return;
+	}
 
-    CurrentAIState = EMidBossAIState::Attack;
-    StopMovement();
+	float Duration = 1.0f; // 기본 대기 시간
 
-    // [핵심 로직] 
-    // "아예 새로 추격을 시작할 때"만 패턴을 0으로 초기화합니다.
-    // "맞고 나서 정신 차린 경우"라면 하던 짓(변수들)을 그대로 유지합니다.
-    if (!bResumingFromHit)
-    {
-        CurrentPattern = EStage2Pattern::MagicBarrage;
-        MagicFireCount = 0;
+	switch (CurrentState)
+	{
+	case EBossPatternState::RangedBarrage:
+		// [원거리 공격 3회]
+		if (RangedAttackCount < 3)
+		{
+			// 공격 실행
+			Duration = MyPawn->Execute_RangedAttack(CurrentTarget);
 
-        // 처음 만났을 때는 0.5초 노려보기 (회전 보정용)
-        PatternCooldown = 0.5f;
-    }
-    // else: 맞고 돌아온 경우에는 PatternCooldown을 설정하지 않아(0.0), 
-    // 즉시(Immediate) 다음 공격을 이어가게 하여 플레이어를 압박합니다.
+			// 다음 발사 준비
+			RangedAttackCount++;
+
+			// 몽타주 길이보다 조금 더 기다려서 자연스럽게 연결
+			if (Duration <= 0.f) Duration = 1.0f;
+		}
+		else
+		{
+			// 3회 완료 -> 텔레포트 상태로 전환
+			CurrentState = EBossPatternState::Teleporting;
+			Duration = 0.1f; // 즉시 전환
+		}
+		break;
+
+	case EBossPatternState::Teleporting:
+		// [텔레포트]
+		MyPawn->Execute_TeleportToTarget(CurrentTarget);
+
+		// 텔레포트 후 즉시 공격 태세
+		CurrentState = EBossPatternState::MeleeSmash;
+		Duration = 0.5f; // 나타나는 연출 시간 확보
+		break;
+
+	case EBossPatternState::MeleeSmash:
+		// [근접 공격]
+		Duration = MyPawn->Execute_MeleeAttack();
+
+		// 공격 후 대기 상태로
+		CurrentState = EBossPatternState::Waiting;
+		if (Duration <= 0.f) Duration = 1.0f;
+		break;
+
+	case EBossPatternState::Waiting:
+		// [어그로 변경 및 초기화]
+		FindNewTarget(); // 타겟 변경
+
+		// 리셋
+		CurrentState = EBossPatternState::RangedBarrage;
+		RangedAttackCount = 0;
+		Duration = 1.0f; // 다음 패턴 시작 전 잠깐 휴식
+		break;
+	}
+
+	// 행동 시작 (Busy 설정)
+	bIsBusy = true;
+	GetWorld()->GetTimerManager().SetTimer(ActionTimer, this, &AStage2AIController::OnActionFinished, Duration, false);
 }
-void AStage2AIController::UpdateMagePattern(float DeltaTime)
+
+void AStage2AIController::OnActionFinished()
 {
-    if (GetWorld()->GetTimerManager().IsTimerActive(StateTimerHandle)) return;
+	// 행동 끝, 다음 Tick에서 로직 수행 가능
+	bIsBusy = false;
+}
 
-    // [추가] 쿨타임 동안 타겟 바라보기 (이 코드가 실행될 시간을 벌어줘야 함)
-    if (PatternCooldown > 0.0f)
-    {
-        PatternCooldown -= DeltaTime;
+void AStage2AIController::FindNewTarget()
+{
+	TArray<AActor*> AlivePlayers;
 
-        if (TargetActor && MyPawn)
-        {
-            FVector Dir = TargetActor->GetActorLocation() - MyPawn->GetActorLocation();
-            Dir.Z = 0.f;
+	// 접속 중인 모든 플레이어 컨트롤러 순회 (NPC/몬스터 제외)
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		APlayerController* PC = It->Get();
+		if (PC && PC->GetPawn())
+		{
+			APawn* PlayerPawn = PC->GetPawn();
 
-            // 부드럽게 타겟 방향으로 회전
-            FRotator TargetRot = Dir.Rotation();
-            MyPawn->SetActorRotation(FMath::RInterpTo(MyPawn->GetActorRotation(), TargetRot, DeltaTime, 10.0f));
-        }
-        return; // 회전 중에는 다른 행동 안 함
-    }
+			// [수정] IsTargetDead 대신 직접 HealthComponent를 가져와서 생존 여부 확인
+			if (UHealthComponent* HP = PlayerPawn->FindComponentByClass<UHealthComponent>())
+			{
+				if (!HP->IsDead()) // 체력이 0이 아니면
+				{
+					AlivePlayers.Add(PlayerPawn);
+				}
+			}
+			// 만약 HealthComponent가 없는 캐릭터라면(예외), 그냥 Alive로 간주하거나 제외
+			else
+			{
+				AlivePlayers.Add(PlayerPawn);
+			}
+		}
+	}
 
-    // --- 패턴 실행 ---
-    switch (CurrentPattern)
-    {
-    case EStage2Pattern::MagicBarrage:
-        if (MagicFireCount < 3)
-        {
-            StopMovement();
-
-            // 발사! (이제 보스는 플레이어를 보고 있을 확률이 높음)
-            MyPawn->FireMagicMissile();
-            float AnimTime = MyPawn->PlayMagicAttackAnim();
-
-            // 다음 발사까지 대기 (이 시간 동안 또 플레이어를 노려보며 회전함)
-            float WaitTime = (AnimTime > 0.f) ? AnimTime : 1.0f;
-            GetWorld()->GetTimerManager().SetTimer(StateTimerHandle, this, &AMidBossAIController::FinishAttack, WaitTime, false);
-
-            PatternCooldown = 0.5f; // 연사 간격 (이때 회전 보정됨)
-            MagicFireCount++;
-        }
-        else
-        {
-            CurrentPattern = EStage2Pattern::Teleport;
-            PatternCooldown = 1.0f; // 텔포 전 뜸들이기
-        }
-        break;
-
-    case EStage2Pattern::Teleport:
-    {
-        StopMovement();
-
-        // 텔레포트 시도 (타겟 뒤 150~200 거리)
-        bool bTeleportSuccess = MyPawn->TryTeleportToTarget(TargetActor, 200.0f);
-
-        if (bTeleportSuccess)
-        {
-            UE_LOG(LogTemp, Warning, TEXT("MageAI: Teleport Success! -> IMMEDIATE ATTACK!"));
-
-            // [핵심 수정] 
-            // 기존: CurrentPattern = EStage2Pattern::MeleeChase; (추격함)
-            // 변경: 묻지도 따지지도 않고 바로 공격 패턴으로 직행!
-            CurrentPattern = EStage2Pattern::MeleeAttack;
-
-            // 텔레포트 연출 후 딜레이 없이 바로 때리려면 0.0f
-            // 나타나는 연출(짠!)을 조금 보여주고 때리려면 0.2f ~ 0.5f
-            PatternCooldown = 0.2f;
-        }
-        else
-        {
-            // [수정] 실패 시: 억지로 쫓아가지 말고, 다시 처음(마법 패턴)으로 복귀!
-            UE_LOG(LogTemp, Warning, TEXT("MageAI: Teleport Failed! -> Restart Magic Barrage."));
-
-            CurrentPattern = EStage2Pattern::MagicBarrage; // 1번 패턴으로
-            MagicFireCount = 0;     // 발사 횟수 리셋
-            PatternCooldown = 1.0f; // 1초 정도 숨 고르고 다시 공격 시작
-        }
-    }
-    break;
-
-    case EStage2Pattern::MeleeAttack:
-    {
-        StopMovement();
-
-        // [수정] 텔레포트 직후라서 회전이 안 맞을 수 있으니, 
-        // 공격 직전에 타겟 쪽으로 몸을 확 돌려버림 (Aim Snap)
-        if (TargetActor)
-        {
-            FVector Dir = TargetActor->GetActorLocation() - MyPawn->GetActorLocation();
-            Dir.Z = 0.f;
-            MyPawn->SetActorRotation(Dir.Rotation());
-        }
-
-        // 지팡이 휘두르기 (공격 범위 체크는 PerformAttackTrace에서 함)
-        UE_LOG(LogTemp, Warning, TEXT("MageAI: Melee Finisher!"));
-        float AnimTime = MyPawn->PlayMeleeAttackAnim();
-
-        float WaitTime = (AnimTime > 0.f) ? AnimTime : 1.5f;
-        GetWorld()->GetTimerManager().SetTimer(StateTimerHandle, this, &AMidBossAIController::FinishAttack, WaitTime, false);
-
-        UpdateRandomTarget();
-
-        CurrentPattern = EStage2Pattern::MagicBarrage;
-        MagicFireCount = 0;
-        PatternCooldown = 2.0f;
-    }
-    break;
-    }
+	// 살아있는 플레이어 중에서 랜덤 선택
+	if (AlivePlayers.Num() > 0)
+	{
+		int32 RandIdx = FMath::RandRange(0, AlivePlayers.Num() - 1);
+		CurrentTarget = AlivePlayers[RandIdx];
+	}
+	else
+	{
+		// 살아있는 플레이어가 없으면 타겟 해제
+		CurrentTarget = nullptr;
+	}
 }

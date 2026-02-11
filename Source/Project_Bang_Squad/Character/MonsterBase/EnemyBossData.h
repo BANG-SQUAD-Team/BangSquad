@@ -61,17 +61,30 @@ public:
     // [3] Stage 2 전용 (Mage)
     // =============================================================
 
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Stage2_Mage")
-    TSubclassOf<AActor> MagicProjectileClass;
+// 1. 원거리 공격
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Mage")
+    TSubclassOf<AActor> MagicProjectileClass; // 투사체 클래스
 
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Stage2_Mage")
-    TObjectPtr<UAnimMontage> MagicAttackMontage;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Mage")
+    TObjectPtr<UAnimMontage> MagicAttackMontage; // 발사 모션
 
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Stage2_Mage")
-    TObjectPtr<UAnimMontage> TeleportMontage;
+    // 2. 텔레포트
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Mage")
+    TObjectPtr<UAnimMontage> TeleportMontage; // 사라졌다 나타나는 모션
 
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Stage2_Mage")
-    TObjectPtr<UAnimMontage> AreaSkillMontage;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Mage")
+    TObjectPtr<UParticleSystem> TeleportVFX; // 텔레포트 이펙트
+
+    // 3. 근접 공격 (Sphere Trace)
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Mage")
+    TObjectPtr<UAnimMontage> MeleeAttackMontage; // 휘두르는 모션
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Mage")
+    float MeleeAttackRadius = 150.0f; // 공격 범위 (반지름)
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Mage")
+    float MeleeAttackDamage = 30.0f; // 근접 데미지
+
 
     // =============================================================
     // [4] Stage 2 전용 (Spider - 여기를 추가해야 오류가 해결됩니다!)

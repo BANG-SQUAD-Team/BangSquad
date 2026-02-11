@@ -2,349 +2,161 @@
 
 #include "Project_Bang_Squad/Character/Enemy/Stage2MidBoss.h"
 #include "Net/UnrealNetwork.h"
+#include "Kismet/GameplayStatics.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/CapsuleComponent.h"
-#include "Kismet/GameplayStatics.h"
-#include "Kismet/KismetSystemLibrary.h"
-#include "NavigationSystem.h"
-#include "Project_Bang_Squad/Character/MonsterBase/MidBossAIController.h" 
-#include "Project_Bang_Squad/Character/Component/HealthComponent.h"
+#include "NavigationSystem.h" // 모듈 추가 필요 (NavigationSystem)
 
 AStage2MidBoss::AStage2MidBoss()
 {
-    // [Network]
-    bReplicates = true;
-
-    // [Collision]
-    GetCapsuleComponent()->InitCapsuleSize(40.f, 90.0f);
-
-    // [Component] 
-    // HealthComponent가 부모에 없다면 생성, 있다면 부모 것 사용 (중복 생성 주의)
-    if (!HealthComponent)
-    {
-        HealthComponent = CreateDefaultSubobject<UHealthComponent>(TEXT("HealthComponent"));
-    }
-
-    CurrentPhase = EStage2Phase::Normal;
-
-    // [Movement Rotation Setup]
-    bUseControllerRotationYaw = false;
-
-    if (GetCharacterMovement())
-    {
-        GetCharacterMovement()->bOrientRotationToMovement = true;
-        GetCharacterMovement()->bUseControllerDesiredRotation = false; // AI가 제어하려면 false가 유리
-        GetCharacterMovement()->RotationRate = FRotator(0.0f, 720.0f, 0.0f);
-        GetCharacterMovement()->MaxWalkSpeed = 600.0f; // 기본값
-    }
-}
-
-void AStage2MidBoss::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
-{
-    Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-    DOREPLIFETIME(AStage2MidBoss, CurrentPhase);
-}
-
-void AStage2MidBoss::OnConstruction(const FTransform& Transform)
-{
-    Super::OnConstruction(Transform);
-
-    // [Data Driven]
-    if (BossData)
-    {
-        if (GetMesh() && BossData->Mesh)
-        {
-            GetMesh()->SetSkeletalMesh(BossData->Mesh);
-        }
-        if (GetMesh() && BossData->AnimClass)
-        {
-            GetMesh()->SetAnimInstanceClass(BossData->AnimClass);
-        }
-
-        if (!HasAnyFlags(RF_ClassDefaultObject))
-        {
-            if (GetCharacterMovement())
-            {
-                GetCharacterMovement()->MaxWalkSpeed = BossData->WalkSpeed;
-            }
-            // 체력 등은 BeginPlay에서 설정
-        }
-    }
+	bReplicates = true;
+	SetReplicateMovement(true);
 }
 
 void AStage2MidBoss::BeginPlay()
 {
-    Super::BeginPlay();
-
-    if (HasAuthority())
-    {
-        // 체력 설정
-        if (BossData && HealthComponent)
-        {
-            HealthComponent->SetMaxHealth(BossData->MaxHealth);
-        }
-
-        // AI에게 사거리 정보 전달
-        if (BossData && GetController())
-        {
-            if (auto* MyAI = Cast<AMidBossAIController>(GetController()))
-            {
-                // AttackRange 변수는 BossData가 아니라 이 클래스의 UPROPERTY를 우선 사용하거나 동기화
-                MyAI->SetAttackRange(AttackRange);
-            }
-        }
-    }
-
-    // 사망 이벤트 연결
-    if (HealthComponent)
-    {
-        HealthComponent->OnDead.AddDynamic(this, &AStage2MidBoss::OnDeath);
-    }
+	Super::BeginPlay();
 }
 
-float AStage2MidBoss::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
+float AStage2MidBoss::Execute_RangedAttack(AActor* Target)
 {
-    float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
-    if (ActualDamage <= 0.0f) return 0.0f;
+	if (!HasAuthority() || !BossData) return 0.0f;
 
-    // AI에게 피격 알림
-    if (GetController())
-    {
-        if (auto* MyAI = Cast<AMidBossAIController>(GetController()))
-        {
-            AActor* RealAttacker = DamageCauser;
-            if (EventInstigator && EventInstigator->GetPawn())
-            {
-                RealAttacker = EventInstigator->GetPawn();
-            }
-            MyAI->OnDamaged(RealAttacker);
-        }
-    }
-    return ActualDamage;
+	// 회전 등 준비 동작은 유지
+	if (Target)
+	{
+		FVector Dir = Target->GetActorLocation() - GetActorLocation();
+		Dir.Z = 0.0f;
+		SetActorRotation(Dir.Rotation());
+	}
+
+	// 투사체 발사는 여기서 안 함! (노티파이로 이관)
+
+	// 애니메이션 재생
+	if (BossData->MagicAttackMontage)
+	{
+		Multicast_PlayMontage(BossData->MagicAttackMontage);
+		return BossData->MagicAttackMontage->GetPlayLength();
+	}
+	return 1.0f;
 }
 
-// --- [Combat Logic] ---
-
-void AStage2MidBoss::PerformAttackTrace()
+// 2. [추가] 마법 발사 노티파이 (실제 발사)
+void AStage2MidBoss::OnNotify_FireMagic()
 {
-    if (!HasAuthority()) return;
+	if (!HasAuthority() || !BossData) return;
 
-    FVector Start = GetActorLocation();
-    FVector Forward = GetActorForwardVector();
-    FVector End = Start + (Forward * AttackRange);
+	// 여기서 투사체 생성!
+	if (BossData->MagicProjectileClass)
+	{
+		FVector SpawnLoc = GetActorLocation() + GetActorForwardVector() * 100.0f;
 
-    TArray<FHitResult> OutHits;
-    FCollisionQueryParams Params;
-    Params.AddIgnoredActor(this);
+		// 소켓이 있다면 소켓 위치 사용 권장
+		if (GetMesh()->DoesSocketExist(TEXT("Muzzle_01")))
+			SpawnLoc = GetMesh()->GetSocketLocation(TEXT("Muzzle_01"));
 
-    bool bHit = GetWorld()->SweepMultiByChannel(
-        OutHits, Start, End, FQuat::Identity, ECC_Pawn,
-        FCollisionShape::MakeSphere(AttackRadius), Params
-    );
+		FRotator SpawnRot = GetActorRotation();
 
-#if UE_BUILD_DEBUG || UE_BUILD_DEVELOPMENT
-    DrawDebugSphere(GetWorld(), End, AttackRadius, 12, bHit ? FColor::Green : FColor::Red, false, 1.0f);
-#endif
+		FActorSpawnParameters Params;
+		Params.Owner = this;
+		Params.Instigator = this;
 
-    if (bHit)
-    {
-        TSet<AActor*> HitActors;
-        for (const FHitResult& Hit : OutHits)
-        {
-            AActor* HitActor = Hit.GetActor();
-            if (HitActor && !HitActors.Contains(HitActor))
-            {
-                UGameplayStatics::ApplyDamage(
-                    HitActor,
-                    BossData ? BossData->AttackDamage : 10.0f,
-                    GetController(),
-                    this,
-                    UDamageType::StaticClass()
-                );
-                HitActors.Add(HitActor);
-            }
-        }
-    }
+		GetWorld()->SpawnActor<AActor>(BossData->MagicProjectileClass, SpawnLoc, SpawnRot, Params);
+	}
 }
 
-void AStage2MidBoss::FireMagicMissile()
+
+
+bool AStage2MidBoss::Execute_TeleportToTarget(AActor* Target)
 {
-    // [최적화] AI Controller가 호출하므로 이미 서버입니다. 별도의 Server RPC 불필요.
-    if (!HasAuthority()) return;
+	if (!HasAuthority() || !Target || !BossData) return false;
 
-    // [수정] BossData->MagicProjectileClass 가 아니라 멤버 변수 MagicProjectileClass 사용
-    if (!MagicProjectileClass)
-    {
-        // 디버그용: 투사체 미할당 시 빨간 선 표시
-        DrawDebugLine(GetWorld(), GetActorLocation(), GetActorLocation() + GetActorForwardVector() * 500.f, FColor::Red, false, 2.0f);
-        return;
-    }
+	// 1. 사라지는 이펙트
+	Multicast_TeleportFX(GetActorLocation());
 
-    FVector SpawnLoc = GetActorLocation();
-    FRotator SpawnRot = GetActorRotation();
+	// 2. 목표 위치 계산 (타겟 뒤쪽 150 거리)
+	FVector TargetLoc = Target->GetActorLocation();
+	FVector TargetBack = -Target->GetActorForwardVector();
+	FVector DestLoc = TargetLoc + (TargetBack * 150.0f);
 
-    // 소켓 우선 사용
-    if (GetMesh()->DoesSocketExist(TEXT("Muzzle_01")))
-        SpawnLoc = GetMesh()->GetSocketLocation(TEXT("Muzzle_01"));
-    else if (GetMesh()->DoesSocketExist(TEXT("Hand_R")))
-        SpawnLoc = GetMesh()->GetSocketLocation(TEXT("Hand_R"));
+	// 3. NavMesh 투영 (벽/바닥 뚫림 방지)
+	FNavLocation NavLoc;
+	UNavigationSystemV1* NavSys = UNavigationSystemV1::GetCurrent(GetWorld());
+	if (NavSys && NavSys->ProjectPointToNavigation(DestLoc, NavLoc, FVector(200.f, 200.f, 200.f)))
+	{
+		DestLoc = NavLoc.Location;
+		DestLoc.Z += GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 10.0f; // 높이 보정
+	}
 
-    // 타겟 방향 보정
-    if (auto* MyAI = Cast<AMidBossAIController>(GetController()))
-    {
-        if (AActor* Target = MyAI->GetTargetActor())
-        {
-            FVector Direction = Target->GetActorLocation() - SpawnLoc;
-            SpawnRot = Direction.Rotation();
-        }
-    }
+	// 4. 이동 및 회전
+	TeleportTo(DestLoc, (TargetLoc - DestLoc).Rotation());
 
-    FActorSpawnParameters Params;
-    Params.Owner = this;
-    Params.Instigator = this;
-
-    // 투사체 생성
-    GetWorld()->SpawnActor<AActor>(MagicProjectileClass, SpawnLoc, SpawnRot, Params);
+	// 5. 나타나는 이펙트 & 애니메이션
+	Multicast_TeleportFX(DestLoc);
+	if (BossData->TeleportMontage)
+	{
+		Multicast_PlayMontage(BossData->TeleportMontage);
+		return true;
+	}
+	return true;
 }
 
-void AStage2MidBoss::CastAreaSkill()
+float AStage2MidBoss::Execute_MeleeAttack()
 {
-    if (HasAuthority())
-    {
-        UE_LOG(LogTemp, Log, TEXT("[Stage2Boss] Casting Area Skill!"));
-        // TODO: 장판 스폰 로직
-    }
+	if (!HasAuthority() || !BossData) return 0.0f;
+
+	if (BossData->MeleeAttackMontage)
+	{
+		Multicast_PlayMontage(BossData->MeleeAttackMontage);
+		return BossData->MeleeAttackMontage->GetPlayLength();
+	}
+	return 1.0f;
 }
 
-bool AStage2MidBoss::TryTeleportToTarget(AActor* Target, float DistanceFromTarget)
+// 4. [추가] 근접 타격 노티파이 (실제 판정)
+void AStage2MidBoss::OnNotify_MeleeHitCheck()
 {
-    if (!HasAuthority() || !Target) return false;
+	if (!HasAuthority() || !BossData) return;
 
-    UNavigationSystemV1* NavSystem = UNavigationSystemV1::GetCurrent(GetWorld());
-    if (!NavSystem) return false;
+	// Sphere Trace 로직을 여기로 이동
+	FVector Start = GetActorLocation();
+	FVector End = Start + (GetActorForwardVector() * BossData->MeleeAttackRadius);
 
-    FVector TargetLoc = Target->GetActorLocation();
-    FVector TargetBack = -Target->GetActorForwardVector();
-    FVector DestLoc = TargetLoc + (TargetBack * DistanceFromTarget);
+	TArray<FHitResult> HitResults;
+	FCollisionQueryParams Params;
+	Params.AddIgnoredActor(this);
 
-    FNavLocation NavLoc;
-    // 200.0f 반경 내에서 갈 수 있는 땅 찾기
-    if (NavSystem->ProjectPointToNavigation(DestLoc, NavLoc, FVector(200.0f)))
-    {
-        // [순서 중요]
-        // 1. 사라지는 연출 (현재 위치)
-        PlayTeleportAnim();
+	bool bHit = GetWorld()->SweepMultiByChannel(
+		HitResults, Start, End, FQuat::Identity, ECC_Pawn,
+		FCollisionShape::MakeSphere(BossData->MeleeAttackRadius), Params
+	);
 
-        // 2. 위치 이동 (높이 보정)
-        float CapsuleHalfHeight = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
-        FVector FinalLoc = NavLoc.Location;
-        FinalLoc.Z += CapsuleHalfHeight + 10.0f; // 땅에 묻히지 않게 살짝 띄움
-
-        SetActorLocation(FinalLoc);
-
-        // 3. 타겟 바라보기
-        FVector LookDir = TargetLoc - FinalLoc;
-        LookDir.Z = 0.f;
-        SetActorRotation(LookDir.Rotation());
-
-        // 4. 나타나는 이펙트 (Multicast)
-        Multicast_TeleportEffect(FinalLoc);
-
-        return true;
-    }
-    return false;
+	if (bHit)
+	{
+		for (const FHitResult& Hit : HitResults)
+		{
+			if (AActor* HitActor = Hit.GetActor())
+			{
+				if (HitActor != this && IsValid(HitActor))
+				{
+					UGameplayStatics::ApplyDamage(
+						HitActor, BossData->MeleeAttackDamage, GetController(), this, UDamageType::StaticClass()
+					);
+				}
+			}
+		}
+	}
 }
 
-// --- [Animation Helpers] ---
-
-float AStage2MidBoss::PlayMeleeAttackAnim()
+void AStage2MidBoss::Multicast_PlayMontage_Implementation(UAnimMontage* Montage)
 {
-    // [수정] BossData->... 가 아니라 멤버 변수 MeleeAttackMontage 사용
-    if (!HasAuthority()) return 0.0f;
-    if (MeleeAttackMontage)
-    {
-        Multicast_PlayMontage(MeleeAttackMontage);
-        return MeleeAttackMontage->GetPlayLength();
-    }
-    return 0.0f;
+	if (Montage) PlayAnimMontage(Montage);
 }
 
-float AStage2MidBoss::PlayMagicAttackAnim()
+void AStage2MidBoss::Multicast_TeleportFX_Implementation(FVector Location)
 {
-    // [수정] 멤버 변수 MagicAttackMontage 사용
-    if (!HasAuthority()) return 0.0f;
-    if (MagicAttackMontage)
-    {
-        Multicast_PlayMontage(MagicAttackMontage);
-        return MagicAttackMontage->GetPlayLength();
-    }
-    return 0.0f;
-}
-
-float AStage2MidBoss::PlayTeleportAnim()
-{
-    // [수정] 멤버 변수 TeleportMontage 사용
-    if (!HasAuthority()) return 0.0f;
-    if (TeleportMontage)
-    {
-        Multicast_PlayMontage(TeleportMontage);
-        return TeleportMontage->GetPlayLength();
-    }
-    return 0.0f;
-}
-
-void AStage2MidBoss::Multicast_PlayMontage_Implementation(UAnimMontage* MontageToPlay)
-{
-    if (MontageToPlay)
-    {
-        PlayAnimMontage(MontageToPlay);
-    }
-}
-
-void AStage2MidBoss::Multicast_TeleportEffect_Implementation(FVector Location)
-{
-    if (TeleportEffect)
-    {
-        UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), TeleportEffect, Location);
-    }
-}
-
-// --- [State Logic] ---
-
-void AStage2MidBoss::SetPhase(EStage2Phase NewPhase)
-{
-    if (HasAuthority())
-    {
-        CurrentPhase = NewPhase;
-        OnRep_CurrentPhase();
-    }
-}
-
-void AStage2MidBoss::OnRep_CurrentPhase()
-{
-    // 페이즈 변화에 따른 비주얼 처리
-}
-
-void AStage2MidBoss::OnDeath()
-{
-    SetPhase(EStage2Phase::Dead);
-
-    if (auto* MyAI = Cast<AMidBossAIController>(GetController()))
-    {
-        MyAI->StopMovement();
-        MyAI->UnPossess(); // 혹은 AI 정지 함수 호출
-    }
-
-    GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-
-    // 사망 몽타주 재생 (DataAsset에 있다면)
-    if (BossData && BossData->DeathMontage)
-    {
-        PlayAnimMontage(BossData->DeathMontage);
-    }
-
-    if (HasAuthority())
-    {
-        SetLifeSpan(5.0f);
-    }
+	if (BossData && BossData->TeleportVFX)
+	{
+		UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), BossData->TeleportVFX, Location);
+	}
 }
