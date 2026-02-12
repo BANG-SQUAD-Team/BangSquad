@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
 #include "Project_Bang_Squad/Character/Base/BaseCharacter.h"
@@ -61,6 +61,9 @@ public:
     // 서버한테 보트 탑승/하차 상태를 알리는 함수
     UFUNCTION(Server, Reliable)
     void Server_SetBoatRideState(AMagicBoat* Boat, bool bRiding);
+
+    // 데미지 처리 함수 오버라이드
+    virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
 
 protected:
     

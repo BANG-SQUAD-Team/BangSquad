@@ -42,6 +42,11 @@ void AStagePlayerController::BeginPlay()
 				TargetEmissive = 2.0f;
 			}
 
+			if (MapName.Contains(TEXT("Stage3")))
+			{
+				TargetEmissive = 0.5f;
+			}
+
 			UKismetMaterialLibrary::SetScalarParameterValue(GetWorld(), WorldSettingsMPC,
 			                                                TEXT("GlobalCharacterEmissive"), TargetEmissive);
 		}
