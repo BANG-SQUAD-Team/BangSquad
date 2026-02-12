@@ -3,8 +3,10 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Project_Bang_Squad/Game/InteractionInterface.h"
-#include "BS_Door.h" // EDoorAction 사용을 위해 포함
+#include "BS_Door.h"
 #include "BS_Switch.generated.h"
+
+class AJumpPad;
 
 UCLASS()
 class PROJECT_BANG_SQUAD_API ABS_Switch : public AActor, public IInteractionInterface
@@ -35,6 +37,10 @@ public:
     /** 연결된 문 */
     UPROPERTY(EditInstanceOnly, Category = "Settings")
     class ABS_Door* TargetDoor;
+
+    //  작동시킬 점프 패드들
+    UPROPERTY(EditInstanceOnly, Category = "Settings")
+    TArray<AJumpPad*> TargetJumpPads;
 
     /** 에디터에서 설정할 동작 (기본값: 완전 열림) */
     UPROPERTY(EditInstanceOnly, Category = "Settings")

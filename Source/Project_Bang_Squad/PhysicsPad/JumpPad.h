@@ -19,6 +19,7 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void Tick(float DeltaTime) override;
 
 	UPROPERTY(VisibleAnywhere, Category = "Components")
 	TObjectPtr<USceneComponent> SceneRoot;
@@ -34,6 +35,12 @@ protected:
 
 	UPROPERTY(EditAnywhere, Category = "Jump Settings")
 	float SurfaceThreshold = 25.f;
+
+	UPROPERTY(EditAnywhere, Category = "Rise Settings")
+	float RiseHeight = 300.0f; // 얼마나 올라갈지 (단위: cm)
+
+	UPROPERTY(EditAnywhere, Category = "Rise Settings")
+	float RiseSpeed = 5.0f;    // 올라가는 속도
 
 	UPROPERTY(VisibleAnywhere, Category = "Animation")
 	TObjectPtr<UTimelineComponent> BounceTimeline;
@@ -55,6 +62,16 @@ protected:
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_PlayBounceAnimation();
 
+public:
+	// 스위치가 호출할 함수
+	void TriggerRise();
+
 private:
+	FVector TargetLocation;
+	bool bIsRising = false;
+
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_StartRise();
+
 	FVector InitialMeshScale;
 };

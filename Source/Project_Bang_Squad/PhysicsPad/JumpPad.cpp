@@ -3,6 +3,7 @@
 #include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/Character.h"
+#include "Net/UnrealNetwork.h"
 
 AJumpPad::AJumpPad()
 {
@@ -32,6 +33,8 @@ void AJumpPad::BeginPlay()
 	Super::BeginPlay();
 	InitialMeshScale = Mesh->GetRelativeScale3D();
 
+	TargetLocation = GetActorLocation();
+
 	if (BounceCurve)
 	{
 		FOnTimelineFloat ProgressFunction;
@@ -46,6 +49,32 @@ void AJumpPad::BeginPlay()
 	if (HasAuthority())
 	{
 		TriggerBox->OnComponentBeginOverlap.AddDynamic(this, &AJumpPad::OnOverlapBegin);
+	}
+}
+
+void AJumpPad::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+
+	if (BounceTimeline)
+	{
+		BounceTimeline->TickComponent(DeltaTime, ELevelTick::LEVELTICK_TimeOnly, nullptr);
+	}
+
+	if (bIsRising)
+	{
+		FVector CurrentLoc = GetActorLocation();
+		// 목표 지점까지 부드럽게 보간 (VInterpTo)
+		FVector NewLoc = FMath::VInterpTo(CurrentLoc, TargetLocation, DeltaTime, RiseSpeed);
+
+		SetActorLocation(NewLoc);
+
+		// 거의 다 도착했으면 고정하고 연산 중단
+		if (FVector::DistSquared(NewLoc, TargetLocation) < 1.0f)
+		{
+			SetActorLocation(TargetLocation);
+			bIsRising = false;
+		}
 	}
 }
 
@@ -87,4 +116,18 @@ void AJumpPad::Multicast_PlayBounceAnimation_Implementation()
 	{
 		BounceTimeline->PlayFromStart();
 	}
+}
+
+void AJumpPad::TriggerRise()
+{
+	if (HasAuthority())
+	{
+		Multicast_StartRise();
+	}
+}
+
+void AJumpPad::Multicast_StartRise_Implementation()
+{
+	TargetLocation = GetActorLocation() + FVector(0.f, 0.f, RiseHeight);
+	bIsRising = true;
 }

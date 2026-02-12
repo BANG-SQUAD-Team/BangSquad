@@ -1,6 +1,7 @@
 ﻿#include "BS_Switch.h"
 #include "BS_Door.h"
 #include "Net/UnrealNetwork.h"
+#include "Project_Bang_Squad/PhysicsPad/JumpPad.h"
 #include "GameFramework/GameStateBase.h"
 
 ABS_Switch::ABS_Switch()
@@ -31,6 +32,14 @@ void ABS_Switch::Interact_Implementation(APawn* InstigatorPawn)
     if (TargetDoor)
     {
         TargetDoor->ExecuteAction(SelectedAction);
+    }
+
+    for (AJumpPad* Pad : TargetJumpPads)
+    {
+        if (Pad)
+        {
+            Pad->TriggerRise();
+        }
     }
 }
 
