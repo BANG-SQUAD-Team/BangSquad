@@ -24,7 +24,7 @@ protected:
 	virtual void SetupInputComponent() override;
 	
 	UFUNCTION(Server, Reliable)
-	void ServerSetNickName(const FString& NewName);
+	virtual void ServerSetNickName(const FString& NewName);
 
 	/** 관리 중인 위젯 목록 (GC 방지 및 일괄 정리용) */
 	//관리할 위젯 목록

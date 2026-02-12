@@ -32,13 +32,20 @@ public:
 	UPROPERTY(BlueprintAssignable)
 	FOnRespawnTimeChanged OnRespawnTimeChanged;
 protected:
+	virtual void BeginPlay() override;
+	
 	UPROPERTY(ReplicatedUsing = OnRep_JobType)
 	EJobType JobType = EJobType::None;
+	
+	// 맵 이동 시에도 절대 변하지 않는 고정 이름
+	UPROPERTY(Replicated)
+	FString FixedPlayerName;
 	
 	//SeamlessTravel 시 데이터를 넘겨주는 함수
 	virtual void CopyProperties(APlayerState* PlayerState) override;
 	virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;
 
+	
 	UFUNCTION()
 	virtual void OnRep_JobType();
 
