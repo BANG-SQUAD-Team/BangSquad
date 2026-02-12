@@ -72,6 +72,9 @@ public:
 	USkeletalMesh* SkeletalMesh;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetic Visual")
+	UAnimationAsset* IdleAnimation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetic Visual")
 	FTransform AdjustTransform = FTransform::Identity;
 
 	// --- 능력 강화 데이터 ---
