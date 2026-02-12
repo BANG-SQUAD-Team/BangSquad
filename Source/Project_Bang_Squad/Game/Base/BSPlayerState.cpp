@@ -47,6 +47,7 @@ void ABSPlayerState::GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>&
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(ABSPlayerState, JobType);
 	DOREPLIFETIME(ABSPlayerState, RespawnEndTime);
+	DOREPLIFETIME(ABSPlayerState, CoinAmount);
 }
 
 void ABSPlayerState::Server_SetJob_Implementation(EJobType NewJob)
