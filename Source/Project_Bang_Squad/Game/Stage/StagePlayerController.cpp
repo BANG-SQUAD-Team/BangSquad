@@ -39,7 +39,7 @@ void AStagePlayerController::BeginPlay()
 
 			if (MapName.Contains(TEXT("Stage2")))
 			{
-				TargetEmissive = 0.1f;
+				TargetEmissive = 2.0f;
 			}
 
 			UKismetMaterialLibrary::SetScalarParameterValue(GetWorld(), WorldSettingsMPC,
