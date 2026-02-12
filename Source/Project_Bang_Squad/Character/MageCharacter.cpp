@@ -495,9 +495,15 @@ void AMageCharacter::ResetCombo() { CurrentComboIndex = 0; }
 void AMageCharacter::Skill1() { if (!bIsDead) ProcessSkill(TEXT("Skill1")); }
 void AMageCharacter::Skill2() { if (!bIsDead) ProcessSkill(TEXT("Skill2")); }
 
-void AMageCharacter::ProcessSkill(FName SkillRowName)
+void AMageCharacter::ProcessSkill(FName SkillRowName, FVector TargetLocation)
 {
     if (!CanAttack()) return;
+
+    // 🔥 [핵심 픽스] 내가 직접 조종 중인 캐릭터라면(호스트든 클라든), 무조건 크로스헤어 조준점을 계산합니다!
+    if (TargetLocation.IsZero() && IsLocallyControlled())
+    {
+        TargetLocation = GetCrosshairTargetLocation();
+    }
 
     // 캐시에서 데이터 꺼내오기
     FSkillData** FoundData = SkillDataCache.Find(SkillRowName);
@@ -506,106 +512,70 @@ void AMageCharacter::ProcessSkill(FName SkillRowName)
     // 쿨타임 체크
     if (SkillTimers.Contains(SkillRowName))
     {
-       if (GetWorldTimerManager().IsTimerActive(SkillTimers[SkillRowName]))
-       {
-          return;
-       }
+       if (GetWorldTimerManager().IsTimerActive(SkillTimers[SkillRowName])) return;
     }
 
     if (Data)
     {
-       // 해금 여부 확인 (필수)
        if (!IsSkillUnlocked(Data->RequiredStage)) return;
 
-       // 몽타주 재생 (클라/서버 공통)
        if (Data->SkillMontage) PlayActionMontage(Data->SkillMontage);
 
-       if (HasAuthority())
+       if (HasAuthority()) // 서버(방장)일 때
        {
           if (Data->SkillMontage) Server_PlayMontage(Data->SkillMontage);
 
-          // 평타 트레일
           if (SkillRowName == TEXT("Attack_A") || SkillRowName == TEXT("Attack_B"))
           {
              Multicast_SetTrailActive(true);
           }
           
-          // =========================================================
-          // Case A: 스킬 2 (유지형 이펙트 + 바위 소환)
-          // =========================================================
           if (SkillRowName == TEXT("Skill2")) 
           {
-             // 1. 캐스팅 이펙트 (서버에서만 보임 - 필요시 멀티캐스트로 변경 가능)
              if (Skill2CastEffect)
              {
-             	// 1. 변수 먼저 선언
-             	USceneComponent* AttachTarget = nullptr;
-
-             	// 2. if문으로 각각 대입 (부모 클래스인 USceneComponent로 자동 형변환됨)
-             	if (CachedWeaponMesh)
-             	{
-             		AttachTarget = CachedWeaponMesh;
-             	}
-             	else
-             	{
-             		AttachTarget = GetMesh();
-             	}
-                 
+                USceneComponent* AttachTarget = CachedWeaponMesh ? (USceneComponent*)CachedWeaponMesh : (USceneComponent*)GetMesh();
                 Skill2CastComp = UGameplayStatics::SpawnEmitterAttached(
-                   Skill2CastEffect,
-                   AttachTarget,           
-                   TEXT("Weapon_Root_R"),  
-                   FVector::ZeroVector,
-                   FRotator::ZeroRotator,
-                   EAttachLocation::SnapToTarget,
-                   true                    
-                );
+                   Skill2CastEffect, AttachTarget, TEXT("Weapon_Root_R"),  
+                   FVector::ZeroVector, FRotator::ZeroRotator, EAttachLocation::SnapToTarget, true);
              }
-             
-             // 2. 바위 소환 타이머
              if (Data->ProjectileClass)
              {
                 float Dmg = Data->Damage;
                 FTimerDelegate TimerDel;
                 TimerDel.BindUObject(this, &AMageCharacter::SpawnSkill2Rock, Data->ProjectileClass.Get(), Dmg);
-                
                 if (Data->ActionDelay > 0.0f)
                    GetWorldTimerManager().SetTimer(RockSpawnTimerHandle, TimerDel, Data->ActionDelay, false);
                 else
                    SpawnSkill2Rock(Data->ProjectileClass, Dmg);
              }
           }
-          // =========================================================
-          // Case B: 스킬 1 & 평타 (즉발성 이펙트 + 투사체)
-          // =========================================================
-          else
+          else // 스킬 1 & 평타 (투사체 발사)
           {
-             // 스킬 1번이면 "쾅!" 하고 터지는 이펙트 즉시 실행
-             if (SkillRowName == TEXT("Skill1"))
-             {
-                 Multicast_PlaySkill1VFX();
-             }
+             if (SkillRowName == TEXT("Skill1")) Multicast_PlaySkill1VFX();
 
-             // 투사체 발사 로직 (기존 유지)
              if (Data->ProjectileClass)
              {
                 float Dmg = Data->Damage;
+                
+                // 위에서 완벽하게 계산된 TargetLocation을 넘겨줍니다!
                 FTimerDelegate TimerDel;
-                TimerDel.BindUObject(this, &AMageCharacter::SpawnDelayedProjectile, Data->ProjectileClass.Get(), Dmg);
+                TimerDel.BindUObject(this, &AMageCharacter::SpawnDelayedProjectile, Data->ProjectileClass.Get(), Dmg, TargetLocation);
 
                 if (Data->ActionDelay > 0.0f)
                    GetWorldTimerManager().SetTimer(ProjectileTimerHandle, TimerDel, Data->ActionDelay, false);
                 else
-                   SpawnDelayedProjectile(Data->ProjectileClass, Dmg);
+                   SpawnDelayedProjectile(Data->ProjectileClass, Dmg, TargetLocation);
              }
           }
        }
-       else
+       else // 클라이언트일 때
        {
-          Server_ProcessSkill(SkillRowName);
+          // 위에서 계산한 좌표를 서버로 전송
+          Server_ProcessSkill(SkillRowName, TargetLocation);
        }
 
-       // 쿨타임 등록 및 UI 갱신
+       // 쿨타임 등록
        if (Data->Cooldown > 0.0f)
        {
           FTimerHandle& Handle = SkillTimers.FindOrAdd(SkillRowName);
@@ -615,19 +585,20 @@ void AMageCharacter::ProcessSkill(FName SkillRowName)
           if (SkillRowName == TEXT("Skill1")) SkillIdx = 1;
           else if (SkillRowName == TEXT("Skill2")) SkillIdx = 2;
           
-          if (SkillIdx > 0)
-          {
-             TriggerSkillCooldown(SkillIdx, Data->Cooldown);
-          }
+          if (SkillIdx > 0) TriggerSkillCooldown(SkillIdx, Data->Cooldown);
        }
     }
 }
 
-void AMageCharacter::SpawnDelayedProjectile(UClass* ProjectileClass, float DamageAmount)
+// MageCharacter.cpp
+
+void AMageCharacter::SpawnDelayedProjectile(UClass* ProjectileClass, float DamageAmount, FVector TargetLocation)
 {
 	if (!HasAuthority() || !ProjectileClass) return;
 
 	Multicast_SetTrailActive(false);
+
+	// 1. 발사 시작 위치 (지팡이 끝)
 	FVector SpawnLoc;
 	FName SocketName = TEXT("Weapon_Root_R");
 
@@ -636,38 +607,32 @@ void AMageCharacter::SpawnDelayedProjectile(UClass* ProjectileClass, float Damag
 	else
 		SpawnLoc = GetActorLocation() + (GetActorForwardVector() * 100.f);
 
-	FRotator SpawnRot = GetActorRotation();
+	FRotator SpawnRot;
 
-	// 화면 중앙 에임 계산
-	if (APlayerController* PC = Cast<APlayerController>(GetController()))
+	// 🔥 [핵심 픽스] 발사 지점과 타겟이 가깝다고 씹어버리는 방어 코드를 싹 지웠습니다!
+	if (TargetLocation.IsZero())
 	{
-		FVector CamLoc;
-		FRotator CamRot;
-		PC->GetPlayerViewPoint(CamLoc, CamRot);
-
-		FVector TraceStart = CamLoc;
-		FVector TraceEnd = CamLoc + (CamRot.Vector() * 5000.0f);
-
-		FHitResult HitResult;
-		FCollisionQueryParams Params;
-		Params.AddIgnoredActor(this);
-
-		bool bHit = GetWorld()->LineTraceSingleByChannel(HitResult, TraceStart, TraceEnd, ECC_Visibility, Params);
-		FVector TargetPoint = bHit ? HitResult.ImpactPoint : TraceEnd;
-
-		SpawnRot = UKismetMathLibrary::FindLookAtRotation(SpawnLoc, TargetPoint);
+		// 타겟 좌표가 아예 없을 때만 기본 회전 적용
+		SpawnRot = GetActorRotation();
+	}
+	else
+	{
+		// 거리가 가깝든 멀든, 무조건 타겟 위치를 향해 각도를 꺾어버림!
+		SpawnRot = UKismetMathLibrary::FindLookAtRotation(SpawnLoc, TargetLocation);
 	}
 
-	// 투사체 생성 및 데미지 전달
+	// 3. 생성
 	FActorSpawnParameters SpawnParams;
 	SpawnParams.Owner = this;
 	SpawnParams.Instigator = GetInstigator();
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
 	AActor* SpawnedActor = GetWorld()->SpawnActor<AActor>(ProjectileClass, SpawnLoc, SpawnRot, SpawnParams);
 
 	if (AMageProjectile* MyProjectile = Cast<AMageProjectile>(SpawnedActor))
 	{
 		MyProjectile->Damage = DamageAmount;
+		MyProjectile->SetOwner(this); 
 	}
 }
 
@@ -894,7 +859,7 @@ void AMageCharacter::SpawnSkill2Rock(UClass* RockClass, float DamageAmount)
 //  섹션 7: 네트워크 및 유틸리티 (Network RPCs & Utils)
 // ====================================================================================
 
-void AMageCharacter::Server_ProcessSkill_Implementation(FName SkillRowName)
+void AMageCharacter::Server_ProcessSkill_Implementation(FName SkillRowName,FVector TargetLocation)
 {
 	ProcessSkill(SkillRowName);
 }
@@ -1020,4 +985,26 @@ void AMageCharacter::Multicast_PlaySkill1VFX_Implementation()
 			true // AutoDestroy (재생 끝나면 자동 삭제)
 		);
 	}
+}
+
+FVector AMageCharacter::GetCrosshairTargetLocation()
+{
+	// 1. 카메라 컴포넌트의 실제 위치와 보는 방향을 '직접' 가져옵니다.
+	if (!Camera) return GetActorLocation() + GetActorForwardVector() * 1000.f;
+
+	FVector CamLoc = Camera->GetComponentLocation();
+	FVector CamForward = Camera->GetForwardVector();
+
+	FVector TraceStart = CamLoc;
+	FVector TraceEnd = CamLoc + (CamForward * 10000.0f); // 약 100미터 앞
+
+	FHitResult HitResult;
+	FCollisionQueryParams Params;
+	Params.AddIgnoredActor(this); // 자기 자신(마법사)은 무시
+
+	// 2. 화면 중앙(카메라 전방)으로 레이저 쏘기
+	bool bHit = GetWorld()->LineTraceSingleByChannel(HitResult, TraceStart, TraceEnd, ECC_Visibility, Params);
+
+	// 3. 부딪힌 곳이 있으면 거기로, 없으면 허공 끝점으로 반환
+	return bHit ? HitResult.ImpactPoint : TraceEnd;
 }

@@ -1275,6 +1275,7 @@ void ATitanCharacter::ProcessSkill(FName SkillRowName, FName StartSectionName)
 
     if (Data && Data->SkillMontage)
     {
+        if (!IsSkillUnlocked(Data->RequiredStage)) return;
        UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
        if (AnimInstance)
        {

@@ -36,7 +36,7 @@ public:
     //  섹션 7: 네트워크 및 유틸리티 (Network RPCs)
     // ====================================================================================
     UFUNCTION(Server, Reliable)
-    void Server_ProcessSkill(FName SkillRowName);
+    void Server_ProcessSkill(FName SkillRowName, FVector TargetLocation);
     
     UFUNCTION(Server, Reliable)
     void Server_PlayMontage(UAnimMontage* MontageToPlay);
@@ -63,6 +63,8 @@ public:
     void Server_SetBoatRideState(AMagicBoat* Boat, bool bRiding);
 
 protected:
+    
+    FVector GetCrosshairTargetLocation();
     // ====================================================================================
     //  섹션 2: 초기화 및 상태 이벤트 (Initialization & State Events)
     // ====================================================================================
@@ -140,10 +142,10 @@ protected:
     void ResetCombo();
 
     // 스킬 처리 및 투사체
-    void ProcessSkill(FName SkillRowName);
+    void ProcessSkill(FName SkillRowName, FVector TargetLocation = FVector::ZeroVector);
     
     FTimerHandle ProjectileTimerHandle;
-    void SpawnDelayedProjectile(UClass* ProjectileClass, float DamageAmount);
+    void SpawnDelayedProjectile(UClass* ProjectileClass, float DamageAmount, FVector TargetLocation);
     
     // 스킬 쿨타임 관리 (Key: 스킬이름, Value: 타이머 핸들)
     UPROPERTY()
