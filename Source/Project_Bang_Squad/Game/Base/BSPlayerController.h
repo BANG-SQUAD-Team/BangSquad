@@ -15,6 +15,9 @@ class PROJECT_BANG_SQUAD_API ABSPlayerController : public APlayerController
 public:
 	void RegisterManagedWidget(UUserWidget* InWidget);
 
+	UFUNCTION(BlueprintCallable, Category = "UI")
+	void ToggleShopUI();
+
 	UFUNCTION(Server, Reliable)
 	void Server_ReportQTEResult(AStage2Boss* TargetBoss, bool bSuccess);
 
@@ -30,6 +33,12 @@ protected:
 	//관리할 위젯 목록
 	//UPROPERTY()
 	//TArray<UUserWidget*> ManagedWidgets;
+
+	UPROPERTY(EditDefaultsOnly, Category = "UI")
+	TSubclassOf<UUserWidget> ShopWidgetClass;
+
+	UPROPERTY()
+	class UShopMainWidget* ShopWidgetInstance;
 	
 	UPROPERTY()
 	TArray<TObjectPtr<UUserWidget>> ManagedWidgets; // UE5 표준: Raw Pointer 대신 TObjectPtr 사용
