@@ -51,8 +51,11 @@ public:
 	UPROPERTY(meta = (BindWidget))
 	class UTextBlock* JobAbilityText;
 	
-	void UpdatePartyList();
+	// 코인 표시용 텍스트 블록
+	UPROPERTY(meta = (BindWidget))
+	class UTextBlock* CoinText;
 	
+	void UpdatePartyList();
 	// 델리게이트 바인딩 함수
 	void BindCharacterDelegates(APawn* NewPawn);
     
@@ -60,9 +63,12 @@ public:
 	UFUNCTION()
 	void OnSkillCooldown(int32 SkillIndex, float CooldownTime);
 
+	// 코인이 변경될 때 호출될 함수
+	UFUNCTION()
+	void UpdateCoinText(int32 NewCoin);
+	
 private:
 	int32 CachedPlayerCount = 0;
-	
 	// 현재 연결된 캐릭터 캐싱 (중복 바인딩 방지)
 	TWeakObjectPtr<ABaseCharacter> CachedCharacter;
 };

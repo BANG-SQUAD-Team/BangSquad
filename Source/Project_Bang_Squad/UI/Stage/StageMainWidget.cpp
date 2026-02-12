@@ -6,6 +6,7 @@
 #include "GameFramework/GameStateBase.h"
 #include "GameFramework/PlayerState.h"
 #include "Project_Bang_Squad/Character/Component/HealthComponent.h"
+#include "Project_Bang_Squad/Game/Base/BSPlayerState.h"
 
 void UStageMainWidget::NativeConstruct()
 {
@@ -210,9 +211,24 @@ void UStageMainWidget::UpdatePartyList()
 				//MyInfoRow->UpdateStageInfo();
 				MyInfoRow->SetVisibility(ESlateVisibility::Visible);
 			}
+			
+			// 내 지갑(BSPlayerState)과 코인 UI 연결
+			if (ABSPlayerState* BSPS = Cast<ABSPlayerState>(PS))
+			{
+				// 1. 현재 코인으로 UI 즉시 갱신
+				UpdateCoinText(BSPS->GetCoin());
+				
+				// 2. 코인이 바뀔 때마다 실행되도록 델리게이트 연결
+				// 코인 변경 알림을 받기로 이미 되어있지 않다면
+				if (!BSPS->OnCoinChanged.IsAlreadyBound(this, &UStageMainWidget::UpdateCoinText))
+				{
+					// 지금 구독 눌러~
+					BSPS->OnCoinChanged.AddDynamic(this, &UStageMainWidget::UpdateCoinText);
+				}
+			}
 			continue;
 		}
-		//팀원 위젯 처리
+		// 팀원 위젯 처리
 		UPlayerRow* Row = nullptr;
 		
 		if (CurrentChildIndex < PlayerListContainer->GetChildrenCount())
@@ -243,5 +259,13 @@ void UStageMainWidget::UpdatePartyList()
 	while (PlayerListContainer->GetChildrenCount() > CurrentChildIndex)
 	{
 		PlayerListContainer->RemoveChildAt(PlayerListContainer->GetChildrenCount() - 1);
+	}
+}
+
+void UStageMainWidget::UpdateCoinText(int32 NewCoin)
+{
+	if (CoinText)
+	{
+		CoinText->SetText(FText::AsNumber(NewCoin));
 	}
 }
