@@ -26,6 +26,9 @@ public:
     // --- [Actions] ---
     float PlayMeleeAttackAnim();
     void PerformWebShot(AActor* Target);
+    // [추가] 실제 발사 (Notify가 호출함)
+    UFUNCTION(BlueprintCallable)
+    void FireWebProjectile();
     void PerformSmashAttack(AActor* Target);
 
     // --- [Phase & QTE] ---

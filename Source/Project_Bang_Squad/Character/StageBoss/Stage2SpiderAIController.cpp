@@ -169,41 +169,31 @@ void AStage2SpiderAIController::UpdateRetreat(float DeltaTime)
     if (StateTimer > 0.0f)
     {
         StateTimer -= DeltaTime;
-        FVector Forward = SpiderBoss->GetActorForwardVector();
 
-        if (IsSafeToRetreat(Forward, 300.0f))
-        {
-            MoveToLocation(SpiderBoss->GetActorLocation() + Forward * 500.0f);
-        }
-        else
-        {
-            StopMovement();
-            StateTimer = 0.0f; // 막히면 바로 다음 패턴으로
-        }
+        // [수정] 복잡한 계산 다 필요 없음!
+        // 그냥 뒤(Forward)로 가라고 입력만 넣으면 됩니다.
+        // 낭떨어지면? CharacterMovement가 알아서 멈춰세움 (bCanWalkOffLedges = false 덕분)
+        FVector Forward = SpiderBoss->GetActorForwardVector();
+        SpiderBoss->AddMovementInput(Forward, 1.0f);
     }
-    // 후퇴 끝! 이제 뭐 할까?
+    // 후퇴 끝
     else
     {
         StopMovement();
         FindNearestTarget();
 
-        // 짝수: 거미줄 (얘는 원거리니까 제자리에서 쏴도 됨)
+        // 패턴 전환 (기존과 동일)
         if (PatternCycleIndex % 2 == 0)
         {
             CurrentState = ESpiderPatternState::WebShot;
             SpiderBoss->PerformWebShot(TargetActor);
             StateTimer = 2.0f;
         }
-        // 홀수: 찍기 (얘는 다시 달려가야 함!)
         else
         {
             CurrentState = ESpiderPatternState::SmashQTE;
-
-            // [핵심] 여기서 바로 PerformSmashAttack을 부르지 않습니다.
-            // 대신 타이머를 -1로 설정하여 "Tick 함수에서 다시 돌진해라"라고 신호를 줍니다.
             StateTimer = -1.0f;
         }
-
         PatternCycleIndex++;
     }
 }
@@ -219,7 +209,7 @@ bool AStage2SpiderAIController::IsSafeToRetreat(FVector Direction, float CheckDi
     if (!NavSys) return true;
 
     FNavLocation Result;
-    bool bOnNavMesh = NavSys->ProjectPointToNavigation(CheckPos, Result, FVector(50, 50, 200));
+    bool bOnNavMesh = NavSys->ProjectPointToNavigation(CheckPos, Result, FVector(500.0f, 500.0f, 500.0f));
 
     return bOnNavMesh;
 }
