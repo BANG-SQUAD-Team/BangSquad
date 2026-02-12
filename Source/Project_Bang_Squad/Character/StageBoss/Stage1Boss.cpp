@@ -630,6 +630,12 @@ void AStage1Boss::OnDeathStarted()
 {
 	Super::OnDeathStarted();
 	if (!HasAuthority()) return;
+	
+	if (AStageBossGameMode* GM = GetWorld()->GetAuthGameMode<AStageBossGameMode>())
+	{
+		GM->OnBossKilled();
+	}
+	
 	if (TargetPortal)
 	{
 		TargetPortal->ActivatePortal();

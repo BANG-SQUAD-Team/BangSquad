@@ -79,6 +79,22 @@ void AMiniGameMode::CheckAllPlayersFinished()
 
 	if (FinishedPlayers.Num() >= 1)
 	{
+		// 부모님(ABSGameMode)에게 줄 '플레이어 컨트롤러 리스트' 만들기
+		TArray<APlayerController*> RankedList;
+
+		// FinishedPlayers는 이미 도착순(1등, 2등..)으로 저장되어 있음
+		for (AController* Ctrl : FinishedPlayers)
+		{
+			if (APlayerController* PC = Cast<APlayerController>(Ctrl))
+			{
+				RankedList.Add(PC);
+			}
+			
+		}
+		// 부모님 함수 호출! (1등 100코인, 2등 70코인... 자동 지급 및 저장)
+		GiveMiniGameReward(RankedList);
+
+		// =================================================================
 		if (UBSGameInstance* GI = Cast<UBSGameInstance>(GetGameInstance()))
 		{
 			GI->MoveToStage(EStageIndex::Stage1, EStageSection::Main);

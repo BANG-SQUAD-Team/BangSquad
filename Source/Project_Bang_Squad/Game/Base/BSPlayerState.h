@@ -9,6 +9,8 @@
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRespawnTimeChanged, float, NewRespawnTime);
 
+// 코인 변경 델리게이트
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCoinChangedDelegate, int32, NewCoinAmount);
 UCLASS()
 class PROJECT_BANG_SQUAD_API ABSPlayerState : public APlayerState
 {
@@ -42,4 +44,29 @@ protected:
 
 	UPROPERTY(Replicated)
 	float RespawnEndTime = 0.f;
+	
+	// =========================================================================
+	// 코인 시스템 (Coin System)
+	// =========================================================================
+public:
+	// 코인 Getter
+	UFUNCTION(BlueprintCallable, Category = "BS|Coin")
+	int32 GetCoin() const { return CoinAmount;}
+	
+	// 코인 추가 (서버 권한 필요)
+	void AddCoin(int32 Amount);
+	
+	// 코인 강제 설정 (로드용, 서버 권한 필요)
+	void SetCoin(int32 Amount);
+	
+	// UI 바인딩용 델리게이트
+	UPROPERTY(BlueprintAssignable, Category = "BS|Coin")
+	FOnCoinChangedDelegate OnCoinChanged;
+	
+protected:
+	UPROPERTY(ReplicatedUsing = OnRep_CoinAmount, VisibleAnywhere, BlueprintReadOnly, Category = "BS|Coin")
+	int32 CoinAmount = 0;
+	
+	UFUNCTION()
+	void OnRep_CoinAmount();
 };

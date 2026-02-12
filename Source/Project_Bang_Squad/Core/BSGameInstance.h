@@ -189,4 +189,37 @@ public:
 	//UFUNCTION()
 	//FORCEINLINE EStageIndex GetCurrentStage() const { return CurrentStage; }
 	//void SetCurrentStage(EStageIndex NewIndex) { CurrentStage = NewIndex; }
+
+
+	// =========================================================================
+	// 코인 시스템 (Coin System Persistence)
+	// =========================================================================
+public:
+	// Key 타입을 FString으로 변경
+	UPROPERTY()
+	TMap<FString, int32> SavedPlayerCoins;
+	
+	// 코인 저장 (레벨 이동 전 호출)
+	// [수정] 인자 타입 변경
+	void SaveCoinToInstance(FString PlayerKey, int32 Amount)
+	{
+		SavedPlayerCoins.FindOrAdd(PlayerKey) = Amount;
+        
+		// 로그로 확인
+		UE_LOG(LogTemp, Warning, TEXT("💾 [GameInstance] Saved for %s: %d G"), *PlayerKey, Amount);
+	}
+
+	//  코인 불러오기
+	int32 LoadCoinFromInstance(FString PlayerKey)
+	{
+		if (SavedPlayerCoins.Contains(PlayerKey))
+		{
+			int32 Val = SavedPlayerCoins[PlayerKey];
+			UE_LOG(LogTemp, Warning, TEXT("📂 [GameInstance] Loaded for %s: %d G"), *PlayerKey, Val);
+			return Val;
+		}
+		UE_LOG(LogTemp, Warning, TEXT("📂 [GameInstance] No data for %s (Start 0 G)"), *PlayerKey);
+		return 0;
+	}
 };
+

@@ -53,3 +53,36 @@ void ABSPlayerState::Server_SetJob_Implementation(EJobType NewJob)
 {
 	JobType = NewJob;
 }
+
+// =========================================================================
+// 코인 시스템 구현
+// =========================================================================
+
+void ABSPlayerState::AddCoin(int32 Amount)
+{
+	if (HasAuthority())
+	{
+		CoinAmount += Amount;
+		OnCoinChanged.Broadcast(CoinAmount); // 서버 UI 갱신
+		
+		if (GEngine)
+		{
+			FString Msg = FString::Printf(TEXT("✅ 코인 획득! (+%d) | 현재 총액: %d"), Amount, CoinAmount);
+			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, Msg);
+		}
+	}
+}
+
+void ABSPlayerState::SetCoin(int32 Amount)
+{
+	if (HasAuthority())
+	{
+		CoinAmount = Amount;
+		OnCoinChanged.Broadcast(CoinAmount);
+	}
+}
+
+void ABSPlayerState::OnRep_CoinAmount()
+{
+	OnCoinChanged.Broadcast(CoinAmount);
+}

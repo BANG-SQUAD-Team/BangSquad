@@ -16,6 +16,7 @@ public class Project_Bang_Squad : ModuleRules
             "InputCore",
             "EnhancedInput",
             "UMG",
+            "NetCore",
             "Slate",
             "SlateCore",
             "OnlineSubsystem",
