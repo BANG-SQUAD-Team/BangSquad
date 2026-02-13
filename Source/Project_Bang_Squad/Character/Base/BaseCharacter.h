@@ -78,6 +78,10 @@ public:
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_EquipShopItem(const FShopItemData& ItemData);
 
+	UFUNCTION(BlueprintCallable, Category = "Shop")
+	void EquipSkin(UMaterialInterface* NewSkin);
+
+
 	// 전투 관련
 	UFUNCTION(BlueprintCallable, Category = "Combat")
 	bool CanAttack() const;

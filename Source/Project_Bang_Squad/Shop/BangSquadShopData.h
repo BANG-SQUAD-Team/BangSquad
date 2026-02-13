@@ -1,10 +1,19 @@
-// BangSquadShopData.h
-
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Engine/DataTable.h"
 #include "BangSquadShopData.generated.h"
+
+/** 직업 목록 (드롭다운용) */
+UENUM(BlueprintType)
+enum class ECharacterJob : uint8
+{
+	Common		UMETA(DisplayName = "All Jobs"), // 공용 아이템
+	Mage		UMETA(DisplayName = "Mage"),
+	Striker		UMETA(DisplayName = "Striker"),
+	Titan		UMETA(DisplayName = "Titan"),
+	Paladin		UMETA(DisplayName = "Paladin")
+};
 
 /** 아이템 등급 */
 UENUM(BlueprintType)
@@ -16,26 +25,12 @@ enum class EItemRarity : uint8
 	Legendary	UMETA(DisplayName = "Legendary")
 };
 
-/** 아이템 타입 */
+/** 아이템 타입 (스탯 제거, 스킨 추가) */
 UENUM(BlueprintType)
 enum class EItemType : uint8
 {
-	HeadGear	UMETA(DisplayName = "Head Accessory"),
-	StatUpgrade	UMETA(DisplayName = "Stat Upgrade")
-};
-
-/** [하위 구조체] 레벨별 강화 정보 */
-USTRUCT(BlueprintType)
-struct FShopItemLevelInfo
-{
-	GENERATED_BODY()
-
-public:
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Upgrade")
-	int32 UpgradeCost;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Upgrade")
-	float StatValue;
+	HeadGear	UMETA(DisplayName = "Head Accessory"), // 머리 장식
+	Skin		UMETA(DisplayName = "Character Skin")  // 캐릭터 스킨 (재질 변경)
 };
 
 /** [메인 구조체] 상점 아이템 데이터 */
@@ -45,7 +40,7 @@ struct FShopItemData : public FTableRowBase
 	GENERATED_BODY()
 
 public:
-	// --- 공통 데이터 ---
+	// --- 기본 정보 ---
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Common Info")
 	FText ItemName;
 
@@ -58,26 +53,31 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Common Info")
 	EItemType ItemType;
 
-	// --- 장식 전용 데이터 (수정됨!) ---
+	// ★ [핵심] 직업 제한 (드롭다운으로 선택 가능)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Requirement")
+	ECharacterJob RequiredJob = ECharacterJob::Common;
+
+	// --- 장식/가격 정보 ---
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetic Info")
 	EItemRarity Rarity;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetic Info")
-	int32 BasePrice;
+	int32 Price;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetic Visual")
+	// --- 1. 부착형 장식 (투구 등) ---
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Visual - HeadGear")
 	UStaticMesh* StaticMesh;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetic Visual")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Visual - HeadGear")
 	USkeletalMesh* SkeletalMesh;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetic Visual")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Visual - HeadGear")
 	UAnimationAsset* IdleAnimation;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetic Visual")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Visual - HeadGear")
 	FTransform AdjustTransform = FTransform::Identity;
 
-	// --- 능력 강화 데이터 ---
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Upgrade Info")
-	TArray<FShopItemLevelInfo> LevelData;
+	// --- 2. 스킨형 (재질 변경) ---
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Visual - Skin")
+	UMaterialInterface* SkinMaterial;
 };

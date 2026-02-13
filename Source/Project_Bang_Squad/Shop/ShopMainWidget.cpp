@@ -10,16 +10,18 @@
 void UShopMainWidget::NativeConstruct()
 {
     Super::NativeConstruct();
-
-    // ★ 원래 코드처럼 목록은 여기서 즉시 생성합니다! (슬롯 안 뜨는 문제 해결)
-    InitShopList();
+    // 여기서 InitShopList()를 호출하면 직업 태그를 모르니 목록이 텅 빕니다.
+    // InitShop() 안에서 호출하도록 구조를 바꿨습니다.
 }
 
 void UShopMainWidget::InitShop(FName MyJobTag)
 {
-    // [로그] 어떤 태그로 마네킹을 찾는지 확인
-    UE_LOG(LogTemp, Warning, TEXT("[ShopUI] InitShop 시작! 받은 태그: %s"), *MyJobTag.ToString());
+    // ★ 1. 내 직업 태그 저장 (목록 만들 때 쓰려고)
+    CurrentJobTag = MyJobTag;
 
+    UE_LOG(LogTemp, Warning, TEXT("[ShopUI] InitShop 시작! 태그: %s"), *MyJobTag.ToString());
+
+    // --- 마네킹 찾기 로직 (기존 유지) ---
     TArray<AActor*> AllStudios;
     if (ShopStudioClass)
     {
@@ -28,29 +30,21 @@ void UShopMainWidget::InitShop(FName MyJobTag)
 
     ShopStudioInstance = nullptr;
 
-    // 태그에 맞는 스튜디오 찾기 및 카메라 켜기
     for (AActor* Studio : AllStudios)
     {
         if (!Studio) continue;
-
-        UE_LOG(LogTemp, Warning, TEXT("[ShopUI] 후보 발견: %s, 첫 번째 태그: %s"),
-            *Studio->GetName(),
-            Studio->Tags.Num() > 0 ? *Studio->Tags[0].ToString() : TEXT("태그 없음"));
-
         USceneCaptureComponent2D* CaptureComp = Studio->FindComponentByClass<USceneCaptureComponent2D>();
 
         if (Studio->ActorHasTag(MyJobTag))
         {
             ShopStudioInstance = Studio;
 
-            // 카메라 켜기
             if (CaptureComp)
             {
                 CaptureComp->bCaptureEveryFrame = true;
                 CaptureComp->SetHiddenInGame(false);
             }
 
-            // 마네킹 애니메이션 켜기
             UChildActorComponent* ChildComp = Studio->FindComponentByClass<UChildActorComponent>();
             if (ChildComp && ChildComp->GetChildActor())
             {
@@ -62,39 +56,70 @@ void UShopMainWidget::InitShop(FName MyJobTag)
         }
         else
         {
-            // 내 직업 아니면 카메라 끄기
             if (CaptureComp) CaptureComp->bCaptureEveryFrame = false;
         }
     }
+
+    // ★ 2. 마네킹 다 찾았으니 이제 목록 생성! (필터링 적용)
+    InitShopList();
 }
 
 void UShopMainWidget::InitShopList()
 {
-    // 안전장치
     if (!Grid_ItemBox || !SlotWidgetClass || !ShopDataTable)
     {
-        UE_LOG(LogTemp, Error, TEXT("[ShopUI] 필수 변수가 비어있습니다 (WrapBox, SlotClass, DataTable)"));
+        UE_LOG(LogTemp, Error, TEXT("[ShopUI] 필수 변수 누락!"));
         return;
     }
 
+    // 두 박스 모두 초기화
     Grid_ItemBox->ClearChildren();
+    if (Grid_SkinBox) Grid_SkinBox->ClearChildren();
 
     TArray<FName> RowNames = ShopDataTable->GetRowNames();
-    UE_LOG(LogTemp, Warning, TEXT("[ShopUI] 슬롯 생성 시작: %d 개"), RowNames.Num());
 
     for (const FName& RowName : RowNames)
     {
         static const FString ContextString(TEXT("ShopInit"));
         FShopItemData* ItemData = ShopDataTable->FindRow<FShopItemData>(RowName, ContextString);
 
-        if (ItemData)
+        if (!ItemData) continue;
+
+        // =========================================================
+        // ★ [핵심] 직업 필터링 (Enum -> String 변환 후 비교)
+        // =========================================================
+
+        // 데이터 테이블의 Enum 값을 문자열로 변환 (예: Mage -> "Mage")
+        FString EnumString = UEnum::GetDisplayValueAsText(ItemData->RequiredJob).ToString();
+
+        // 1. 내 직업 태그랑 같은가?
+        bool bIsMyJob = (CurrentJobTag.ToString() == EnumString);
+
+        // 2. 혹은 공용(Common) 인가?
+        bool bIsCommon = (ItemData->RequiredJob == ECharacterJob::Common);
+
+        // 내 것도 아니고 공용도 아니면 -> 건너뛰기
+        if (!bIsMyJob && !bIsCommon) continue;
+
+        // =========================================================
+        // ★ [핵심] 아이템 타입별 분류 (장비 vs 스킨)
+        // =========================================================
+        UShopSlotWidget* NewSlot = CreateWidget<UShopSlotWidget>(this, SlotWidgetClass);
+        if (NewSlot)
         {
-            UShopSlotWidget* NewSlot = CreateWidget<UShopSlotWidget>(this, SlotWidgetClass);
-            if (NewSlot)
+            NewSlot->InitSlotData(*ItemData);
+
+            if (ItemData->ItemType == EItemType::HeadGear)
             {
-                NewSlot->InitSlotData(*ItemData);
+                // 머리 장식 -> 기존 박스, 기존 함수 연결
                 NewSlot->OnSlotSelected.AddDynamic(this, &UShopMainWidget::UpdateMannequinPreview);
                 Grid_ItemBox->AddChildToWrapBox(NewSlot);
+            }
+            else if (ItemData->ItemType == EItemType::Skin)
+            {
+                // 스킨 -> ★ 새 박스, 새 함수 연결
+                NewSlot->OnSlotSelected.AddDynamic(this, &UShopMainWidget::UpdateSkinPreview);
+                if (Grid_SkinBox) Grid_SkinBox->AddChildToWrapBox(NewSlot);
             }
         }
     }
@@ -102,18 +127,31 @@ void UShopMainWidget::InitShopList()
 
 void UShopMainWidget::UpdateMannequinPreview(const FShopItemData& SelectedItem)
 {
-    if (!ShopStudioInstance)
-    {
-        UE_LOG(LogTemp, Error, TEXT("[ShopUI] 마네킹 스튜디오가 연결되지 않았습니다!"));
-        return;
-    }
+    if (!ShopStudioInstance) return;
 
     UChildActorComponent* ChildComp = ShopStudioInstance->FindComponentByClass<UChildActorComponent>();
     if (ChildComp)
     {
         if (ABaseCharacter* TargetChar = Cast<ABaseCharacter>(ChildComp->GetChildActor()))
         {
+            // 기존 아이템 장착 함수
             TargetChar->EquipShopItem(SelectedItem);
+        }
+    }
+}
+
+// ★ [추가] 스킨 변경 함수
+void UShopMainWidget::UpdateSkinPreview(const FShopItemData& SelectedSkin)
+{
+    if (!ShopStudioInstance) return;
+
+    UChildActorComponent* ChildComp = ShopStudioInstance->FindComponentByClass<UChildActorComponent>();
+    if (ChildComp)
+    {
+        if (ABaseCharacter* TargetChar = Cast<ABaseCharacter>(ChildComp->GetChildActor()))
+        {
+            // 캐릭터의 스킨 변경 함수 호출 (BaseCharacter에 추가했죠?)
+            TargetChar->EquipSkin(SelectedSkin.SkinMaterial);
         }
     }
 }

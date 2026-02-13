@@ -157,6 +157,15 @@ void ABaseCharacter::Multicast_EquipShopItem_Implementation(const FShopItemData&
 	EquipShopItem(ItemData); 
 }
 
+void ABaseCharacter::EquipSkin(UMaterialInterface* NewSkin)
+{
+	// 0번 인덱스(몸체) 머티리얼 교체
+	if (GetMesh() && NewSkin)
+	{
+		GetMesh()->SetMaterial(0, NewSkin);
+	}
+}
+
 void ABaseCharacter::BeginPlay()
 {
 	Super::BeginPlay();
