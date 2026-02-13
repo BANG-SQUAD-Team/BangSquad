@@ -1,6 +1,9 @@
 #include "Project_Bang_Squad/Game/Base/BSPlayerController.h"
 #include "BSPlayerState.h"
 #include "Project_Bang_Squad/Core/BSGameInstance.h"
+#include "Blueprint/UserWidget.h"
+#include "Project_Bang_Squad/Shop/ShopMainWidget.h" 
+#include "GameFramework/Character.h"
 
 void ABSPlayerController::BeginPlay()
 {
@@ -60,6 +63,57 @@ void ABSPlayerController::RegisterManagedWidget(UUserWidget* InWidget)
 	if (IsValid(InWidget))
 	{
 		ManagedWidgets.Add(InWidget);
+	}
+}
+
+#include "Project_Bang_Squad/Character/Base/BaseCharacter.h" // 캐릭터 헤더 포함 필수
+
+void ABSPlayerController::ToggleShopUI()
+{
+	// 1. 닫기 로직 (이미 열려있으면 끄기)S
+	if (ShopWidgetInstance && ShopWidgetInstance->IsInViewport())
+	{
+		ShopWidgetInstance->RemoveFromParent();
+		bShowMouseCursor = false;
+		SetInputMode(FInputModeGameOnly());
+
+		// 닫을 때 스튜디오 카메라도 꺼주면 좋음 (선택사항)
+		return;
+	}
+
+	// 2. 생성 로직
+	if (!ShopWidgetInstance && ShopWidgetClass)
+	{
+		ShopWidgetInstance = CreateWidget<UShopMainWidget>(this, ShopWidgetClass);
+	}
+
+	if (ShopWidgetInstance)
+	{
+		ShopWidgetInstance->AddToViewport();
+
+		FName JobTag = NAME_None;
+		if (APawn* MyPawn = GetPawn())
+		{
+			// [디버그 로그] 캐릭터가 가진 모든 태그를 다 찍어봅니다.
+			UE_LOG(LogTemp, Warning, TEXT("[Controller] 캐릭터 태그 총 개수: %d"), MyPawn->Tags.Num());
+			for (int32 i = 0; i < MyPawn->Tags.Num(); i++)
+			{
+				UE_LOG(LogTemp, Log, TEXT("[Controller] 태그 %d번: %s"), i, *MyPawn->Tags[i].ToString());
+			}
+
+			// 1번 인덱스를 가져오되, 없으면 0번이라도 시도
+			if (MyPawn->Tags.Num() >= 2) JobTag = MyPawn->Tags[1];
+			else if (MyPawn->Tags.Num() >= 1) JobTag = MyPawn->Tags[0];
+		}
+
+		ShopWidgetInstance->InitShop(JobTag);
+
+		// --- 마우스 및 입력 모드 설정 ---
+		bShowMouseCursor = true;
+		FInputModeGameAndUI InputMode;
+		InputMode.SetWidgetToFocus(ShopWidgetInstance->TakeWidget());
+		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+		SetInputMode(InputMode);
 	}
 }
 

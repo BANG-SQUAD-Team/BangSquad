@@ -39,5 +39,12 @@ public:
 	UFUNCTION()
 	void UpdateMannequinPreview(const FShopItemData& SelectedItem);
 
-	void InitShopList(); // 이름 변경 (Test -> Shop)
+	void InitShopList(); 
+
+	UFUNCTION(BlueprintCallable)
+	void InitShop(FName MyJobTag);
+
+private:
+	UPROPERTY()
+	class ABaseCharacter* MyCharacter;
 };

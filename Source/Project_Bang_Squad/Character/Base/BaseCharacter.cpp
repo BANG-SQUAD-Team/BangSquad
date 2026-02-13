@@ -549,6 +549,11 @@ void ABaseCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 	if (Skill2Action) EIC->BindAction(Skill2Action, ETriggerEvent::Started, this, &ABaseCharacter::Skill2);
 	if (JobAbilityAction) EIC->BindAction(JobAbilityAction, ETriggerEvent::Started, this, &ABaseCharacter::JobAbility);
 	if (ZoomAction){EIC->BindAction(ZoomAction, ETriggerEvent::Triggered, this, &ABaseCharacter::Zoom);}
+
+	if (InteractionAction)
+	{
+		EIC->BindAction(InteractionAction, ETriggerEvent::Started, this, &ABaseCharacter::Interact);
+	}
 }
 
 void ABaseCharacter::Move(const FInputActionValue& Value)
@@ -708,6 +713,28 @@ void ABaseCharacter::SetWindResistance(bool bEnable)
 		// [윈드존 퇴장]
 		// 원래대로 브레이크 복구 (안 하면 계속 미끄러짐)
 		MoveComp->BrakingDecelerationWalking = OriginalBrakingDeceleration;
+	}
+}
+
+void ABaseCharacter::Interact()
+{
+	if (bIsDead) return;
+
+	// 1. 내 주변 상인 찾기
+	TArray<AActor*> OverlappingActors;
+	GetOverlappingActors(OverlappingActors);
+
+	for (AActor* Actor : OverlappingActors)
+	{
+		if (Actor->ActorHasTag(TEXT("Merchant")))
+		{
+			// 2. 컨트롤러에게 요청!
+			if (ABSPlayerController* PC = Cast<ABSPlayerController>(GetController()))
+			{
+				PC->ToggleShopUI();
+			}
+			return;
+		}
 	}
 }
 

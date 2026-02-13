@@ -32,6 +32,7 @@ void ALobbyPlayerController::BeginPlay()
 		//GetWorld()->GetTimerManager().SetTimer(InitTimerHandle, this, &ALobbyPlayerController::InitLobbyUI, 0.2f, true);
 
 		InitLobbyUI();
+		
 		if (UBSGameInstance* GI = Cast<UBSGameInstance>(GetGameInstance()))
 		{
 			if (!GI->UserNickname.IsEmpty())
@@ -105,19 +106,15 @@ void ALobbyPlayerController::Client_JobSelectFailed_Implementation(EJobType Fail
 	}
 }
 
-/*void ALobbyPlayerController::ServerSetNickname_Implementation(const FString& NewName)
-{
-	if (APlayerState* PS = GetPlayerState<APlayerState>())
-	{
-		PS->SetPlayerName(NewName);
-		UE_LOG(LogTemp, Warning, TEXT("[Server] 닉네임 변경 완료: %s"), *NewName);
-
-		if (ALobbyPlayerState* LobbyPS = Cast<ALobbyPlayerState>(PS))
-		{
-			LobbyPS->OnLobbyDataChanged.Broadcast();
-		}
-	}
-}*/
+// void ALobbyPlayerController::ServerSetNickName_Implementation(const FString& NewName) 
+// {
+// 	// [수정] this->를 붙여서 명확하게 호출하거나, 상속받은 변수 PlayerState를 사용합니다.
+// 	if (APlayerState* PS = this->GetPlayerState<APlayerState>())
+// 	{
+// 		PS->SetPlayerName(NewName);
+// 		UE_LOG(LogTemp, Warning, TEXT("[Server] 닉네임 변경 완료: %s"), *NewName);
+// 	}
+// }
 
 void ALobbyPlayerController::InitLobbyUI()
 {

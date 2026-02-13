@@ -51,6 +51,7 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI")
 	UTexture2D* Icon = nullptr;
+
 };
 
 UCLASS()
@@ -132,6 +133,10 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
 	TObjectPtr<class UStaticMeshComponent> OverheadMarkerMesh;
+
+	//상호작용 F키
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+	class UInputAction* InteractionAction;
 
 protected:
 	virtual void BeginPlay() override;
@@ -255,6 +260,8 @@ protected:
 
 	UPROPERTY(EditAnywhere, Category = "Camera")
 	float ZoomStep = 50.0f; // 휠 한 칸당 이동 거리
+
+	void Interact();//상호작용 함수
 	
 private:
 	float OriginalBrakingDeceleration = 0.0f;
