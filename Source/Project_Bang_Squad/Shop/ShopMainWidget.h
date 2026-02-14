@@ -29,6 +29,9 @@ public:
 	TSubclassOf<class UShopSlotWidget> SlotWidgetClass;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Shop")
+	TSubclassOf<class UShopSlotWidget> SkinSlotWidgetClass;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Shop")
 	TSubclassOf<AActor> ShopStudioClass;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Shop")

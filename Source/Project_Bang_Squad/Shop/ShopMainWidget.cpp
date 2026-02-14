@@ -71,9 +71,9 @@ void UShopMainWidget::InitShopList()
     if (Grid_SkinBox) Grid_SkinBox->ClearChildren();
 
     // =========================================================
-    // 1. 장비 아이템 테이블 처리 (ItemDataTable)
+    // 1. 장비 아이템 테이블 처리 (ItemDataTable) -> 기존 SlotWidgetClass 사용
     // =========================================================
-    if (ItemDataTable)
+    if (ItemDataTable && SlotWidgetClass) // ★ 안전장치: 클래스 있는지 확인
     {
         TArray<FName> RowNames = ItemDataTable->GetRowNames();
         for (const FName& RowName : RowNames)
@@ -82,14 +82,14 @@ void UShopMainWidget::InitShopList()
             FShopItemData* Data = ItemDataTable->FindRow<FShopItemData>(RowName, ContextString);
             if (!Data) continue;
 
-            // 직업 필터링 (내 직업 or 공용)
+            // 직업 필터링
             FString EnumString = UEnum::GetDisplayValueAsText(Data->RequiredJob).ToString();
             bool bIsMyJob = (CurrentJobTag.ToString() == EnumString);
             bool bIsCommon = (Data->RequiredJob == ECharacterJob::Common);
 
             if (bIsMyJob || bIsCommon)
             {
-                // 장비 박스(Grid_ItemBox)에 넣기
+                // ★ 여기는 기존 SlotWidgetClass 사용
                 UShopSlotWidget* NewSlot = CreateWidget<UShopSlotWidget>(this, SlotWidgetClass);
                 if (NewSlot)
                 {
@@ -102,9 +102,9 @@ void UShopMainWidget::InitShopList()
     }
 
     // =========================================================
-    // 2. 스킨 테이블 처리 (SkinDataTable) - 따로 관리!
+    // 2. 스킨 테이블 처리 (SkinDataTable) -> ★ SkinSlotWidgetClass 사용!
     // =========================================================
-    if (SkinDataTable)
+    if (SkinDataTable && SkinSlotWidgetClass) // ★ 안전장치: 스킨용 위젯 클래스 확인
     {
         TArray<FName> RowNames = SkinDataTable->GetRowNames();
         for (const FName& RowName : RowNames)
@@ -113,19 +113,20 @@ void UShopMainWidget::InitShopList()
             FShopItemData* Data = SkinDataTable->FindRow<FShopItemData>(RowName, ContextString);
             if (!Data) continue;
 
-            // 직업 필터링 (스킨은 보통 공용이 없고 직업 전용이 많음)
+            // 직업 필터링
             FString EnumString = UEnum::GetDisplayValueAsText(Data->RequiredJob).ToString();
             bool bIsMyJob = (CurrentJobTag.ToString() == EnumString);
             bool bIsCommon = (Data->RequiredJob == ECharacterJob::Common);
 
             if (bIsMyJob || bIsCommon)
             {
-                // 스킨 박스(Grid_SkinBox)에 넣기
-                UShopSlotWidget* NewSlot = CreateWidget<UShopSlotWidget>(this, SlotWidgetClass);
+                // ★ [수정] 여기서 SkinSlotWidgetClass로 생성합니다!
+                // 부모가 UShopSlotWidget이므로 리턴 타입은 그대로 둬도 됩니다.
+                UShopSlotWidget* NewSlot = CreateWidget<UShopSlotWidget>(this, SkinSlotWidgetClass);
+
                 if (NewSlot)
                 {
                     NewSlot->InitSlotData(*Data);
-                    // 스킨용 미리보기 함수 연결
                     NewSlot->OnSlotSelected.AddDynamic(this, &UShopMainWidget::UpdateSkinPreview);
                     Grid_SkinBox->AddChildToWrapBox(NewSlot);
                 }
@@ -133,7 +134,6 @@ void UShopMainWidget::InitShopList()
         }
     }
 }
-
 void UShopMainWidget::UpdateMannequinPreview(const FShopItemData& SelectedItem)
 {
     if (!ShopStudioInstance) return;
