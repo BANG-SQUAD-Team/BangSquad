@@ -32,7 +32,10 @@ public:
 	TSubclassOf<AActor> ShopStudioClass;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Shop")
-	UDataTable* ShopDataTable;
+	UDataTable* ItemDataTable;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Shop")
+	UDataTable* SkinDataTable;
 
 	// --- 내부 변수 ---
 	UPROPERTY()

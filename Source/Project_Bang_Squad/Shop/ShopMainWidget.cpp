@@ -66,60 +66,69 @@ void UShopMainWidget::InitShop(FName MyJobTag)
 
 void UShopMainWidget::InitShopList()
 {
-    if (!Grid_ItemBox || !SlotWidgetClass || !ShopDataTable)
-    {
-        UE_LOG(LogTemp, Error, TEXT("[ShopUI] 필수 변수 누락!"));
-        return;
-    }
-
-    // 두 박스 모두 초기화
-    Grid_ItemBox->ClearChildren();
+    // 박스 초기화
+    if (Grid_ItemBox) Grid_ItemBox->ClearChildren();
     if (Grid_SkinBox) Grid_SkinBox->ClearChildren();
 
-    TArray<FName> RowNames = ShopDataTable->GetRowNames();
-
-    for (const FName& RowName : RowNames)
+    // =========================================================
+    // 1. 장비 아이템 테이블 처리 (ItemDataTable)
+    // =========================================================
+    if (ItemDataTable)
     {
-        static const FString ContextString(TEXT("ShopInit"));
-        FShopItemData* ItemData = ShopDataTable->FindRow<FShopItemData>(RowName, ContextString);
-
-        if (!ItemData) continue;
-
-        // =========================================================
-        // ★ [핵심] 직업 필터링 (Enum -> String 변환 후 비교)
-        // =========================================================
-
-        // 데이터 테이블의 Enum 값을 문자열로 변환 (예: Mage -> "Mage")
-        FString EnumString = UEnum::GetDisplayValueAsText(ItemData->RequiredJob).ToString();
-
-        // 1. 내 직업 태그랑 같은가?
-        bool bIsMyJob = (CurrentJobTag.ToString() == EnumString);
-
-        // 2. 혹은 공용(Common) 인가?
-        bool bIsCommon = (ItemData->RequiredJob == ECharacterJob::Common);
-
-        // 내 것도 아니고 공용도 아니면 -> 건너뛰기
-        if (!bIsMyJob && !bIsCommon) continue;
-
-        // =========================================================
-        // ★ [핵심] 아이템 타입별 분류 (장비 vs 스킨)
-        // =========================================================
-        UShopSlotWidget* NewSlot = CreateWidget<UShopSlotWidget>(this, SlotWidgetClass);
-        if (NewSlot)
+        TArray<FName> RowNames = ItemDataTable->GetRowNames();
+        for (const FName& RowName : RowNames)
         {
-            NewSlot->InitSlotData(*ItemData);
+            static const FString ContextString(TEXT("ItemInit"));
+            FShopItemData* Data = ItemDataTable->FindRow<FShopItemData>(RowName, ContextString);
+            if (!Data) continue;
 
-            if (ItemData->ItemType == EItemType::HeadGear)
+            // 직업 필터링 (내 직업 or 공용)
+            FString EnumString = UEnum::GetDisplayValueAsText(Data->RequiredJob).ToString();
+            bool bIsMyJob = (CurrentJobTag.ToString() == EnumString);
+            bool bIsCommon = (Data->RequiredJob == ECharacterJob::Common);
+
+            if (bIsMyJob || bIsCommon)
             {
-                // 머리 장식 -> 기존 박스, 기존 함수 연결
-                NewSlot->OnSlotSelected.AddDynamic(this, &UShopMainWidget::UpdateMannequinPreview);
-                Grid_ItemBox->AddChildToWrapBox(NewSlot);
+                // 장비 박스(Grid_ItemBox)에 넣기
+                UShopSlotWidget* NewSlot = CreateWidget<UShopSlotWidget>(this, SlotWidgetClass);
+                if (NewSlot)
+                {
+                    NewSlot->InitSlotData(*Data);
+                    NewSlot->OnSlotSelected.AddDynamic(this, &UShopMainWidget::UpdateMannequinPreview);
+                    Grid_ItemBox->AddChildToWrapBox(NewSlot);
+                }
             }
-            else if (ItemData->ItemType == EItemType::Skin)
+        }
+    }
+
+    // =========================================================
+    // 2. 스킨 테이블 처리 (SkinDataTable) - 따로 관리!
+    // =========================================================
+    if (SkinDataTable)
+    {
+        TArray<FName> RowNames = SkinDataTable->GetRowNames();
+        for (const FName& RowName : RowNames)
+        {
+            static const FString ContextString(TEXT("SkinInit"));
+            FShopItemData* Data = SkinDataTable->FindRow<FShopItemData>(RowName, ContextString);
+            if (!Data) continue;
+
+            // 직업 필터링 (스킨은 보통 공용이 없고 직업 전용이 많음)
+            FString EnumString = UEnum::GetDisplayValueAsText(Data->RequiredJob).ToString();
+            bool bIsMyJob = (CurrentJobTag.ToString() == EnumString);
+            bool bIsCommon = (Data->RequiredJob == ECharacterJob::Common);
+
+            if (bIsMyJob || bIsCommon)
             {
-                // 스킨 -> ★ 새 박스, 새 함수 연결
-                NewSlot->OnSlotSelected.AddDynamic(this, &UShopMainWidget::UpdateSkinPreview);
-                if (Grid_SkinBox) Grid_SkinBox->AddChildToWrapBox(NewSlot);
+                // 스킨 박스(Grid_SkinBox)에 넣기
+                UShopSlotWidget* NewSlot = CreateWidget<UShopSlotWidget>(this, SlotWidgetClass);
+                if (NewSlot)
+                {
+                    NewSlot->InitSlotData(*Data);
+                    // 스킨용 미리보기 함수 연결
+                    NewSlot->OnSlotSelected.AddDynamic(this, &UShopMainWidget::UpdateSkinPreview);
+                    Grid_SkinBox->AddChildToWrapBox(NewSlot);
+                }
             }
         }
     }
