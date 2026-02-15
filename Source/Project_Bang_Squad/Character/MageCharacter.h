@@ -115,6 +115,9 @@ protected:
     UPROPERTY()
     UStaticMeshComponent* CachedWeaponMesh;
 
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
+    TObjectPtr<UStaticMeshComponent> WeaponRootComp;
+
     // 멀티캐스트로 켜고 끄기
     UFUNCTION(NetMulticast, Unreliable)
     void Multicast_SetTrailActive(bool bActive);

@@ -160,6 +160,9 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
 	class USkeletalMeshComponent* HeadSkeletalComp;
 
+	UPROPERTY(BlueprintReadWrite, Category = "Shop")
+	USceneComponent* ItemAttachParent;
+
 	// 데이터 테이블
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Data")
 	class UDataTable* SkillDataTable;

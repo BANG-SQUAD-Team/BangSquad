@@ -31,10 +31,12 @@ AMageCharacter::AMageCharacter()
 {
 	PrimaryActorTick.bCanEverTick = true;
 
+	// 컨트롤러 회전 설정 (마우스 돌릴 때 캐릭터 몸통도 같이 돌지 여부)
 	bUseControllerRotationYaw = true;
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationRoll = false;
 
+	// 이동 컴포넌트 설정
 	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
 	{
 		MoveComp->MaxWalkSpeed = 550.f;
@@ -45,16 +47,17 @@ AMageCharacter::AMageCharacter()
 	AttackCooldownTime = 1.f;
 	UnlockedStageLevel = 1;
 
+	// 기둥/타겟 초기화
 	FocusedPillar = nullptr;
 	CurrentTargetPillar = nullptr;
 
 	// [기둥용] 타임라인 컴포넌트
 	CameraTimelineComp = CreateDefaultSubobject<UTimelineComponent>(TEXT("CameraTimelineComp"));
 
-	// [보트용] 탑다운 카메라 컴포넌트
+	// [보트용] 탑다운 카메라 컴포넌트 (스프링암 + 카메라)
 	TopDownSpringArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("TopDownSpringArm"));
 	TopDownSpringArm->SetupAttachment(GetRootComponent());
-	TopDownSpringArm->SetRelativeRotation(FRotator(-90.0f, 0.0f, 0.0f)); // 수직
+	TopDownSpringArm->SetRelativeRotation(FRotator(-90.0f, 0.0f, 0.0f)); // 수직으로 내려다보기
 	TopDownSpringArm->TargetArmLength = 1200.0f;
 	TopDownSpringArm->bDoCollisionTest = false;
 
@@ -62,21 +65,50 @@ AMageCharacter::AMageCharacter()
 	TopDownCamera->SetupAttachment(TopDownSpringArm, USpringArmComponent::SocketName);
 	TopDownCamera->SetAutoActivate(false);
 
+	// 기본(상속받은) 스프링암 설정
 	if (SpringArm)
 	{
 		SpringArm->TargetOffset = FVector(0.0f, 0.0f, 150.0f);
 		SpringArm->ProbeSize = 12.0f;
 		SpringArm->bUsePawnControlRotation = true;
 	}
-	
-	// [여기서 미리 생성]
+
+	// [직업 아우라] 이펙트 컴포넌트
 	JobAuraComp = CreateDefaultSubobject<UNiagaraComponent>(TEXT("JobAuraComp"));
-    
-	// 1. 일단 루트(캡슐)에 붙인다.
+	// 일단 골반 쪽에 붙여둠 (나중에 켜짐)
 	JobAuraComp->SetupAttachment(GetMesh(), TEXT("Bip001-Pelvis"));
-    
-	// 2. 시작하자마자 켜지는거 방지
 	JobAuraComp->bAutoActivate = false;
+
+	// =========================================================
+	//  [핵심] 지팡이 및 악세서리 부착 설정 (여기가 중요합니다!)
+	// =========================================================
+
+	// 1. 지팡이 컴포넌트 생성 (이름: Weapon_Root_R)
+	WeaponRootComp = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Weapon_Root_R"));
+	// 실제 캐릭터 메쉬의 손/지팡이 소켓에 부착
+	WeaponRootComp->SetupAttachment(GetMesh(), TEXT("Weapon_Root_R"));
+
+	// 2. [BaseCharacter 수정사항 적용] 
+	// "상점 아이템을 장착할 때, 몸통(Mesh)이 아니라 내 지팡이(WeaponRootComp)에 붙여라" 라고 지정
+	ItemAttachParent = WeaponRootComp;
+
+	// 3. 소켓 이름도 지팡이 소켓 이름과 맞춰줌 (혹시 몰라서 동기화)
+	AccessorySocketName = FName("Weapon_Root_R");
+
+	// 4. 부모 클래스에서 만들어진 악세서리 컴포넌트들을 지팡이 아래로 이동시킴
+	if (HeadAccessoryComponent)
+	{
+		HeadAccessoryComponent->SetupAttachment(WeaponRootComp);
+		HeadAccessoryComponent->SetRelativeLocation(FVector::ZeroVector);
+		HeadAccessoryComponent->SetRelativeRotation(FRotator::ZeroRotator);
+	}
+
+	if (HeadSkeletalComp)
+	{
+		HeadSkeletalComp->SetupAttachment(WeaponRootComp);
+		HeadSkeletalComp->SetRelativeLocation(FVector::ZeroVector);
+		HeadSkeletalComp->SetRelativeRotation(FRotator::ZeroRotator);
+	}
 }
 
 void AMageCharacter::BeginPlay()

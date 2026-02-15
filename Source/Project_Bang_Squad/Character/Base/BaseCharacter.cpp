@@ -94,24 +94,23 @@ ABaseCharacter::ABaseCharacter()
 		// 충돌은 필요 없으므로 끔
 		OverheadMarkerMesh->SetCollisionProfileName(TEXT("NoCollision"));
 
-
+		ItemAttachParent = GetMesh();
 }
 
 void ABaseCharacter::EquipShopItem(const FShopItemData& ItemData)
 {
-	// 1. 일단 둘 다 숨김 (초기화)
 	if (HeadAccessoryComponent) HeadAccessoryComponent->SetVisibility(false);
 	if (HeadSkeletalComp) HeadSkeletalComp->SetVisibility(false);
 
-	// 2. 스켈레탈 메쉬(움직이는 것)가 들어있는 아이템인가?
+	USceneComponent* TargetParent = ItemAttachParent ? ItemAttachParent : GetMesh();
+
 	if (ItemData.SkeletalMesh != nullptr && HeadSkeletalComp)
 	{
 		HeadSkeletalComp->SetSkeletalMesh(ItemData.SkeletalMesh);
 		HeadSkeletalComp->SetRelativeTransform(ItemData.AdjustTransform);
 
-		// [수정] "Bip001-Head" 대신 변수(AccessorySocketName) 사용
 		HeadSkeletalComp->AttachToComponent(
-			GetMesh(),
+			TargetParent,
 			FAttachmentTransformRules::SnapToTargetIncludingScale,
 			AccessorySocketName
 		);
@@ -121,24 +120,20 @@ void ABaseCharacter::EquipShopItem(const FShopItemData& ItemData)
 		if (ItemData.IdleAnimation)
 		{
 			HeadSkeletalComp->SetAnimationMode(EAnimationMode::AnimationSingleNode);
-
 			HeadSkeletalComp->PlayAnimation(ItemData.IdleAnimation, true);
 		}
 		else
 		{
-			// 애니메이션이 없으면 멈춤 (혹은 기본 포즈)
 			HeadSkeletalComp->Stop();
 		}
 	}
-	// 3. 아니면 스태틱 메쉬(딱딱한 것)인가?
 	else if (ItemData.StaticMesh != nullptr && HeadAccessoryComponent)
 	{
 		HeadAccessoryComponent->SetStaticMesh(ItemData.StaticMesh);
 		HeadAccessoryComponent->SetRelativeTransform(ItemData.AdjustTransform);
 
-		// [수정] 여기도 "Bip001-Head" 대신 변수 사용
 		HeadAccessoryComponent->AttachToComponent(
-			GetMesh(),
+			TargetParent,
 			FAttachmentTransformRules::SnapToTargetIncludingScale,
 			AccessorySocketName
 		);
