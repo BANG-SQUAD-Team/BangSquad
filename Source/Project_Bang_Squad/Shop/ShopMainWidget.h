@@ -61,7 +61,32 @@ public:
 	UFUNCTION()
 	void UpdateSkinPreview(const FShopItemData& SelectedSkin);
 
+	UPROPERTY(meta = (BindWidget))
+	class UButton* Btn_Purchase;
+
+	UPROPERTY(meta = (BindWidget))
+	class UTextBlock* Txt_Price;
+
 private:
 	UPROPERTY()
 	class ABaseCharacter* MyCharacter;
+
+	FShopItemData SelectedHeadData;
+	bool bIsHeadSelected = false;
+
+	FShopItemData SelectedSkinData;
+	bool bIsSkinSelected = false;
+
+	// [추가] 총 가격 계산 및 UI 갱신 함수
+	void UpdateTotalPrice();
+
+	// [추가] 버튼 클릭 시 실행할 함수
+	UFUNCTION()
+	void OnClick_PurchaseButton();
+
+	// [추가] 구매 결과 처리 (성공/실패)
+	UFUNCTION()
+	void HandlePurchaseResult(bool bSuccess);
+
+	int32 GetPriceByRarity(EItemRarity Rarity);
 };

@@ -8,6 +8,7 @@
 #include "BSPlayerState.generated.h"
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRespawnTimeChanged, float, NewRespawnTime);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPurchaseResult, bool, bSuccess);
 
 // 코인 변경 델리게이트
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCoinChangedDelegate, int32, NewCoinAmount);
@@ -63,6 +64,18 @@ public:
 	// UI 바인딩용 델리게이트
 	UPROPERTY(BlueprintAssignable, Category = "BS|Coin")
 	FOnCoinChangedDelegate OnCoinChanged;
+
+	// =========================================================================
+	// 상점 구매 시스템 (Shop Purchase System)
+	// =========================================================================
+
+	// 1. UI가 구매 결과를 듣기 위한 델리게이트
+	UPROPERTY(BlueprintAssignable, Category = "BS|Shop")
+	FOnPurchaseResult OnPurchaseResult;
+
+	// 2. 서버에게 "이 가격만큼 결제해줘"라고 요청하는 함수
+	UFUNCTION(Server, Reliable, BlueprintCallable, Category = "BS|Shop")
+	void Server_TryPurchase(int32 TotalCost);
 	
 protected:
 	UPROPERTY(ReplicatedUsing = OnRep_CoinAmount, VisibleAnywhere, BlueprintReadOnly, Category = "BS|Coin")

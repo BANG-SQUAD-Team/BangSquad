@@ -6,14 +6,26 @@
 #include "Components/ChildActorComponent.h"
 #include "Components/SceneCaptureComponent2D.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/Button.h"   
+#include "Components/TextBlock.h" 
+#include "Project_Bang_Squad/Game/Base/BSPlayerState.h"
 
 void UShopMainWidget::NativeConstruct()
 {
     Super::NativeConstruct();
-    // 여기서 InitShopList()를 호출하면 직업 태그를 모르니 목록이 텅 빕니다.
-    // InitShop() 안에서 호출하도록 구조를 바꿨습니다.
-}
 
+    // [추가] 구매 버튼 클릭 이벤트 연결
+    if (Btn_Purchase)
+    {
+        Btn_Purchase->OnClicked.AddDynamic(this, &UShopMainWidget::OnClick_PurchaseButton);
+    }
+
+    // [추가] 처음 가격은 0원
+    if (Txt_Price)
+    {
+        Txt_Price->SetText(FText::FromString(TEXT("0 G")));
+    }
+}
 void UShopMainWidget::InitShop(FName MyJobTag)
 {
     // ★ 1. 내 직업 태그 저장 (목록 만들 때 쓰려고)
@@ -134,33 +146,131 @@ void UShopMainWidget::InitShopList()
         }
     }
 }
+
 void UShopMainWidget::UpdateMannequinPreview(const FShopItemData& SelectedItem)
 {
-    if (!ShopStudioInstance) return;
-
-    UChildActorComponent* ChildComp = ShopStudioInstance->FindComponentByClass<UChildActorComponent>();
-    if (ChildComp)
+    // 1. 마네킹 입히기 (기존 로직 유지)
+    if (ShopStudioInstance)
     {
-        if (ABaseCharacter* TargetChar = Cast<ABaseCharacter>(ChildComp->GetChildActor()))
+        UChildActorComponent* ChildComp = ShopStudioInstance->FindComponentByClass<UChildActorComponent>();
+        if (ChildComp)
         {
-            // 기존 아이템 장착 함수
-            TargetChar->EquipShopItem(SelectedItem);
+            if (ABaseCharacter* TargetChar = Cast<ABaseCharacter>(ChildComp->GetChildActor()))
+            {
+                TargetChar->EquipShopItem(SelectedItem);
+            }
         }
+    }
+
+    // 2. [추가] 데이터 저장 및 가격 갱신
+    SelectedHeadData = SelectedItem;
+    bIsHeadSelected = true;
+
+    UpdateTotalPrice(); // 가격 다시 계산!
+}
+
+void UShopMainWidget::UpdateSkinPreview(const FShopItemData& SelectedSkin)
+{
+    // 1. 마네킹 입히기 (기존 로직 유지)
+    if (ShopStudioInstance)
+    {
+        UChildActorComponent* ChildComp = ShopStudioInstance->FindComponentByClass<UChildActorComponent>();
+        if (ChildComp)
+        {
+            if (ABaseCharacter* TargetChar = Cast<ABaseCharacter>(ChildComp->GetChildActor()))
+            {
+                TargetChar->EquipSkin(SelectedSkin.SkinMaterial);
+            }
+        }
+    }
+
+    // 2. [추가] 데이터 저장 및 가격 갱신
+    SelectedSkinData = SelectedSkin;
+    bIsSkinSelected = true;
+
+    UpdateTotalPrice(); // 가격 다시 계산!
+}
+
+void UShopMainWidget::UpdateTotalPrice()
+{
+    // 1. 머리 장식 가격 (선택 안 했으면 0원)
+    int32 HeadPrice = 0;
+    if (bIsHeadSelected)
+    {
+        HeadPrice = GetPriceByRarity(SelectedHeadData.Rarity);
+    }
+
+    // 2. 스킨 가격 (선택 안 했으면 0원)
+    int32 SkinPrice = 0;
+    if (bIsSkinSelected)
+    {
+        SkinPrice = GetPriceByRarity(SelectedSkinData.Rarity);
+    }
+
+    // 3. 합산
+    int32 TotalPrice = HeadPrice + SkinPrice;
+
+    // 4. 텍스트 띄우기 (예: "Total: 1300 G")
+    if (Txt_Price)
+    {
+        // 천 단위 콤마 찍으려면: FText::AsNumber(TotalPrice)
+        FString PriceStr = FString::Printf(TEXT("Total: %d G"), TotalPrice);
+        Txt_Price->SetText(FText::FromString(PriceStr));
     }
 }
 
-// ★ [추가] 스킨 변경 함수
-void UShopMainWidget::UpdateSkinPreview(const FShopItemData& SelectedSkin)
+// 3. [수정] 구매 버튼 클릭 함수
+void UShopMainWidget::OnClick_PurchaseButton()
 {
-    if (!ShopStudioInstance) return;
+    if (!bIsHeadSelected && !bIsSkinSelected) return;
 
-    UChildActorComponent* ChildComp = ShopStudioInstance->FindComponentByClass<UChildActorComponent>();
-    if (ChildComp)
+    ABSPlayerState* PS = GetOwningPlayerState<ABSPlayerState>();
+    if (!PS) return;
+
+    // ★ 여기도 등급 기반으로 가격 다시 계산
+    int32 TotalPrice = (bIsHeadSelected ? GetPriceByRarity(SelectedHeadData.Rarity) : 0) +
+        (bIsSkinSelected ? GetPriceByRarity(SelectedSkinData.Rarity) : 0);
+
+    // 1. 돈 부족한지 확인 (클라이언트)
+    if (PS->GetCoin() < TotalPrice)
     {
-        if (ABaseCharacter* TargetChar = Cast<ABaseCharacter>(ChildComp->GetChildActor()))
-        {
-            // 캐릭터의 스킨 변경 함수 호출 (BaseCharacter에 추가했죠?)
-            TargetChar->EquipSkin(SelectedSkin.SkinMaterial);
-        }
+        UE_LOG(LogTemp, Warning, TEXT("[UI] 돈 부족!"));
+        return;
+    }
+
+    // 2. 델리게이트 연결
+    if (!PS->OnPurchaseResult.IsAlreadyBound(this, &UShopMainWidget::HandlePurchaseResult))
+    {
+        PS->OnPurchaseResult.AddDynamic(this, &UShopMainWidget::HandlePurchaseResult);
+    }
+
+    // 3. 서버에 요청
+    PS->Server_TryPurchase(TotalPrice);
+}
+
+void UShopMainWidget::HandlePurchaseResult(bool bSuccess)
+{
+    if (bSuccess)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[UI] 구매 성공! 아이템 지급 완료"));
+
+       //추후 판매 기능 추가 예정
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("[UI] 구매 실패! (서버 거절: 돈 부족 등)"));
+        // "돈이 부족합니다" 팝업 띄우기
+    }
+}
+
+int32 UShopMainWidget::GetPriceByRarity(EItemRarity Rarity)
+{
+    switch (Rarity)
+    {
+    case EItemRarity::Common:       return 100;  // 커먼: 100원
+    case EItemRarity::Rare:         return 300;  // 레어: 300원
+    case EItemRarity::Epic:         return 500;  // 에픽: 500원
+    case EItemRarity::Legendary:    return 1000; // 전설: 1000원
+    default:                        return 0;
     }
 }

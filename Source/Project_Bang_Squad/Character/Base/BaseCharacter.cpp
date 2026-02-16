@@ -99,44 +99,72 @@ ABaseCharacter::ABaseCharacter()
 
 void ABaseCharacter::EquipShopItem(const FShopItemData& ItemData)
 {
+	// 1. 기존 장착 해제 (일단 숨김)
 	if (HeadAccessoryComponent) HeadAccessoryComponent->SetVisibility(false);
 	if (HeadSkeletalComp) HeadSkeletalComp->SetVisibility(false);
 
+	// 2. 부착 대상 결정 (메이지는 지팡이, 다른 직업은 몸통)
 	USceneComponent* TargetParent = ItemAttachParent ? ItemAttachParent : GetMesh();
 
+	// =================================================================
+	// Case A: 스켈레탈 메쉬 아이템 (움직이는 장식 등)
+	// =================================================================
 	if (ItemData.SkeletalMesh != nullptr && HeadSkeletalComp)
 	{
 		HeadSkeletalComp->SetSkeletalMesh(ItemData.SkeletalMesh);
-		HeadSkeletalComp->SetRelativeTransform(ItemData.AdjustTransform);
 
+		// [STEP 1] 먼저 부모 소켓에 'Snap'으로 딱 붙입니다. (이때 위치/회전이 0,0,0으로 초기화됨)
 		HeadSkeletalComp->AttachToComponent(
 			TargetParent,
 			FAttachmentTransformRules::SnapToTargetIncludingScale,
 			AccessorySocketName
 		);
 
+		// [STEP 2] 붙은 상태에서 데이터 테이블의 보정값(AdjustTransform)을 적용합니다.
+		// 이제 데이터 테이블에 적은 값(40, 0, 0 등)이 먹힙니다.
+		HeadSkeletalComp->SetRelativeTransform(ItemData.AdjustTransform);
+
+		// [STEP 3] ★ 지팡이(Weapon)에 붙인 경우라면, 강제로 회전을 추가합니다.
+		// (메이지 캐릭터처럼 TargetParent가 Mesh가 아닌 경우에만 실행됨)
+		if (TargetParent != GetMesh())
+		{
+			HeadSkeletalComp->AddLocalOffset(FVector(0.0f, 0.0f, 18.0f));
+		}
+
 		HeadSkeletalComp->SetVisibility(true);
 
+		// 애니메이션 재생 로직
 		if (ItemData.IdleAnimation)
 		{
 			HeadSkeletalComp->SetAnimationMode(EAnimationMode::AnimationSingleNode);
 			HeadSkeletalComp->PlayAnimation(ItemData.IdleAnimation, true);
+
 		}
 		else
 		{
 			HeadSkeletalComp->Stop();
 		}
 	}
+	// =================================================================
+	// Case B: 스태틱 메쉬 아이템 (모자, 뿔 등)
+	// =================================================================
 	else if (ItemData.StaticMesh != nullptr && HeadAccessoryComponent)
 	{
 		HeadAccessoryComponent->SetStaticMesh(ItemData.StaticMesh);
-		HeadAccessoryComponent->SetRelativeTransform(ItemData.AdjustTransform);
 
+		// [STEP 1] 먼저 붙이기
 		HeadAccessoryComponent->AttachToComponent(
 			TargetParent,
 			FAttachmentTransformRules::SnapToTargetIncludingScale,
 			AccessorySocketName
 		);
+
+		HeadAccessoryComponent->SetRelativeTransform(ItemData.AdjustTransform);
+
+		if (TargetParent != GetMesh())
+		{
+			HeadAccessoryComponent->AddLocalOffset(FVector(0.0f, 0.0f, 18.0f));
+		}
 
 		HeadAccessoryComponent->SetVisibility(true);
 	}

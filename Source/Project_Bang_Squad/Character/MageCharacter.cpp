@@ -93,7 +93,7 @@ AMageCharacter::AMageCharacter()
 	ItemAttachParent = WeaponRootComp;
 
 	// 3. 소켓 이름도 지팡이 소켓 이름과 맞춰줌 (혹시 몰라서 동기화)
-	AccessorySocketName = FName("Weapon_Root_R");
+	AccessorySocketName = FName("Acc_Socket");
 
 	// 4. 부모 클래스에서 만들어진 악세서리 컴포넌트들을 지팡이 아래로 이동시킴
 	if (HeadAccessoryComponent)
