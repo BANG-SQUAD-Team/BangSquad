@@ -4,7 +4,8 @@
 #include "Project_Bang_Squad/Shop/BangSquadShopData.h"
 #include "ShopSlotWidget.generated.h"
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSlotSelected, const FShopItemData&, ItemData);
+// ★ [수정] ID(FName)와 데이터(FShopItemData)를 둘 다 보내도록 변경
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnSlotSelected, FName, ItemID, const FShopItemData&, ItemData);
 
 UCLASS()
 class PROJECT_BANG_SQUAD_API UShopSlotWidget : public UUserWidget
@@ -12,18 +13,21 @@ class PROJECT_BANG_SQUAD_API UShopSlotWidget : public UUserWidget
 	GENERATED_BODY()
 
 public:
-	// 변수만 선언하고 ExposeOnSpawn은 뺍니다.
 	FShopItemData SlotItemData;
+
+	// ★ [추가] 내 아이템의 ID (RowName)
+	FName SlotItemID;
+
+	bool bIsOwnedItem = false;
 
 	UPROPERTY(BlueprintAssignable, Category = "Event")
 	FOnSlotSelected OnSlotSelected;
 
-	// ★ [핵심] 외부에서 데이터를 꽂아주는 안전한 함수
+	// ★ [수정] Init 함수에 ID(RowName) 추가
 	UFUNCTION(BlueprintCallable)
-	void InitSlotData(const FShopItemData& NewData);
+	void InitSlotData(FName NewID, const FShopItemData& NewData, bool bOwned, int32 Price);
 
 protected:
-	// nullptr로 초기화 (안전장치)
 	UPROPERTY(meta = (BindWidget))
 	class UButton* Btn_Click = nullptr;
 

@@ -5,36 +5,67 @@
 
 void UShopSlotWidget::NativeConstruct()
 {
-	Super::NativeConstruct();
+    Super::NativeConstruct();
 
-	// 여기서는 버튼 연결만 합니다! (데이터 건드리면 터짐)
-	if (Btn_Click)
-	{
-		Btn_Click->OnClicked.RemoveDynamic(this, &UShopSlotWidget::OnItemClicked);
-		Btn_Click->OnClicked.AddDynamic(this, &UShopSlotWidget::OnItemClicked);
-	}
+    if (Btn_Click)
+    {
+        Btn_Click->OnClicked.RemoveDynamic(this, &UShopSlotWidget::OnItemClicked);
+        Btn_Click->OnClicked.AddDynamic(this, &UShopSlotWidget::OnItemClicked);
+    }
 }
 
-// ★ 이 함수가 호출될 때 화면을 갱신합니다.
-void UShopSlotWidget::InitSlotData(const FShopItemData& NewData)
+// ★ [수정] NewID(RowName)를 받아서 저장합니다.
+void UShopSlotWidget::InitSlotData(FName NewID, const FShopItemData& NewData, bool bOwned, int32 Price)
 {
-	SlotItemData = NewData;
+    SlotItemID = NewID;   // ★ ID 저장
+    SlotItemData = NewData;
+    bIsOwnedItem = bOwned;
 
-	if (Txt_Name)
-	{
-		Txt_Name->SetText(SlotItemData.ItemName);
-	}
+    // 1. 아이콘 설정
+    if (Img_Icon && SlotItemData.Icon)
+    {
+        Img_Icon->SetBrushFromTexture(SlotItemData.Icon);
 
-	if (Img_Icon)
-	{
-		if (SlotItemData.Icon) Img_Icon->SetBrushFromTexture(SlotItemData.Icon);
-	}
+        // 보유 아이템이면 어둡게
+        if (bIsOwnedItem)
+        {
+            Img_Icon->SetColorAndOpacity(FLinearColor(0.5f, 0.5f, 0.5f, 1.0f));
+        }
+        else
+        {
+            Img_Icon->SetColorAndOpacity(FLinearColor::White);
+        }
+    }
+
+    // 2. 텍스트 설정
+    if (Txt_Name)
+    {
+        FString NameStr = SlotItemData.ItemName.ToString();
+        FString FinalStr;
+
+        if (bIsOwnedItem)
+        {
+            // 판매 가격 표시
+            int32 SellPrice = Price * 0.2f;
+            FinalStr = FString::Printf(TEXT("%s (+%d G)"), *NameStr, SellPrice);
+            Txt_Name->SetColorAndOpacity(FLinearColor::Green);
+        }
+        else
+        {
+            // 구매 가격 표시
+            FinalStr = FString::Printf(TEXT("%s"), *NameStr);
+            Txt_Name->SetColorAndOpacity(FLinearColor::White);
+        }
+
+        Txt_Name->SetText(FText::FromString(FinalStr));
+    }
 }
 
 void UShopSlotWidget::OnItemClicked()
 {
-	if (OnSlotSelected.IsBound())
-	{
-		OnSlotSelected.Broadcast(SlotItemData);
-	}
+    if (OnSlotSelected.IsBound())
+    {
+        // ★ [수정] 저장해둔 ID와 데이터를 같이 보냅니다!
+        OnSlotSelected.Broadcast(SlotItemID, SlotItemData);
+    }
 }

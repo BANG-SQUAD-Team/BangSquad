@@ -14,26 +14,34 @@ void UShopMainWidget::NativeConstruct()
 {
     Super::NativeConstruct();
 
-    // [추가] 구매 버튼 클릭 이벤트 연결
+    // 1. 구매 버튼 연결
     if (Btn_Purchase)
     {
+        Btn_Purchase->OnClicked.RemoveDynamic(this, &UShopMainWidget::OnClick_PurchaseButton);
         Btn_Purchase->OnClicked.AddDynamic(this, &UShopMainWidget::OnClick_PurchaseButton);
     }
 
-    // [추가] 처음 가격은 0원
+    // 2. 판매 버튼 연결
+    if (Btn_Sell)
+    {
+        Btn_Sell->OnClicked.RemoveDynamic(this, &UShopMainWidget::OnClick_SellButton);
+        Btn_Sell->OnClicked.AddDynamic(this, &UShopMainWidget::OnClick_SellButton);
+
+        // 처음엔 비활성화 (안 눌리게)
+        Btn_Sell->SetIsEnabled(false);
+    }
+
     if (Txt_Price)
     {
         Txt_Price->SetText(FText::FromString(TEXT("0 G")));
     }
 }
+
 void UShopMainWidget::InitShop(FName MyJobTag)
 {
-    // ★ 1. 내 직업 태그 저장 (목록 만들 때 쓰려고)
     CurrentJobTag = MyJobTag;
 
-    UE_LOG(LogTemp, Warning, TEXT("[ShopUI] InitShop 시작! 태그: %s"), *MyJobTag.ToString());
-
-    // --- 마네킹 찾기 로직 (기존 유지) ---
+    // --- 마네킹 찾기 로직 (기존과 동일) ---
     TArray<AActor*> AllStudios;
     if (ShopStudioClass)
     {
@@ -50,20 +58,10 @@ void UShopMainWidget::InitShop(FName MyJobTag)
         if (Studio->ActorHasTag(MyJobTag))
         {
             ShopStudioInstance = Studio;
-
             if (CaptureComp)
             {
                 CaptureComp->bCaptureEveryFrame = true;
                 CaptureComp->SetHiddenInGame(false);
-            }
-
-            UChildActorComponent* ChildComp = Studio->FindComponentByClass<UChildActorComponent>();
-            if (ChildComp && ChildComp->GetChildActor())
-            {
-                if (USkeletalMeshComponent* SkelMesh = ChildComp->GetChildActor()->FindComponentByClass<USkeletalMeshComponent>())
-                {
-                    SkelMesh->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
-                }
             }
         }
         else
@@ -72,74 +70,76 @@ void UShopMainWidget::InitShop(FName MyJobTag)
         }
     }
 
-    // ★ 2. 마네킹 다 찾았으니 이제 목록 생성! (필터링 적용)
     InitShopList();
 }
 
 void UShopMainWidget::InitShopList()
 {
-    // 박스 초기화
     if (Grid_ItemBox) Grid_ItemBox->ClearChildren();
     if (Grid_SkinBox) Grid_SkinBox->ClearChildren();
 
-    // =========================================================
-    // 1. 장비 아이템 테이블 처리 (ItemDataTable) -> 기존 SlotWidgetClass 사용
-    // =========================================================
-    if (ItemDataTable && SlotWidgetClass) // ★ 안전장치: 클래스 있는지 확인
+    ABSPlayerState* PS = GetOwningPlayerState<ABSPlayerState>();
+
+    // 1. 아이템 테이블 처리
+    if (ItemDataTable && SlotWidgetClass)
     {
         TArray<FName> RowNames = ItemDataTable->GetRowNames();
         for (const FName& RowName : RowNames)
         {
-            static const FString ContextString(TEXT("ItemInit"));
-            FShopItemData* Data = ItemDataTable->FindRow<FShopItemData>(RowName, ContextString);
+            FShopItemData* Data = ItemDataTable->FindRow<FShopItemData>(RowName, TEXT("ItemInit"));
             if (!Data) continue;
 
-            // 직업 필터링
             FString EnumString = UEnum::GetDisplayValueAsText(Data->RequiredJob).ToString();
             bool bIsMyJob = (CurrentJobTag.ToString() == EnumString);
             bool bIsCommon = (Data->RequiredJob == ECharacterJob::Common);
 
             if (bIsMyJob || bIsCommon)
             {
-                // ★ 여기는 기존 SlotWidgetClass 사용
                 UShopSlotWidget* NewSlot = CreateWidget<UShopSlotWidget>(this, SlotWidgetClass);
                 if (NewSlot)
                 {
-                    NewSlot->InitSlotData(*Data);
-                    NewSlot->OnSlotSelected.AddDynamic(this, &UShopMainWidget::UpdateMannequinPreview);
+                    // ★ [핵심] PlayerState에게 "이 ID(RowName) 가지고 있니?" 물어보기
+                    bool bOwned = false;
+                    if (PS) bOwned = PS->HasItem(RowName); // PlayerState에 HasItem 구현 필요!
+
+                    int32 Price = GetPriceByRarity(Data->Rarity);
+
+                    // ★ [핵심] RowName을 같이 넘겨줍니다.
+                    NewSlot->InitSlotData(RowName, *Data, bOwned, Price);
+
+                    NewSlot->OnSlotSelected.AddDynamic(this, &UShopMainWidget::OnSlotClicked);
                     Grid_ItemBox->AddChildToWrapBox(NewSlot);
                 }
             }
         }
     }
 
-    // =========================================================
-    // 2. 스킨 테이블 처리 (SkinDataTable) -> ★ SkinSlotWidgetClass 사용!
-    // =========================================================
-    if (SkinDataTable && SkinSlotWidgetClass) // ★ 안전장치: 스킨용 위젯 클래스 확인
+    // 2. 스킨 테이블 처리 (동일 방식)
+    if (SkinDataTable && SkinSlotWidgetClass)
     {
         TArray<FName> RowNames = SkinDataTable->GetRowNames();
         for (const FName& RowName : RowNames)
         {
-            static const FString ContextString(TEXT("SkinInit"));
-            FShopItemData* Data = SkinDataTable->FindRow<FShopItemData>(RowName, ContextString);
+            FShopItemData* Data = SkinDataTable->FindRow<FShopItemData>(RowName, TEXT("SkinInit"));
             if (!Data) continue;
 
-            // 직업 필터링
             FString EnumString = UEnum::GetDisplayValueAsText(Data->RequiredJob).ToString();
             bool bIsMyJob = (CurrentJobTag.ToString() == EnumString);
             bool bIsCommon = (Data->RequiredJob == ECharacterJob::Common);
 
             if (bIsMyJob || bIsCommon)
             {
-                // ★ [수정] 여기서 SkinSlotWidgetClass로 생성합니다!
-                // 부모가 UShopSlotWidget이므로 리턴 타입은 그대로 둬도 됩니다.
                 UShopSlotWidget* NewSlot = CreateWidget<UShopSlotWidget>(this, SkinSlotWidgetClass);
-
                 if (NewSlot)
                 {
-                    NewSlot->InitSlotData(*Data);
-                    NewSlot->OnSlotSelected.AddDynamic(this, &UShopMainWidget::UpdateSkinPreview);
+                    bool bOwned = false;
+                    if (PS) bOwned = PS->HasItem(RowName);
+
+                    int32 Price = GetPriceByRarity(Data->Rarity);
+
+                    // RowName 전달
+                    NewSlot->InitSlotData(RowName, *Data, bOwned, Price);
+                    NewSlot->OnSlotSelected.AddDynamic(this, &UShopMainWidget::OnSlotClicked);
                     Grid_SkinBox->AddChildToWrapBox(NewSlot);
                 }
             }
@@ -147,9 +147,64 @@ void UShopMainWidget::InitShopList()
     }
 }
 
+// ★ [수정] ID(ItemID)와 데이터(SelectedItem)를 모두 받습니다.
+void UShopMainWidget::OnSlotClicked(FName ItemID, const FShopItemData& SelectedItem)
+{
+    ABSPlayerState* PS = GetOwningPlayerState<ABSPlayerState>();
+
+    // ★ 1. ID로 정확하게 보유 여부 확인
+    bool bIsOwned = false;
+    if (PS) bIsOwned = PS->HasItem(ItemID);
+
+    // =========================================================
+    // CASE A: 이미 가진 아이템 -> [판매 모드] -> 판매 버튼 켜기
+    // =========================================================
+    if (bIsOwned)
+    {
+        CurrentShopState = EShopState::Selling;
+        SelectedSellData = SelectedItem;
+        CurrentSelectedRowName = ItemID; // 판매할 ID 저장
+
+        // 구매 선택 초기화
+        bIsHeadSelected = false;
+        bIsSkinSelected = false;
+
+        // ★ 버튼 상태 변경
+        if (Btn_Purchase) Btn_Purchase->SetIsEnabled(false); // 구매 버튼 끄기(회색)
+        if (Btn_Sell)     Btn_Sell->SetIsEnabled(true);      // 판매 버튼 켜기
+
+        UE_LOG(LogTemp, Log, TEXT("[UI] 판매 모드: %s (ID: %s)"), *SelectedItem.ItemName.ToString(), *ItemID.ToString());
+    }
+    // =========================================================
+    // CASE B: 없는 아이템 -> [구매 모드] -> 구매 버튼 켜기
+    // =========================================================
+    else
+    {
+        CurrentShopState = EShopState::Buying;
+
+        if (SelectedItem.ItemType == EItemType::HeadGear)
+        {
+            SelectedHeadData = SelectedItem;
+            bIsHeadSelected = true;
+            UpdateMannequinPreview(SelectedItem);
+        }
+        else if (SelectedItem.ItemType == EItemType::Skin)
+        {
+            SelectedSkinData = SelectedItem;
+            bIsSkinSelected = true;
+            UpdateSkinPreview(SelectedItem);
+        }
+
+        // ★ 버튼 상태 변경
+        if (Btn_Purchase) Btn_Purchase->SetIsEnabled(true);  // 구매 버튼 켜기
+        if (Btn_Sell)     Btn_Sell->SetIsEnabled(false);     // 판매 버튼 끄기(회색)
+    }
+
+    UpdateTotalPrice();
+}
+
 void UShopMainWidget::UpdateMannequinPreview(const FShopItemData& SelectedItem)
 {
-    // 1. 마네킹 입히기 (기존 로직 유지)
     if (ShopStudioInstance)
     {
         UChildActorComponent* ChildComp = ShopStudioInstance->FindComponentByClass<UChildActorComponent>();
@@ -161,17 +216,10 @@ void UShopMainWidget::UpdateMannequinPreview(const FShopItemData& SelectedItem)
             }
         }
     }
-
-    // 2. [추가] 데이터 저장 및 가격 갱신
-    SelectedHeadData = SelectedItem;
-    bIsHeadSelected = true;
-
-    UpdateTotalPrice(); // 가격 다시 계산!
 }
 
 void UShopMainWidget::UpdateSkinPreview(const FShopItemData& SelectedSkin)
 {
-    // 1. 마네킹 입히기 (기존 로직 유지)
     if (ShopStudioInstance)
     {
         UChildActorComponent* ChildComp = ShopStudioInstance->FindComponentByClass<UChildActorComponent>();
@@ -183,83 +231,76 @@ void UShopMainWidget::UpdateSkinPreview(const FShopItemData& SelectedSkin)
             }
         }
     }
-
-    // 2. [추가] 데이터 저장 및 가격 갱신
-    SelectedSkinData = SelectedSkin;
-    bIsSkinSelected = true;
-
-    UpdateTotalPrice(); // 가격 다시 계산!
 }
 
 void UShopMainWidget::UpdateTotalPrice()
 {
-    // 1. 머리 장식 가격 (선택 안 했으면 0원)
-    int32 HeadPrice = 0;
-    if (bIsHeadSelected)
+    if (!Txt_Price) return;
+
+    if (CurrentShopState == EShopState::Selling)
     {
-        HeadPrice = GetPriceByRarity(SelectedHeadData.Rarity);
+        int32 SellPrice = GetSellPrice(GetPriceByRarity(SelectedSellData.Rarity));
+        Txt_Price->SetText(FText::FromString(FString::Printf(TEXT("+ %d G"), SellPrice)));
+        Txt_Price->SetColorAndOpacity(FLinearColor::Green);
     }
-
-    // 2. 스킨 가격 (선택 안 했으면 0원)
-    int32 SkinPrice = 0;
-    if (bIsSkinSelected)
+    else
     {
-        SkinPrice = GetPriceByRarity(SelectedSkinData.Rarity);
-    }
-
-    // 3. 합산
-    int32 TotalPrice = HeadPrice + SkinPrice;
-
-    // 4. 텍스트 띄우기 (예: "Total: 1300 G")
-    if (Txt_Price)
-    {
-        // 천 단위 콤마 찍으려면: FText::AsNumber(TotalPrice)
-        FString PriceStr = FString::Printf(TEXT("Total: %d G"), TotalPrice);
-        Txt_Price->SetText(FText::FromString(PriceStr));
+        int32 TotalPrice = (bIsHeadSelected ? GetPriceByRarity(SelectedHeadData.Rarity) : 0) +
+            (bIsSkinSelected ? GetPriceByRarity(SelectedSkinData.Rarity) : 0);
+        Txt_Price->SetText(FText::FromString(FString::Printf(TEXT("Total: %d G"), TotalPrice)));
+        Txt_Price->SetColorAndOpacity(FLinearColor::White);
     }
 }
 
-// 3. [수정] 구매 버튼 클릭 함수
 void UShopMainWidget::OnClick_PurchaseButton()
 {
-    if (!bIsHeadSelected && !bIsSkinSelected) return;
-
     ABSPlayerState* PS = GetOwningPlayerState<ABSPlayerState>();
     if (!PS) return;
 
-    // ★ 여기도 등급 기반으로 가격 다시 계산
+    // 구매 로직만 남김
+    if (!bIsHeadSelected && !bIsSkinSelected) return;
+
     int32 TotalPrice = (bIsHeadSelected ? GetPriceByRarity(SelectedHeadData.Rarity) : 0) +
         (bIsSkinSelected ? GetPriceByRarity(SelectedSkinData.Rarity) : 0);
 
-    // 1. 돈 부족한지 확인 (클라이언트)
-    if (PS->GetCoin() < TotalPrice)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("[UI] 돈 부족!"));
-        return;
-    }
+    if (PS->GetCoin() < TotalPrice) return;
 
-    // 2. 델리게이트 연결
     if (!PS->OnPurchaseResult.IsAlreadyBound(this, &UShopMainWidget::HandlePurchaseResult))
     {
         PS->OnPurchaseResult.AddDynamic(this, &UShopMainWidget::HandlePurchaseResult);
     }
 
-    // 3. 서버에 요청
     PS->Server_TryPurchase(TotalPrice);
+}
+
+void UShopMainWidget::OnClick_SellButton()
+{
+    ABSPlayerState* PS = GetOwningPlayerState<ABSPlayerState>();
+    if (!PS) return;
+
+    int32 SellAmount = GetSellPrice(GetPriceByRarity(SelectedSellData.Rarity));
+
+    // ★ 저장해둔 ID(CurrentSelectedRowName)로 판매 요청
+    // PlayerState에 Server_TrySell 함수가 구현되어 있어야 합니다.
+    PS->Server_TrySell(CurrentSelectedRowName, SellAmount);
+
+    UE_LOG(LogTemp, Warning, TEXT("[UI] 판매 요청 보냄: ID %s (+%d G)"), *CurrentSelectedRowName.ToString(), SellAmount);
 }
 
 void UShopMainWidget::HandlePurchaseResult(bool bSuccess)
 {
     if (bSuccess)
     {
-        UE_LOG(LogTemp, Warning, TEXT("[UI] 구매 성공! 아이템 지급 완료"));
+        InitShopList(); // 목록 갱신
+        bIsHeadSelected = false;
+        bIsSkinSelected = false;
+        CurrentShopState = EShopState::Buying;
 
-       //추후 판매 기능 추가 예정
-    }
-    else
-    {
-        UE_LOG(LogTemp, Error, TEXT("[UI] 구매 실패! (서버 거절: 돈 부족 등)"));
-        // "돈이 부족합니다" 팝업 띄우기
+        // 초기화 후 버튼 상태도 다시 설정
+        if (Btn_Purchase) Btn_Purchase->SetIsEnabled(true);
+        if (Btn_Sell) Btn_Sell->SetIsEnabled(false);
+
+        UpdateTotalPrice();
     }
 }
 
@@ -267,10 +308,15 @@ int32 UShopMainWidget::GetPriceByRarity(EItemRarity Rarity)
 {
     switch (Rarity)
     {
-    case EItemRarity::Common:       return 100;  // 커먼: 100원
-    case EItemRarity::Rare:         return 300;  // 레어: 300원
-    case EItemRarity::Epic:         return 500;  // 에픽: 500원
-    case EItemRarity::Legendary:    return 1000; // 전설: 1000원
+    case EItemRarity::Common:       return 100;
+    case EItemRarity::Rare:         return 300;
+    case EItemRarity::Epic:         return 500;
+    case EItemRarity::Legendary:    return 1000;
     default:                        return 0;
     }
+}
+
+int32 UShopMainWidget::GetSellPrice(int32 OriginalPrice)
+{
+    return (int32)(OriginalPrice * 0.2f);
 }
