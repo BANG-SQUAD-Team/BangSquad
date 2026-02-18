@@ -29,6 +29,7 @@ enum class EItemRarity : uint8
 UENUM(BlueprintType)
 enum class EItemType : uint8
 {
+	None		UMETA(DisplayName = "None"),
 	HeadGear	UMETA(DisplayName = "Head Accessory"), // 머리 장식
 	Skin		UMETA(DisplayName = "Character Skin")  // 캐릭터 스킨 (재질 변경)
 };

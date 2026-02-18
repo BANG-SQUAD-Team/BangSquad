@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerState.h"
 #include "Project_Bang_Squad/Core/BSGameTypes.h"
+#include "Project_Bang_Squad/Shop/BangSquadShopData.h"
 #include "BSPlayerState.generated.h"
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRespawnTimeChanged, float, NewRespawnTime);
@@ -66,9 +67,21 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "BS|Shop")
 	FOnPurchaseResult OnPurchaseResult;
 
-	// [1] 구매 요청
+	UPROPERTY(ReplicatedUsing = OnRep_EquippedItems)
+	FName CurrentEquippedHeadID;
+
+	UPROPERTY(ReplicatedUsing = OnRep_EquippedItems)
+	FName CurrentEquippedSkinID;
+
+	UFUNCTION()
+	void OnRep_EquippedItems();
+
+	UFUNCTION(Server, Reliable, BlueprintCallable)
+	void Server_EquipItem(FName ItemID, EItemType ItemType);
+
+	// 구매 요청 
 	UFUNCTION(Server, Reliable, BlueprintCallable, Category = "BS|Shop")
-	void Server_TryPurchase(int32 TotalCost);
+	void Server_TryPurchase(FName ItemID, int32 Cost, EItemType ItemType);
 
 	// ★ [2] 판매 요청 (오류 해결을 위해 필수!)
 	UFUNCTION(Server, Reliable, BlueprintCallable, Category = "BS|Shop")

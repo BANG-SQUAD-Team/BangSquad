@@ -13,6 +13,7 @@
 #include "Kismet/GameplayStatics.h" // [필수] 데미지 처리를 위해 필요
 #include "Project_Bang_Squad/Game/Stage/StagePlayerController.h"
 #include "Components/StaticMeshComponent.h"
+#include "Project_Bang_Squad/Game/Base/BSPlayerState.h"
 
 ABaseCharacter::ABaseCharacter()
 {
@@ -262,8 +263,37 @@ void ABaseCharacter::BeginPlay()
 			OverheadMarkerMesh->SetCastShadow(false);
 		}
 	}
+
+	FTimerHandle TimerHandle;
+	GetWorldTimerManager().SetTimer(TimerHandle, this, &ABaseCharacter::UpdateAppearanceFromPlayerState, 0.2f, false);
 }
 
+void ABaseCharacter::UpdateAppearanceFromPlayerState()
+{
+	ABSPlayerState* PS = GetPlayerState<ABSPlayerState>();
+	if (!PS) return;
+
+	// 1. 머리 장비 입기
+	if (!PS->CurrentEquippedHeadID.IsNone() && ItemDataTable)
+	{
+		// 데이터 테이블에서 ID로 정보 검색
+		FShopItemData* Data = ItemDataTable->FindRow<FShopItemData>(PS->CurrentEquippedHeadID, TEXT("EquipHead"));
+		if (Data)
+		{
+			EquipShopItem(*Data);
+		}
+	}
+
+	// 2. 스킨 입기
+	if (!PS->CurrentEquippedSkinID.IsNone() && SkinDataTable)
+	{
+		FShopItemData* Data = SkinDataTable->FindRow<FShopItemData>(PS->CurrentEquippedSkinID, TEXT("EquipSkin"));
+		if (Data)
+		{
+			EquipSkin(Data->SkinMaterial);
+		}
+	}
+}
 
 void ABaseCharacter::Tick(float DeltaTime)
 {

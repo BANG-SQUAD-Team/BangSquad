@@ -37,6 +37,59 @@ void UShopMainWidget::NativeConstruct()
     }
 }
 
+void UShopMainWidget::UpdatePurchaseButtonState()
+{
+    ABSPlayerState* PS = GetOwningPlayerState<ABSPlayerState>();
+    if (!PS || !Txt_Price) return;
+
+    int32 TotalCost = 0;
+    bool bHasUnownedItem = false; // 안 가진 게 하나라도 있는가?
+
+    // 1. 머리 가격 계산
+    if (bIsHeadSelected)
+    {
+        // 내 거 아니면 가격 추가
+        if (!PS->HasItem(SelectedHeadID))
+        {
+            TotalCost += GetPriceByRarity(SelectedHeadData.Rarity);
+            bHasUnownedItem = true;
+        }
+    }
+
+    // 2. 스킨 가격 계산
+    if (bIsSkinSelected)
+    {
+        if (!PS->HasItem(SelectedSkinID))
+        {
+            TotalCost += GetPriceByRarity(SelectedSkinData.Rarity);
+            bHasUnownedItem = true;
+        }
+    }
+
+    // 3. 텍스트 및 버튼 상태 변경
+    if (!bIsHeadSelected && !bIsSkinSelected)
+    {
+        // 아무것도 선택 안 함
+        Txt_Price->SetText(FText::FromString(TEXT("Select Item")));
+        Btn_Purchase->SetIsEnabled(false);
+    }
+    else if (bHasUnownedItem)
+    {
+        // 구매 필요 (Purchase Mode)
+        FString PriceStr = FString::Printf(TEXT("Purchase : %d G"), TotalCost);
+        Txt_Price->SetText(FText::FromString(PriceStr));
+        Txt_Price->SetColorAndOpacity(FLinearColor::White); // 흰색
+        Btn_Purchase->SetIsEnabled(true);
+    }
+    else
+    {
+        // 다 내 거임 (Equip Mode)
+        Txt_Price->SetText(FText::FromString(TEXT("Equip Now")));
+        Txt_Price->SetColorAndOpacity(FLinearColor::Green); // 초록색
+        Btn_Purchase->SetIsEnabled(true);
+    }
+}
+
 void UShopMainWidget::InitShop(FName MyJobTag)
 {
     CurrentJobTag = MyJobTag;
@@ -150,57 +203,55 @@ void UShopMainWidget::InitShopList()
 // ★ [수정] ID(ItemID)와 데이터(SelectedItem)를 모두 받습니다.
 void UShopMainWidget::OnSlotClicked(FName ItemID, const FShopItemData& SelectedItem)
 {
-    ABSPlayerState* PS = GetOwningPlayerState<ABSPlayerState>();
-
-    // ★ 1. ID로 정확하게 보유 여부 확인
-    bool bIsOwned = false;
-    if (PS) bIsOwned = PS->HasItem(ItemID);
-
-    // =========================================================
-    // CASE A: 이미 가진 아이템 -> [판매 모드] -> 판매 버튼 켜기
-    // =========================================================
-    if (bIsOwned)
+    // ★ 1. [기능 추가] 선택 취소 (Toggle) 로직
+    // 머리를 눌렀는데, 이미 그 머리가 선택되어 있었다면? -> 취소!
+    if (SelectedItem.ItemType == EItemType::HeadGear)
     {
-        CurrentShopState = EShopState::Selling;
-        SelectedSellData = SelectedItem;
-        CurrentSelectedRowName = ItemID; // 판매할 ID 저장
-
-        // 구매 선택 초기화
-        bIsHeadSelected = false;
-        bIsSkinSelected = false;
-
-        // ★ 버튼 상태 변경
-        if (Btn_Purchase) Btn_Purchase->SetIsEnabled(false); // 구매 버튼 끄기(회색)
-        if (Btn_Sell)     Btn_Sell->SetIsEnabled(true);      // 판매 버튼 켜기
-
-        UE_LOG(LogTemp, Log, TEXT("[UI] 판매 모드: %s (ID: %s)"), *SelectedItem.ItemName.ToString(), *ItemID.ToString());
-    }
-    // =========================================================
-    // CASE B: 없는 아이템 -> [구매 모드] -> 구매 버튼 켜기
-    // =========================================================
-    else
-    {
-        CurrentShopState = EShopState::Buying;
-
-        if (SelectedItem.ItemType == EItemType::HeadGear)
+        if (bIsHeadSelected && SelectedHeadID == ItemID)
         {
-            SelectedHeadData = SelectedItem;
-            bIsHeadSelected = true;
-            UpdateMannequinPreview(SelectedItem);
-        }
-        else if (SelectedItem.ItemType == EItemType::Skin)
-        {
-            SelectedSkinData = SelectedItem;
-            bIsSkinSelected = true;
-            UpdateSkinPreview(SelectedItem);
+            // 선택 해제
+            bIsHeadSelected = false;
+            SelectedHeadID = NAME_None;
+
+            // 마네킹 머리 벗기기 (빈 데이터나 nullptr로 처리)
+            // UpdateMannequinPreview(FShopItemData()); // 빈 데이터로 초기화 필요
+            UE_LOG(LogTemp, Log, TEXT("머리 장식 선택 취소"));
+
+            UpdatePurchaseButtonState(); // 버튼 갱신
+            return; // 종료
         }
 
-        // ★ 버튼 상태 변경
-        if (Btn_Purchase) Btn_Purchase->SetIsEnabled(true);  // 구매 버튼 켜기
-        if (Btn_Sell)     Btn_Sell->SetIsEnabled(false);     // 판매 버튼 끄기(회색)
+        // 새로운 선택
+        bIsHeadSelected = true;
+        SelectedHeadID = ItemID;
+        SelectedHeadData = SelectedItem;
+        UpdateMannequinPreview(SelectedItem);
+    }
+    else if (SelectedItem.ItemType == EItemType::Skin)
+    {
+        if (bIsSkinSelected && SelectedSkinID == ItemID)
+        {
+            // 선택 해제
+            bIsSkinSelected = false;
+            SelectedSkinID = NAME_None;
+
+            // 마네킹 스킨 벗기기 (기본 스킨으로 복구 필요)
+            // UpdateSkinPreview(FShopItemData()); 
+            UE_LOG(LogTemp, Log, TEXT("스킨 선택 취소"));
+
+            UpdatePurchaseButtonState();
+            return;
+        }
+
+        // 새로운 선택
+        bIsSkinSelected = true;
+        SelectedSkinID = ItemID;
+        SelectedSkinData = SelectedItem;
+        UpdateSkinPreview(SelectedItem);
     }
 
-    UpdateTotalPrice();
+    // ★ 2. 버튼 상태 갱신 (구매 모드인지 장착 모드인지 계산)
+    UpdatePurchaseButtonState();
 }
 
 void UShopMainWidget::UpdateMannequinPreview(const FShopItemData& SelectedItem)
@@ -257,20 +308,61 @@ void UShopMainWidget::OnClick_PurchaseButton()
     ABSPlayerState* PS = GetOwningPlayerState<ABSPlayerState>();
     if (!PS) return;
 
-    // 구매 로직만 남김
     if (!bIsHeadSelected && !bIsSkinSelected) return;
 
-    int32 TotalPrice = (bIsHeadSelected ? GetPriceByRarity(SelectedHeadData.Rarity) : 0) +
-        (bIsSkinSelected ? GetPriceByRarity(SelectedSkinData.Rarity) : 0);
+    // 1. 실제로 지불해야 할 금액 계산 (검증)
+    int32 RequiredGold = 0;
+    if (bIsHeadSelected && !PS->HasItem(SelectedHeadID))
+        RequiredGold += GetPriceByRarity(SelectedHeadData.Rarity);
 
-    if (PS->GetCoin() < TotalPrice) return;
+    if (bIsSkinSelected && !PS->HasItem(SelectedSkinID))
+        RequiredGold += GetPriceByRarity(SelectedSkinData.Rarity);
 
-    if (!PS->OnPurchaseResult.IsAlreadyBound(this, &UShopMainWidget::HandlePurchaseResult))
+    // 2. 돈 확인
+    if (PS->GetCoin() < RequiredGold)
     {
-        PS->OnPurchaseResult.AddDynamic(this, &UShopMainWidget::HandlePurchaseResult);
+        Txt_Price->SetText(FText::FromString(TEXT("Not Enough Gold!")));
+        Txt_Price->SetColorAndOpacity(FLinearColor::Red);
+        return; // 돈 없으면 중단
     }
 
-    PS->Server_TryPurchase(TotalPrice);
+    // =========================================================
+    // ★ [핵심] 머리 처리 (구매 & 장착)
+    // =========================================================
+    if (bIsHeadSelected)
+    {
+        // 안 가졌으면 -> 구매 요청 (구매 후 자동 장착은 PlayerState에서 처리하거나 여기서 연달아 호출)
+        if (!PS->HasItem(SelectedHeadID))
+        {
+            PS->Server_TryPurchase(SelectedHeadID, GetPriceByRarity(SelectedHeadData.Rarity), EItemType::HeadGear);
+        }
+        else
+        {
+            // 이미 가졌으면 -> 바로 장착 요청
+            PS->Server_EquipItem(SelectedHeadID, EItemType::HeadGear);
+        }
+    }
+
+    // =========================================================
+    // ★ [핵심] 스킨 처리 (구매 & 장착) - if문이 분리되어 있어 둘 다 실행됨!
+    // =========================================================
+    if (bIsSkinSelected)
+    {
+        if (!PS->HasItem(SelectedSkinID))
+        {
+            // 주의: 머리를 샀다고 가정하고 돈이 깎인 상태여야 하지만, 
+            // Server_TryPurchase는 서버에서 순차 처리되므로 안전합니다.
+            PS->Server_TryPurchase(SelectedSkinID, GetPriceByRarity(SelectedSkinData.Rarity), EItemType::Skin);
+        }
+        else
+        {
+            PS->Server_EquipItem(SelectedSkinID, EItemType::Skin);
+        }
+    }
+
+    // 3. UI 갱신 (버튼 텍스트를 "Equip Now"로 바꾸기 위해)
+    // 약간의 딜레이 후 갱신하거나, PurchaseResult 델리게이트에서 호출
+    UpdatePurchaseButtonState();
 }
 
 void UShopMainWidget::OnClick_SellButton()

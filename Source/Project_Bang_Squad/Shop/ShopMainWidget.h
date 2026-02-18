@@ -22,6 +22,20 @@ class PROJECT_BANG_SQUAD_API UShopMainWidget : public UUserWidget
 protected:
 	virtual void NativeConstruct() override;
 
+	FName SelectedHeadID = NAME_None;
+	FName SelectedSkinID = NAME_None;
+
+	// 선택된 아이템 데이터
+	FShopItemData SelectedHeadData;
+	FShopItemData SelectedSkinData;
+
+	// 선택 여부 플래그
+	bool bIsHeadSelected = false;
+	bool bIsSkinSelected = false;
+
+	// 스마트 버튼 텍스트 업데이트 함수
+	void UpdatePurchaseButtonState();
+
 public:
 	// --- UI 바인딩 ---
 	UPROPERTY(meta = (BindWidget))
@@ -98,11 +112,5 @@ public:
 	int32 GetSellPrice(int32 OriginalPrice);
 
 private:
-	FShopItemData SelectedHeadData;
-	bool bIsHeadSelected = false;
-
-	FShopItemData SelectedSkinData;
-	bool bIsSkinSelected = false;
-
 	FShopItemData SelectedSellData;
 };

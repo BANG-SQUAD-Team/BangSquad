@@ -2,6 +2,7 @@
 
 #include "Project_Bang_Squad/Game/Base/BSPlayerState.h"
 #include "Net/UnrealNetwork.h"
+#include "Project_Bang_Squad/Character/Base/BaseCharacter.h"
 
 // --- [기존] 직업 및 리스폰 로직 ---
 void ABSPlayerState::BeginPlay()
@@ -55,8 +56,10 @@ void ABSPlayerState::GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>&
 	DOREPLIFETIME(ABSPlayerState, JobType);
 	DOREPLIFETIME(ABSPlayerState, RespawnEndTime);
 	DOREPLIFETIME(ABSPlayerState, CoinAmount);
-	// ★ [중요] 아이템 목록 동기화 등록
 	DOREPLIFETIME(ABSPlayerState, OwnedItemIds);
+
+	DOREPLIFETIME(ABSPlayerState, CurrentEquippedHeadID);
+	DOREPLIFETIME(ABSPlayerState, CurrentEquippedSkinID);
 }
 
 void ABSPlayerState::Server_SetJob_Implementation(EJobType NewJob)
@@ -113,20 +116,46 @@ void ABSPlayerState::RemoveItem(FName ItemID)
 	}
 }
 
-// 구매 (기존 함수 수정: 성공 시 아이템 추가 로직은 ItemID를 인자로 받아야 하므로, 
-// 지금은 돈만 깎는 로직 유지하되 필요하면 수정하세요)
-void ABSPlayerState::Server_TryPurchase_Implementation(int32 TotalCost)
+void ABSPlayerState::OnRep_EquippedItems()
 {
-	if (!HasAuthority()) return;
-
-	if (CoinAmount >= TotalCost)
+	// 내 캐릭터를 찾아서 외형 업데이트 요청
+	if (APawn* MyPawn = GetPawn())
 	{
-		AddCoin(-TotalCost);
+		if (ABaseCharacter* BaseChar = Cast<ABaseCharacter>(MyPawn))
+		{
+			// 캐릭터에게 PlayerState의 정보를 읽어서 다시 입으라고 시킴
+			BaseChar->UpdateAppearanceFromPlayerState();
+		}
+	}
+}
+
+// 서버에서 장착 처리
+void ABSPlayerState::Server_EquipItem_Implementation(FName ItemID, EItemType ItemType)
+{
+	if (ItemType == EItemType::HeadGear)
+	{
+		CurrentEquippedHeadID = ItemID;
+	}
+	else if (ItemType == EItemType::Skin)
+	{
+		CurrentEquippedSkinID = ItemID;
+	}
+
+	// 서버에서도 즉시 갱신 (서버가 Host인 경우 OnRep이 안 불리므로)
+	OnRep_EquippedItems();
+}
+
+void ABSPlayerState::Server_TryPurchase_Implementation(FName ItemID, int32 Cost, EItemType ItemType)
+{
+	if (CoinAmount >= Cost)
+	{
+		AddCoin(-Cost);
+		AddItem(ItemID); // 소유 목록 추가
+
 		OnPurchaseResult.Broadcast(true);
 
-		// [참고] 실제로 아이템을 주려면 여기서 AddItem(ItemID)를 해야 하는데,
-		// 현재 함수 인자에는 ItemID가 없으므로 생략합니다. 
-		// (UI 테스트 목적이라면 "돈이 깎이고 성공 메시지가 오는 것"만으로 충분합니다)
+		// ★ [추가] 구매했으면 바로 장착까지 해줍니다! (편의성)
+		Server_EquipItem(ItemID, ItemType);
 	}
 	else
 	{

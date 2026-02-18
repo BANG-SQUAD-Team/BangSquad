@@ -81,6 +81,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Shop")
 	void EquipSkin(UMaterialInterface* NewSkin);
 
+	void UpdateAppearanceFromPlayerState();
+
 
 	// 전투 관련
 	UFUNCTION(BlueprintCallable, Category = "Combat")
@@ -162,6 +164,12 @@ protected:
 
 	UPROPERTY(BlueprintReadWrite, Category = "Shop")
 	USceneComponent* ItemAttachParent;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Shop Data")
+	class UDataTable* ItemDataTable;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Shop Data")
+	class UDataTable* SkinDataTable;
 
 	// 데이터 테이블
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Data")
