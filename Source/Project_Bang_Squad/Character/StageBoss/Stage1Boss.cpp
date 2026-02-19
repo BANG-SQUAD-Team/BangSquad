@@ -413,7 +413,7 @@ void AStage1Boss::StartDeathWallSequence()
 	if (!HasAuthority()) return;
 
 	ControlRamparts(true);
-	GetWorldTimerManager().SetTimer(RampartTimerHandle, this, &AStage1Boss::RestoreRamparts, 60.0f, false);
+	GetWorldTimerManager().SetTimer(RampartTimerHandle, this, &AStage1Boss::RestoreRamparts, 50.0f, false);//성벽 오르는 시간 50초 하드코딩
 
 	//if (GetCharacterMovement()) GetCharacterMovement()->SetMovementMode(MOVE_None);
 	if (GetCharacterMovement()) GetCharacterMovement()->StopMovementImmediately();
@@ -437,7 +437,7 @@ void AStage1Boss::AnimNotify_ActivateDeathWall()
 {
 	if (!HasAuthority()) return;
 	SpawnDeathWall();
-	GetWorldTimerManager().SetTimer(DeathWallTimerHandle, this, &AStage1Boss::FinishDeathWallPattern, 60.0f, false);
+	GetWorldTimerManager().SetTimer(DeathWallTimerHandle, this, &AStage1Boss::FinishDeathWallPattern, 50.0f, false);
 }
 
 void AStage1Boss::SpawnDeathWall()

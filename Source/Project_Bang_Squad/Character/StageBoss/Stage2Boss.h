@@ -24,6 +24,10 @@ public:
     virtual void Tick(float DeltaTime) override;
     virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser) override;
 
+    // [비주얼 동기화] 서버가 지시하면 모든 클라이언트가 이 함수를 실행하여 몽타주를 재생합니다.
+    UFUNCTION(NetMulticast, Reliable)
+    void Multicast_PlayBossMontage(UAnimMontage* MontageToPlay);
+
     // --- [Actions] ---
     float PlayMeleeAttackAnim();
     void PerformWebShot(AActor* Target);
@@ -129,5 +133,7 @@ protected:
     // [추가] 추가타 판정 두께 (구체의 반지름)
     UPROPERTY(EditAnywhere, Category = "Boss|Combat")
     float FollowUpTraceRadius = 300.0f;
+
+
 
 };

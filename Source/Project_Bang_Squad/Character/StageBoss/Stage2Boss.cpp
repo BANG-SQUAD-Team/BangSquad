@@ -141,7 +141,7 @@ void AStage2Boss::PerformWebShot(AActor* Target)
     // (이 몽타주 안에 심어둔 Notify가 발동되면 -> FireWebProjectile()이 실행됩니다)
     if (WebShotMontage)
     {
-        PlayAnimMontage(WebShotMontage);
+        Multicast_PlayBossMontage(WebShotMontage);
     }
     else
     {
@@ -207,7 +207,7 @@ void AStage2Boss::FireWebProjectile()
 
 void AStage2Boss::PerformSmashAttack(AActor* Target)
 {
-    if (SmashMontage) PlayAnimMontage(SmashMontage);
+    if (SmashMontage) Multicast_PlayBossMontage(SmashMontage);
 }
 
 void AStage2Boss::StartQTEPattern(AActor* Target)
@@ -233,7 +233,13 @@ float AStage2Boss::PlayMeleeAttackAnim()
 {
     if (BossData && BossData->AttackMontages.Num() > 0)
     {
-        return PlayAnimMontage(BossData->AttackMontages[0]);
+        UAnimMontage* MontageToPlay = BossData->AttackMontages[0];
+
+        // [비주얼 동기화] 모든 클라이언트에서 평타 애니메이션 재생
+        Multicast_PlayBossMontage(MontageToPlay);
+
+        // 멀티캐스트는 void 반환이므로, 몽타주 에셋에서 직접 길이를 빼와서 AI에게 전달
+        return MontageToPlay->GetPlayLength();
     }
     return 0.0f;
 }
@@ -319,7 +325,7 @@ void AStage2Boss::ExecuteFollowUpKnockback()
 
     // [충돌 동기화] 서버에서 트레이스 실행
     bool bHit = UKismetSystemLibrary::SphereTraceMulti(
-        GetWorld(), TraceStart, TraceEnd, 300.0f,
+        GetWorld(), TraceStart, TraceEnd, FollowUpTraceRadius,
         UEngineTypes::ConvertToTraceType(ECC_Pawn), false, ActorsToIgnore,
         EDrawDebugTrace::ForDuration, OutHits, true
     );
@@ -362,5 +368,13 @@ void AStage2Boss::ExecuteFollowUpKnockback()
                 UGameplayStatics::ApplyDamage(Target, 30.0f, GetController(), this, UDamageType::StaticClass());
             }
         }
+    }
+}
+
+void AStage2Boss::Multicast_PlayBossMontage_Implementation(UAnimMontage* MontageToPlay)
+{
+    if (MontageToPlay)
+    {
+        PlayAnimMontage(MontageToPlay);
     }
 }

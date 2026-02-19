@@ -54,10 +54,10 @@ private:
     UPROPERTY()
     TObjectPtr<AStage2Boss> SpiderBoss;
 
-   // UPROPERTY()
-   // TWeakObjectPtr<AActor> TargetActor;
+    // UPROPERTY()
+    // TWeakObjectPtr<AActor> TargetActor;
 
-    // 현재 상태
+     // 현재 상태
     ESpiderPatternState CurrentState;
 
     // 패턴 사이클 인덱스 (0:거미줄, 1:스매시 반복용)
