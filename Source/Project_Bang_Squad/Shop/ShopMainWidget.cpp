@@ -410,5 +410,5 @@ int32 UShopMainWidget::GetPriceByRarity(EItemRarity Rarity)
 
 int32 UShopMainWidget::GetSellPrice(int32 OriginalPrice)
 {
-    return (int32)(OriginalPrice * 0.2f);
+    return (int32)(OriginalPrice * 0.8f);
 }
