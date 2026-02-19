@@ -1,19 +1,15 @@
 // Source/Project_Bang_Squad/Character/StageBoss/StageBossPlayerController.h
-
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Project_Bang_Squad/Game/Stage/StagePlayerController.h"
+#include "InputActionValue.h"
 #include "StageBossPlayerController.generated.h"
 
-class UQTEWidget;
 class UInputMappingContext;
 class UInputAction;
+class AQTE_Trap; // Àü¹æ ¼±¾ð
 
-/**
- * ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½Æ®ï¿½Ñ·ï¿½
- * ï¿½ï¿½ï¿½ï¿½: BaseCharacter ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½, ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ QTE ï¿½Ô·ï¿½ï¿½ï¿½ ï¿½Þ¾ï¿½ Ã³ï¿½ï¿½ï¿½ï¿½.
- */
 UCLASS()
 class PROJECT_BANG_SQUAD_API AStageBossPlayerController : public AStagePlayerController
 {
@@ -22,25 +18,66 @@ class PROJECT_BANG_SQUAD_API AStageBossPlayerController : public AStagePlayerCon
 public:
 	AStageBossPlayerController();
 
+	// --- [½ºÅ×ÀÌÁö 2 °³ÀÎ QTE ·ÎÁ÷ (¼­¹ö Àü¿ë)] ---
+	// Æ®·¦ÀÌ ÇÃ·¹ÀÌ¾î¸¦ °¡µ×À» ¶§ ÄÁÆ®·Ñ·¯¿¡ µî·Ï
+	void Server_SetQTETrap(AQTE_Trap* InTrap);
+	// Æ®·¦ÀÌ ÆÄ±«µÇ¾úÀ» ¶§ ÄÁÆ®·Ñ·¯¿¡¼­ ÇØÁ¦
+	void Server_ClearQTETrap();
+
+	// --- [½ºÅ×ÀÌÁö 2 °³ÀÎ QTE ·ÎÁ÷ (Å¬¶óÀÌ¾ðÆ® UI)] ---
+	// Æ®·¦ ÁøÇàµµ¸¦ Å¬¶óÀÌ¾ðÆ® UI·Î Àü´Þ
+	UFUNCTION(Client, Reliable)
+	void Client_UpdateIndividualQTEUI(int32 CurrentCount, int32 MaxCount);
+
 protected:
 	virtual void BeginPlay() override;
-	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void SetupInputComponent() override;
 
-	// [ï¿½Ô·ï¿½ ï¿½ï¿½ï¿½ï¿½] ï¿½ï¿½ï¿½ï¿½ï¿½Í¿ï¿½ï¿½ï¿½ ï¿½Ò´ï¿½ ï¿½Ê¿ï¿½
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
-	TObjectPtr<UInputMappingContext> QTE_IMC; // QTE ï¿½ï¿½ï¿½ï¿½ Å° ï¿½ï¿½ï¿½ï¿½ (GÅ°)
+	// ==========================================
+	// [±âÁ¸] Stage 1 ±×·ì QTE (GÅ°)
+	// ==========================================
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input|GroupQTE")
+	TObjectPtr<UInputMappingContext> QTE_IMC;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
-	TObjectPtr<UInputAction> QTE_Action;      // QTE ï¿½Ô·ï¿½ ï¿½×¼ï¿½
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input|GroupQTE")
+	TObjectPtr<UInputAction> QTE_Action;
 
-	// [ï¿½ï¿½ï¿½ï¿½] Å° ï¿½Ô·ï¿½ ï¿½ï¿½ È£ï¿½ï¿½
 	void Input_QTEInteract();
 
-	// [ï¿½ï¿½ï¿½ï¿½] ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Ô·ï¿½ ï¿½ï¿½È£ ï¿½ï¿½ï¿½ï¿½ (RPC)
 	UFUNCTION(Server, Reliable)
 	void Server_SubmitQTEInput();
 
+
+	// ==========================================
+	// [½Å±Ô] Stage 2 °³ÀÎ QTE (A/D ¿¬Å¸)
+	// ==========================================
+	// ¿ì¼±¼øÀ§¸¦ ³ô°Ô ¼³Á¤ÇÏ¿© ±âÁ¸ ÀÌµ¿À» µ¤¾î¾º¿ï Àü¿ë ¸ÅÇÎ ÄÁÅØ½ºÆ®
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input|IndividualQTE")
+	TObjectPtr<UInputMappingContext> IndividualQTE_IMC;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input|IndividualQTE")
+	TObjectPtr<UInputAction> IndividualQTE_Action;
+
+	// ÇöÀç ³ª¸¦ ¹­°í ÀÖ´Â Æ®·¦ (¼­¹ö¿¡¼­¸¸ À¯È¿)
 	UPROPERTY()
-	TObjectPtr<UQTEWidget> QTEWidgetInstance;
+	TObjectPtr<AQTE_Trap> CurrentQTETrap;
+
+	// [Å¬¶óÀÌ¾ðÆ®] ÀÔ·Â ÄÁÅØ½ºÆ® ±³Ã¼ ¹× UI Ç¥½Ã/¼û±è
+	UFUNCTION(Client, Reliable)
+	void Client_ToggleIndividualQTEState(bool bIsActive);
+
+	// [·ÎÄÃ] A/D Å° ÀÔ·Â ½Ã È£Ãâ
+	void Input_IndividualQTEMash(const FInputActionValue& Value);
+
+	// [¼­¹ö] ¼­¹öÀÇ Æ®·¦À¸·Î ÁøÇàµµ(Å»Ãâ ½Ãµµ) Àü´Þ
+	UFUNCTION(Server, Reliable)
+	void Server_SubmitIndividualQTEInput();
+
+	// [ºí·çÇÁ¸°Æ® ¿¬µ¿] °³ÀÎ QTE UI Åä±Û ÀÌº¥Æ®
+	UFUNCTION(BlueprintImplementableEvent, Category = "UI|IndividualQTE")
+	void OnToggleIndividualQTEWidget(bool bShow);
+
+	// [ºí·çÇÁ¸°Æ® ¿¬µ¿] °³ÀÎ QTE UI Ä«¿îÆ® °»½Å ÀÌº¥Æ®
+	UFUNCTION(BlueprintImplementableEvent, Category = "UI|IndividualQTE")
+	void OnUpdateIndividualQTECount(int32 CurrentCount, int32 MaxCount);
 };

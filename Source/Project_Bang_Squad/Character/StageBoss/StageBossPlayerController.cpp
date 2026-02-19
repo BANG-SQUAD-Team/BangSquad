@@ -1,77 +1,96 @@
 // Source/Project_Bang_Squad/Character/StageBoss/StageBossPlayerController.cpp
-
 #include "StageBossPlayerController.h"
-#include "StageBossGameMode.h" 
-#include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
-#include "InputMappingContext.h"
-#include "Project_Bang_Squad/UI/Stage/Boss/QTEWidget.h"
+#include "EnhancedInputComponent.h"
+#include "AQTE_Trap.h" // 생성할 트랩 헤더
 
 AStageBossPlayerController::AStageBossPlayerController()
 {
-	// ������ ���� (�ʿ�� �߰�)
 }
 
 void AStageBossPlayerController::BeginPlay()
 {
 	Super::BeginPlay();
-
-	// [�ٽ�] QTE�� �Է� ���� ���ؽ�Ʈ �߰� (�켱������ ���� ����)
-	if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
-	{
-		if (QTE_IMC)
-		{
-			// Priority�� 1�� �����Ͽ� �⺻ ĳ���� �Է�(���� 0)���� �켱������ ����
-			// �̷��� �ϸ� ĳ������ �ٸ� Ű�� ���ĵ� QTE�� ���� ������
-			Subsystem->AddMappingContext(QTE_IMC, 1);
-		}
-	}
-}
-
-void AStageBossPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
-{
-	Super::EndPlay(EndPlayReason);
-
-	if (QTEWidgetInstance && QTEWidgetInstance->IsInViewport())
-	{
-		QTEWidgetInstance->RemoveFromParent();
-		QTEWidgetInstance = nullptr;
-	}
 }
 
 void AStageBossPlayerController::SetupInputComponent()
 {
 	Super::SetupInputComponent();
 
-	// [����] Enhanced Input �ý����� ����Ͽ� ���ε�
 	if (UEnhancedInputComponent* EIC = Cast<UEnhancedInputComponent>(InputComponent))
 	{
+		// 1. 기존 그룹 QTE 바인딩
 		if (QTE_Action)
 		{
 			EIC->BindAction(QTE_Action, ETriggerEvent::Started, this, &AStageBossPlayerController::Input_QTEInteract);
 		}
+
+		// 2. 신규 개인 QTE 바인딩 (A/D 연타)
+		if (IndividualQTE_Action)
+		{
+			// 연타이므로 Started 이벤트를 사용합니다.
+			EIC->BindAction(IndividualQTE_Action, ETriggerEvent::Started, this, &AStageBossPlayerController::Input_IndividualQTEMash);
+		}
 	}
 }
 
-void AStageBossPlayerController::Input_QTEInteract()
+// === [기존 그룹 QTE 구현부 (생략 또는 유지)] ===
+void AStageBossPlayerController::Input_QTEInteract() { Server_SubmitQTEInput(); }
+void AStageBossPlayerController::Server_SubmitQTEInput_Implementation() { /* 기존 로직 */ }
+
+// === [신규 개인 QTE 구현부] ===
+
+void AStageBossPlayerController::Server_SetQTETrap(AQTE_Trap* InTrap)
 {
-	// ���� Ŭ���̾�Ʈ���� GŰ ���� -> ������ ����
-	// (���⼭ Ŭ���̾�Ʈ �� UI �����̳� ���带 ��� ����ϸ� �������� �� ������)
-	Server_SubmitQTEInput();
+	// 서버에서 트랩이 세팅되면 클라이언트의 상태를 QTE 모드로 전환합니다.
+	CurrentQTETrap = InTrap;
+	Client_ToggleIndividualQTEState(true);
 }
 
-void AStageBossPlayerController::Server_SubmitQTEInput_Implementation()
+void AStageBossPlayerController::Server_ClearQTETrap()
 {
-	// [���� ����] GameMode���� ����
-	if (UWorld* World = GetWorld())
-	{
-		if (AStageBossGameMode* GM = Cast<AStageBossGameMode>(World->GetAuthGameMode()))
-		{
-			// ��Ʈ�ѷ�(this) ������ �Ѱ��־� ���� �������� �ĺ� �����ϰ� ��
-			GM->ProcessQTEInput(this);
+	// 트랩이 풀리면 컨트롤러의 상태를 원복합니다.
+	CurrentQTETrap = nullptr;
+	Client_ToggleIndividualQTEState(false);
+}
 
-			// ����� �α� (���� �� ȭ�鿡 ��µ�)
-			// UE_LOG(LogTemp, Log, TEXT("Player Controller Sent QTE Input!")); 
+void AStageBossPlayerController::Client_ToggleIndividualQTEState_Implementation(bool bIsActive)
+{
+	// 로컬 플레이어의 입력 매핑을 교체하여 다른 조작을 무시하고 QTE만 받도록 설정
+	if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
+	{
+		if (bIsActive)
+		{
+			// 10이라는 높은 우선순위 부여 (다른 입력 덮어쓰기)
+			if (IndividualQTE_IMC) Subsystem->AddMappingContext(IndividualQTE_IMC, 10);
 		}
+		else
+		{
+			if (IndividualQTE_IMC) Subsystem->RemoveMappingContext(IndividualQTE_IMC);
+		}
+	}
+
+	// 블루프린트로 위젯 띄우기/끄기 명령 전달
+	OnToggleIndividualQTEWidget(bIsActive);
+}
+
+void AStageBossPlayerController::Client_UpdateIndividualQTEUI_Implementation(int32 CurrentCount, int32 MaxCount)
+{
+	// 블루프린트 위젯의 진행도 바 혹은 텍스트 업데이트
+	OnUpdateIndividualQTECount(CurrentCount, MaxCount);
+}
+
+void AStageBossPlayerController::Input_IndividualQTEMash(const FInputActionValue& Value)
+{
+	// 클라이언트가 A 또는 D를 누를 때마다 서버로 전송
+	Server_SubmitIndividualQTEInput();
+}
+
+void AStageBossPlayerController::Server_SubmitIndividualQTEInput_Implementation()
+{
+	// 서버에서 현재 자신을 가둔 트랩에 진행도를 알림
+	if (CurrentQTETrap)
+	{
+		CurrentQTETrap->AddQTEProgress();
 	}
 }

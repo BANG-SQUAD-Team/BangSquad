@@ -7,6 +7,9 @@
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/CharacterMovementComponent.h" // 헤더 추가
+#include "DrawDebugHelpers.h"
+#include "Project_Bang_Squad/Character/StageBoss/AQTE_Trap.h" // (경로가 폴더 안에 있다면 "Project_Bang_Squad/Character/StageBoss/AQTE_Trap.h" 로 맞춰주세요)
+#include "Project_Bang_Squad/Character/Base/BaseCharacter.h"
 
 AStage2Boss::AStage2Boss()
 {
@@ -244,4 +247,55 @@ void AStage2Boss::ServerRPC_QTEResult_Implementation(APlayerController* Player, 
 
     // 기존에 만들어두신 OnQTEResult 함수를 호출하여 로직 처리
     OnQTEResult(bSuccess);
+}
+
+void AStage2Boss::PerformSmashHitCheck()
+{
+    if (!HasAuthority()) return;
+
+    // [수정] 하드코딩된 값 대신 에디터에서 조절 가능한 변수를 사용합니다.
+    FVector StartLoc = GetActorLocation() + (GetActorForwardVector() * SmashForwardOffset);
+    StartLoc.Z += SmashZOffset; // 위아래 미세 조정 적용
+
+    // 디버그 구체 그리기 (테스트용)
+    DrawDebugSphere(GetWorld(), StartLoc, SmashRadius, 16, FColor::Red, false, 3.0f);
+
+    TArray<FHitResult> HitResults;
+    // [수정] 에디터에서 설정한 반지름 사용
+    FCollisionShape Sphere = FCollisionShape::MakeSphere(SmashRadius);
+    FCollisionQueryParams Params;
+    Params.AddIgnoredActor(this);
+
+    bool bHit = GetWorld()->SweepMultiByChannel(
+        HitResults, StartLoc, StartLoc, FQuat::Identity,
+        ECC_Pawn, Sphere, Params
+    );
+
+    if (bHit)
+    {
+        for (const FHitResult& Hit : HitResults)
+        {
+            if (ABaseCharacter* HitPlayer = Cast<ABaseCharacter>(Hit.GetActor()))
+            {
+                if (HitPlayer->IsDead()) continue;
+
+                GEngine->AddOnScreenDebugMessage(-1, 3.f, FColor::Cyan, FString::Printf(TEXT("Smash Hit Player: %s"), *HitPlayer->GetName()));
+
+                UGameplayStatics::ApplyDamage(HitPlayer, 50.0f, GetController(), this, UDamageType::StaticClass());
+
+                if (QTETrapClass)
+                {
+                    FActorSpawnParameters SpawnParams;
+                    SpawnParams.Owner = this;
+                    SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+                    AQTE_Trap* NewTrap = GetWorld()->SpawnActor<AQTE_Trap>(QTETrapClass, HitPlayer->GetActorLocation(), FRotator::ZeroRotator, SpawnParams);
+                    if (NewTrap)
+                    {
+                        NewTrap->InitializeTrap(HitPlayer, 10);
+                    }
+                }
+            }
+        }
+    }
 }
