@@ -13,6 +13,9 @@ class PROJECT_BANG_SQUAD_API ACocoon : public AActor
 public:
     ACocoon();
 
+    UFUNCTION(NetMulticast, Unreliable)
+    void Multicast_PlayExplosionVFX();
+
 protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
     UStaticMeshComponent* MeshComp;
@@ -25,6 +28,8 @@ protected:
 
     // [수정] 내용을 cpp로 옮기고 여기선 선언만 합니다.
     void Explode();
+
+    void Multicast_PlayExplosionVFX_Implementation();
 
     // 플레이어 풀어주기 (공통)
     void ReleasePlayer();

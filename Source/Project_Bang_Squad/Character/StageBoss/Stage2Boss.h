@@ -80,6 +80,25 @@ public:
     UFUNCTION(Server, Reliable)
     void ServerRPC_QTEResult(class APlayerController* Player, bool bSuccess);
 
+    
+
+
+    // [추가] 기본 공격(평타) 피격 판정 (몽타주 Notify에서 호출)
+    UFUNCTION(BlueprintCallable, Category = "Boss|Combat")
+    void PerformMeleeHitCheck();
+
+    // [추가] 평타 판정 범위 (반지름)
+    UPROPERTY(EditAnywhere, Category = "Boss|Combat")
+    float MeleeRadius = 200.0f;
+
+    // [추가] 평타 판정 앞방향 거리
+    UPROPERTY(EditAnywhere, Category = "Boss|Combat")
+    float MeleeForwardOffset = 150.0f;
+
+    // [추가] 평타 판정 높낮이 조절 (Z축)
+    UPROPERTY(EditAnywhere, Category = "Boss|Combat")
+    float MeleeZOffset = 50.0f;
+
 protected:
     void CheckMinionsStatus();
 

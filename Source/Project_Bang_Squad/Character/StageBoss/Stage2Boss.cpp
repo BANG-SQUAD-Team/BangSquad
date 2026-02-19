@@ -152,6 +152,9 @@ void AStage2Boss::PerformWebShot(AActor* Target)
 
 void AStage2Boss::FireWebProjectile()
 {
+    // [권한 분리] 투사체는 무조건 서버에서만 단 1개 스폰해야 합니다! 
+    // (이게 없어서 클라이언트가 만든 가짜 투사체가 평생 남아있던 것입니다)
+    if (!HasAuthority()) return;
     // 1. 클래스 체크
     if (!WebProjectileClass)
     {
@@ -259,34 +262,31 @@ void AStage2Boss::PerformSmashHitCheck()
 {
     if (!HasAuthority()) return;
 
-    // [수정] 하드코딩된 값 대신 에디터에서 조절 가능한 변수를 사용합니다.
     FVector StartLoc = GetActorLocation() + (GetActorForwardVector() * SmashForwardOffset);
-    StartLoc.Z += SmashZOffset; // 위아래 미세 조정 적용
+    StartLoc.Z += SmashZOffset;
 
-    // 디버그 구체 그리기 (테스트용)
     DrawDebugSphere(GetWorld(), StartLoc, SmashRadius, 16, FColor::Red, false, 3.0f);
 
-    TArray<FHitResult> HitResults;
-    // [수정] 에디터에서 설정한 반지름 사용
+    // [수정] FHitResult 대신 FOverlapResult 배열을 생성합니다.
+    TArray<FOverlapResult> OverlapResults;
     FCollisionShape Sphere = FCollisionShape::MakeSphere(SmashRadius);
     FCollisionQueryParams Params;
     Params.AddIgnoredActor(this);
 
-    bool bHit = GetWorld()->SweepMultiByChannel(
-        HitResults, StartLoc, StartLoc, FQuat::Identity,
-        ECC_Pawn, Sphere, Params
+    bool bHit = GetWorld()->OverlapMultiByChannel(
+        OverlapResults, StartLoc, FQuat::Identity, ECC_Pawn, Sphere, Params
     );
 
     if (bHit)
     {
-        for (const FHitResult& Hit : HitResults)
+        // [수정] FOverlapResult로 순회합니다.
+        for (const FOverlapResult& Overlap : OverlapResults)
         {
-            if (ABaseCharacter* HitPlayer = Cast<ABaseCharacter>(Hit.GetActor()))
+            // [수정] Hit.GetActor() 대신 Overlap.GetActor()를 사용합니다.
+            if (ABaseCharacter* HitPlayer = Cast<ABaseCharacter>(Overlap.GetActor()))
             {
                 if (HitPlayer->IsDead()) continue;
-
                 GEngine->AddOnScreenDebugMessage(-1, 3.f, FColor::Cyan, FString::Printf(TEXT("Smash Hit Player: %s"), *HitPlayer->GetName()));
-
                 UGameplayStatics::ApplyDamage(HitPlayer, 50.0f, GetController(), this, UDamageType::StaticClass());
 
                 if (QTETrapClass)
@@ -294,12 +294,8 @@ void AStage2Boss::PerformSmashHitCheck()
                     FActorSpawnParameters SpawnParams;
                     SpawnParams.Owner = this;
                     SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
                     AQTE_Trap* NewTrap = GetWorld()->SpawnActor<AQTE_Trap>(QTETrapClass, HitPlayer->GetActorLocation(), FRotator::ZeroRotator, SpawnParams);
-                    if (NewTrap)
-                    {
-                        NewTrap->InitializeTrap(HitPlayer, 10);
-                    }
+                    if (NewTrap) NewTrap->InitializeTrap(HitPlayer, 10);
                 }
             }
         }
@@ -376,5 +372,43 @@ void AStage2Boss::Multicast_PlayBossMontage_Implementation(UAnimMontage* Montage
     if (MontageToPlay)
     {
         PlayAnimMontage(MontageToPlay);
+    }
+}
+
+void AStage2Boss::PerformMeleeHitCheck()
+{
+    if (!HasAuthority()) return;
+
+    FVector StartLoc = GetActorLocation() + (GetActorForwardVector() * MeleeForwardOffset);
+    StartLoc.Z += MeleeZOffset;
+
+    DrawDebugSphere(GetWorld(), StartLoc, MeleeRadius, 16, FColor::Red, false, 2.0f);
+
+    // [수정] FOverlapResult 배열 생성
+    TArray<FOverlapResult> OverlapResults;
+    FCollisionShape Sphere = FCollisionShape::MakeSphere(MeleeRadius);
+    FCollisionQueryParams Params;
+    Params.AddIgnoredActor(this);
+
+    bool bHit = GetWorld()->OverlapMultiByChannel(
+        OverlapResults, StartLoc, FQuat::Identity, ECC_Pawn, Sphere, Params
+    );
+
+    if (bHit)
+    {
+        // [수정] FOverlapResult로 순회
+        for (const FOverlapResult& Overlap : OverlapResults)
+        {
+            // [수정] Overlap.GetActor() 사용
+            if (ABaseCharacter* HitPlayer = Cast<ABaseCharacter>(Overlap.GetActor()))
+            {
+                if (HitPlayer->IsDead()) continue;
+
+                GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Orange, FString::Printf(TEXT("평타 적중!: %s"), *HitPlayer->GetName()));
+
+                float DamageToApply = BossData ? BossData->AttackDamage : 20.0f;
+                UGameplayStatics::ApplyDamage(HitPlayer, DamageToApply, GetController(), this, UDamageType::StaticClass());
+            }
+        }
     }
 }

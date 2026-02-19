@@ -6,6 +6,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/Character.h"
 #include "Components/CapsuleComponent.h"
+#include "Project_Bang_Squad/Character/Base/BaseCharacter.h"
 #include "Project_Bang_Squad/Character/MonsterBase/EnemyBossData.h"
 
 
@@ -91,7 +92,8 @@ void AStage2SpiderAIController::Tick(float DeltaTime)
                 {
                     if (SpiderBoss && SpiderBoss->QTEFollowUpMontage)
                     {
-                        SpiderBoss->PlayAnimMontage(SpiderBoss->QTEFollowUpMontage);
+                        // [수정 완료] 서버 전용 재생을 멀티캐스트 재생으로 교체!
+                        SpiderBoss->Multicast_PlayBossMontage(SpiderBoss->QTEFollowUpMontage);
                     }
 
                     StateTimer = 6.0f; // 2단계: 추가타 몽타주 길이만큼 대기 (원하시는 초로 수정)
@@ -236,24 +238,34 @@ void AStage2SpiderAIController::FindNearestTarget()
         // 1. 나 자신은 제외
         if (Actor == SpiderBoss) continue;
 
-        // 2. 같은 몬스터 진영 제외 (EnemyCharacterBase 상속 여부로 판단)
-        // (EnemyCharacterBase 헤더가 필요할 수 있음. 없으면 태그나 클래스 이름으로 체크)
+        // 2. 같은 몬스터 진영 제외
         if (Actor->ActorHasTag(TEXT("Enemy"))) continue;
 
-        // 3. 죽은 플레이어 제외 (선택사항)
-         //if (Change to your specific player class -> IsDead()) continue;
+        // 3. [핵심 수정 부분] ABaseCharacter로 형변환하여 생존 여부를 체크합니다.
+        if (ABaseCharacter* PlayerCharacter = Cast<ABaseCharacter>(Actor))
+        {
+            // 시체(죽은 플레이어)는 배열에 넣지 않고 무시(continue)합니다!
+            if (PlayerCharacter->IsDead()) continue;
+
+            // (안전장치) 연결이 끊기거나 조종 중이 아닌 더미 캐릭터도 무시합니다.
+            if (!PlayerCharacter->IsPlayerControlled()) continue;
+        }
 
         ValidPlayers.Add(Actor);
     }
 
     if (ValidPlayers.Num() > 0)
     {
-        // 랜덤 타겟 (또는 가장 가까운 타겟 로직 추가 가능)
+        // 랜덤 타겟 선정 (이제 살아있는 플레이어 중에서만 고릅니다)
         int32 Idx = FMath::RandRange(0, ValidPlayers.Num() - 1);
         TargetActor = ValidPlayers[Idx];
     }
+    else
+    {
+        // 맵에 살아있는 플레이어가 1명도 없으면 타겟을 비웁니다.
+        TargetActor = nullptr;
+    }
 }
-
 void AStage2SpiderAIController::StartPhasePattern()
 {
     StopMovement();

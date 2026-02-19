@@ -6,12 +6,18 @@
 #include "Components/CapsuleComponent.h" // [필수] 캡슐 컴포넌트 헤더 추가
 #include "Particles/ParticleSystem.h" // 파티클 시스템 헤더
 #include "Sound/SoundBase.h"
+
+
 ACocoon::ACocoon()
 {
+    // [해결포인트 1] 서버의 고치를 클라이언트에 똑같이 복제(Replicate)합니다.
+    bReplicates = true;
+
+    // [해결포인트 2] 위치(플레이어에게 붙어다니는 것)도 복제합니다.
+    SetReplicateMovement(true);
+
     MeshComp = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MeshComp"));
     RootComponent = MeshComp;
-
-    // 고치는 아군의 공격을 막아줘야(맞아야) 하므로 BlockAll
     MeshComp->SetCollisionProfileName(TEXT("BlockAll"));
 }
 
@@ -62,6 +68,9 @@ float ACocoon::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, A
 
 void ACocoon::ReleasePlayer()
 {
+    // [권한 분리] 파괴는 서버가 전담합니다. 서버가 Destroy()하면 클라이언트의 복제본도 알아서 소멸합니다!
+    if (!HasAuthority()) return;
+
     if (TrappedPlayer)
     {
         if (APlayerController* PC = Cast<APlayerController>(TrappedPlayer->GetController()))
@@ -69,7 +78,6 @@ void ACocoon::ReleasePlayer()
             TrappedPlayer->EnableInput(PC);
         }
         TrappedPlayer->GetCharacterMovement()->SetMovementMode(MOVE_Walking);
-
         DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
     }
 
@@ -79,27 +87,33 @@ void ACocoon::ReleasePlayer()
 
 void ACocoon::Explode()
 {
-    // 1. 이펙트 재생 (크기를 좀 더 키우고, 위치를 살짝 위로)
-    if (ExplosionVFX)
-    {
-        FVector SpawnLoc = GetActorLocation() + FVector(0, 0, 50.0f); // 고치 중심보다 살짝 위
-
-        // 이펙트 스폰 (WorldContextObject, ParticleSystem, Location, Rotation, Scale, bAutoDestroy)
-        UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), ExplosionVFX, SpawnLoc, FRotator::ZeroRotator, FVector(3.0f)); // 크기 3배로 키움!
-    }
+    // [권한 분리] 폭발 데미지 연산도 서버만 담당합니다.
+    if (!HasAuthority()) return;
 
     if (TrappedPlayer)
     {
-        // 최대 체력의 70% 트루 데미지
         float MaxHP = 1000.0f; // 나중에 GetMaxHealth() 등으로 교체
         float Damage = MaxHP * 0.7f;
-
-        // 이제 include가 있어서 에러가 나지 않습니다.
         UGameplayStatics::ApplyDamage(TrappedPlayer, Damage, nullptr, this, UDamageType::StaticClass());
-
-        // 폭발 이펙트 추가 가능
-        // UGameplayStatics::SpawnEmitterAtLocation(...);
     }
 
-    ReleasePlayer(); // 폭발 후에도 풀어줌
+    // [비주얼 동기화] 데미지를 주었으니 모든 클라이언트에게 펑! 터지라고 방송합니다.
+    Multicast_PlayExplosionVFX();
+
+    ReleasePlayer(); // 폭발 후 풀어주기 (여기서 Destroy가 호출됨)
+}
+
+// [추가] 멀티캐스트 구현부: 모든 클라이언트 화면에서 이펙트 재생
+void ACocoon::Multicast_PlayExplosionVFX_Implementation()
+{
+    if (ExplosionVFX)
+    {
+        FVector SpawnLoc = GetActorLocation() + FVector(0, 0, 50.0f);
+        UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), ExplosionVFX, SpawnLoc, FRotator::ZeroRotator, FVector(3.0f));
+    }
+
+    if (ExplosionSound)
+    {
+        UGameplayStatics::PlaySoundAtLocation(this, ExplosionSound, GetActorLocation());
+    }
 }
