@@ -67,4 +67,5 @@ private:
     float StateTimer = 0.0f;
     FVector RetreatLocation;
     bool bHasAttacked = false;
+    bool bIsDoingFollowUp = false; // 추가타 진행 중인지 체크하는 플래그
 };

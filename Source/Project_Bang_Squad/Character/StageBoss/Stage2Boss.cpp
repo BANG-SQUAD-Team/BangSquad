@@ -10,7 +10,7 @@
 #include "DrawDebugHelpers.h"
 #include "Project_Bang_Squad/Character/StageBoss/AQTE_Trap.h" // (경로가 폴더 안에 있다면 "Project_Bang_Squad/Character/StageBoss/AQTE_Trap.h" 로 맞춰주세요)
 #include "Project_Bang_Squad/Character/Base/BaseCharacter.h"
-
+#include "Kismet/KismetSystemLibrary.h" // SphereTrace용
 AStage2Boss::AStage2Boss()
 {
     AIControllerClass = AStage2SpiderAIController::StaticClass();
@@ -295,6 +295,71 @@ void AStage2Boss::PerformSmashHitCheck()
                         NewTrap->InitializeTrap(HitPlayer, 10);
                     }
                 }
+            }
+        }
+    }
+}
+
+
+void AStage2Boss::ExecuteFollowUpKnockback()
+{
+    // [권한 분리] 넉백 물리 처리는 서버에서만 합니다.
+    if (!HasAuthority()) return;
+
+    // [수정] ZOffset을 더해서 시작 높이를 조절합니다.
+    FVector TraceStart = GetActorLocation();
+    TraceStart.Z += FollowUpTraceZOffset;
+
+    // [수정] ForwardOffset 변수를 곱해서 앞으로 뻗어나가는 거리를 조절합니다.
+    FVector TraceEnd = TraceStart + (GetActorForwardVector() * FollowUpTraceForwardOffset);
+
+    TArray<AActor*> ActorsToIgnore;
+    ActorsToIgnore.Add(this);
+    TArray<FHitResult> OutHits;
+
+    // [충돌 동기화] 서버에서 트레이스 실행
+    bool bHit = UKismetSystemLibrary::SphereTraceMulti(
+        GetWorld(), TraceStart, TraceEnd, 300.0f,
+        UEngineTypes::ConvertToTraceType(ECC_Pawn), false, ActorsToIgnore,
+        EDrawDebugTrace::ForDuration, OutHits, true
+    );
+
+    if (bHit)
+    {
+        for (const FHitResult& Hit : OutHits)
+        {
+            if (ACharacter* Target = Cast<ACharacter>(Hit.GetActor()))
+            {
+                // [해결 1] 넉백을 받기 위해 캐릭터의 이동 모드를 강제로 '공중(Falling)'으로 변경
+                if (Target->GetCharacterMovement())
+                {
+                    Target->GetCharacterMovement()->SetMovementMode(MOVE_Falling);
+                }
+
+                // [해결 2] 플레이어 주변에 있는 트랩(AQTE_Trap)을 찾아 강제 파괴
+                // (트랩이 플레이어와 겹쳐있거나 자식으로 붙어있을 경우 모두 처리)
+                TArray<AActor*> AttachedOrOverlappingTraps;
+                Target->GetOverlappingActors(AttachedOrOverlappingTraps, AQTE_Trap::StaticClass());
+
+                for (AActor* TrapActor : AttachedOrOverlappingTraps)
+                {
+                    if (AQTE_Trap* Trap = Cast<AQTE_Trap>(TrapActor))
+                    {
+                        // 만약 트랩 클래스 내부에 Release() 같은 해제 함수가 있다면 그것을 호출하는 것이 가장 좋고,
+                        // 없다면 강제로 파괴(Destroy) 합니다.
+                        Trap->Destroy();
+                    }
+                }
+
+                // [물리 동기화] 앞으로 날리면서 살짝 띄움
+                FVector LaunchDir = GetActorForwardVector();
+                LaunchDir.Z = 0.5f;
+
+                // 이제 이동 모드가 복구되었으므로 정상적으로 날아갑니다!
+                Target->LaunchCharacter(LaunchDir * FollowUpKnockbackPower, true, true);
+
+                // 데미지 적용
+                UGameplayStatics::ApplyDamage(Target, 30.0f, GetController(), this, UDamageType::StaticClass());
             }
         }
     }

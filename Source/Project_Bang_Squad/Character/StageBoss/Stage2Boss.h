@@ -56,6 +56,15 @@ public:
     UPROPERTY(EditAnywhere, Category = "Boss|Combat")
     float SmashZOffset = -50.0f;
 
+    // 애니메이션 노티파이에서 호출할 실제 넉백 함수
+    UFUNCTION(BlueprintCallable, Category = "Boss|Combat")
+    void ExecuteFollowUpKnockback();
+
+    // 블루프린트에서 설정할 추가타 몽타주
+    UPROPERTY(EditAnywhere, Category = "Boss|Anim")
+    UAnimMontage* QTEFollowUpMontage;
+
+
     // [Getter]
     UEnemyBossData* GetBossData() const { return BossData; }
 
@@ -103,5 +112,22 @@ protected:
     UPROPERTY(EditAnywhere, Category = "Boss|Anim")
     UAnimMontage* SmashMontage;
 
-  
+   
+
+    // [추가] 넉백 힘 (기본값 설정)
+    UPROPERTY(EditAnywhere, Category = "Boss|Combat")
+    float FollowUpKnockbackPower = 2000.0f;
+
+    // [추가] 추가타 판정 거리 (앞으로 얼마나 멀리)
+    UPROPERTY(EditAnywhere, Category = "Boss|Combat")
+    float FollowUpTraceForwardOffset = 400.0f;
+
+    // [추가] 추가타 판정 높이 (Z축 조절 - 땅에 묻히거나 허공을 칠 때 사용)
+    UPROPERTY(EditAnywhere, Category = "Boss|Combat")
+    float FollowUpTraceZOffset = 50.0f;
+
+    // [추가] 추가타 판정 두께 (구체의 반지름)
+    UPROPERTY(EditAnywhere, Category = "Boss|Combat")
+    float FollowUpTraceRadius = 300.0f;
+
 };

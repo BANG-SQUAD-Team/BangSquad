@@ -61,13 +61,10 @@ void AStage2SpiderAIController::Tick(float DeltaTime)
 
     case ESpiderPatternState::SmashQTE:
     {
-        // StateTimer가 -1.0f면 "아직 도착 안 함(돌진 중)" 상태로 간주
         if (StateTimer < 0.0f)
         {
-            // 1. 타겟에게 맹렬히 다시 접근
             MoveToActor(TargetActor, 1.0f);
 
-            // 2. 공격 사거리 체크 (UpdateChase와 동일 로직)
             float WeaponReach = 150.0f;
             if (SpiderBoss && SpiderBoss->GetBossData())
                 WeaponReach = SpiderBoss->GetBossData()->AttackRange;
@@ -75,28 +72,41 @@ void AStage2SpiderAIController::Tick(float DeltaTime)
             float BossRadius = SpiderBoss->GetCapsuleComponent()->GetScaledCapsuleRadius();
             float Dist = FVector::Dist(SpiderBoss->GetActorLocation(), TargetActor->GetActorLocation());
 
-            // 표면 거리가 사거리 안쪽이면? -> 찍기 발동!
-            // (더 바짝 붙게 하려고 -50.0f 함)
             if (Dist <= (BossRadius + WeaponReach - 50.0f))
             {
                 StopMovement();
-                SpiderBoss->PerformSmashAttack(TargetActor); // 쾅!
-                StateTimer = 3.0f; // 공격 후 3초간 대기 (후딜레이)
+                SpiderBoss->PerformSmashAttack(TargetActor);
+
+                StateTimer = 3.0f; // 1단계: 기존 QTE 시간 (3초 대기)
+                bIsDoingFollowUp = false; // 플래그 초기화
             }
         }
-        // StateTimer가 양수면 "이미 찍었고 쉬는 중"
         else
         {
             StateTimer -= DeltaTime;
             if (StateTimer <= 0.0f)
             {
-                FindNearestTarget();
-                CurrentState = ESpiderPatternState::Chase; // 다시 평타 추격 모드로
+                // [핵심] 3초가 끝난 직후, 추격으로 넘어가지 않고 여기서 추가타를 재생합니다.
+                if (!bIsDoingFollowUp)
+                {
+                    if (SpiderBoss && SpiderBoss->QTEFollowUpMontage)
+                    {
+                        SpiderBoss->PlayAnimMontage(SpiderBoss->QTEFollowUpMontage);
+                    }
+
+                    StateTimer = 6.0f; // 2단계: 추가타 몽타주 길이만큼 대기 (원하시는 초로 수정)
+                    bIsDoingFollowUp = true;
+                }
+                // 추가타 시간까지 끝났으면 일상 복귀
+                else
+                {
+                    FindNearestTarget();
+                    CurrentState = ESpiderPatternState::Chase;
+                }
             }
         }
     }
     break;
-
     // 나머지 패턴(평타, 거미줄)은 기존 타이머 방식 유지
     case ESpiderPatternState::Attack:
     case ESpiderPatternState::WebShot:
