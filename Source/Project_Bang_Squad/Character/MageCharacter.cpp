@@ -626,46 +626,71 @@ void AMageCharacter::ProcessSkill(FName SkillRowName, FVector TargetLocation)
 
 void AMageCharacter::SpawnDelayedProjectile(UClass* ProjectileClass, float DamageAmount, FVector TargetLocation)
 {
-	if (!HasAuthority() || !ProjectileClass) return;
+    // 서버만 실행 & 클래스 체크
+    if (!HasAuthority() || !ProjectileClass) return;
 
-	Multicast_SetTrailActive(false);
+    Multicast_SetTrailActive(false);
 
-	// 1. 발사 시작 위치 (지팡이 끝)
-	FVector SpawnLoc;
-	FName SocketName = TEXT("Weapon_Root_R");
+    // 1. 발사 시작 위치 (지팡이 끝)
+    FVector SpawnLoc;
+    FName SocketName = TEXT("Weapon_Root_R");
 
-	if (GetMesh() && GetMesh()->DoesSocketExist(SocketName))
-		SpawnLoc = GetMesh()->GetSocketLocation(SocketName);
-	else
-		SpawnLoc = GetActorLocation() + (GetActorForwardVector() * 100.f);
+    if (GetMesh() && GetMesh()->DoesSocketExist(SocketName))
+       SpawnLoc = GetMesh()->GetSocketLocation(SocketName);
+    else
+       SpawnLoc = GetActorLocation() + (GetActorForwardVector() * 100.f);
 
-	FRotator SpawnRot;
+    // =================================================================================
+    //  입력 당시(과거)의 TargetLocation 대신, 지금(현재) 시점을 다시 계산
+    // =================================================================================
+    FVector RealTargetLoc = TargetLocation;
 
-	// 🔥 [핵심 픽스] 발사 지점과 타겟이 가깝다고 씹어버리는 방어 코드를 싹 지웠습니다!
-	if (TargetLocation.IsZero())
-	{
-		// 타겟 좌표가 아예 없을 때만 기본 회전 적용
-		SpawnRot = GetActorRotation();
-	}
-	else
-	{
-		// 거리가 가깝든 멀든, 무조건 타겟 위치를 향해 각도를 꺾어버림!
-		SpawnRot = UKismetMathLibrary::FindLookAtRotation(SpawnLoc, TargetLocation);
-	}
+    if (AController* MyController = GetController())
+    {
+        // 1. 현재 플레이어가 보고 있는 방향(ControlRotation)을 가져옴
+        FVector CamLoc;
+        FRotator CamRot;
+        MyController->GetPlayerViewPoint(CamLoc, CamRot); // 카메라 위치와 회전값
 
-	// 3. 생성
-	FActorSpawnParameters SpawnParams;
-	SpawnParams.Owner = this;
-	SpawnParams.Instigator = GetInstigator();
-	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+        // 2. 화면 중앙으로 레이를 쏨
+        FVector TraceStart = CamLoc;
+        FVector TraceEnd = CamLoc + (CamRot.Vector() * 10000.0f); // 100미터 앞
 
-	AActor* SpawnedActor = GetWorld()->SpawnActor<AActor>(ProjectileClass, SpawnLoc, SpawnRot, SpawnParams);
+        FHitResult HitResult;
+        FCollisionQueryParams Params;
+        Params.AddIgnoredActor(this); // 나 자신 무시
 
-	if (AMageProjectile* MyProjectile = Cast<AMageProjectile>(SpawnedActor))
-	{
-		MyProjectile->Damage = DamageAmount;
-		MyProjectile->SetOwner(this); 
-	}
+        // 3. 충돌한 곳이 있으면 거기가 진짜 타겟, 없으면 허공 끝
+        if (GetWorld()->LineTraceSingleByChannel(HitResult, TraceStart, TraceEnd, ECC_Visibility, Params))
+        {
+            RealTargetLoc = HitResult.ImpactPoint;
+        }
+        else
+        {
+            RealTargetLoc = TraceEnd;
+        }
+    }
+
+    // 2. 최종 회전값 계산 (지팡이 끝 -> 계산한 현재 에임 위치)
+    FRotator SpawnRot = UKismetMathLibrary::FindLookAtRotation(SpawnLoc, RealTargetLoc);
+    
+	// 발사 각도를 위로 살짝 올림
+	SpawnRot.Pitch += ProjectilePitchOffset;
+	
+    // =================================================================================
+    // 3. 생성
+    FActorSpawnParameters SpawnParams;
+    SpawnParams.Owner = this;
+    SpawnParams.Instigator = GetInstigator();
+    SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+    AActor* SpawnedActor = GetWorld()->SpawnActor<AActor>(ProjectileClass, SpawnLoc, SpawnRot, SpawnParams);
+
+    if (AMageProjectile* MyProjectile = Cast<AMageProjectile>(SpawnedActor))
+    {
+       MyProjectile->Damage = DamageAmount;
+       MyProjectile->SetOwner(this); 
+    }
 }
 
 // ====================================================================================

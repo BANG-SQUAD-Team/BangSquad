@@ -147,6 +147,10 @@ protected:
     FTimerHandle ComboResetTimer;
     void ResetCombo();
 
+    // 투사체 발사 각도 보정 (위쪽으로 얼마나 더 들 것인지)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
+    float ProjectilePitchOffset = 2.0f;
+    
     // 스킬 처리 및 투사체
     void ProcessSkill(FName SkillRowName, FVector TargetLocation = FVector::ZeroVector);
     
