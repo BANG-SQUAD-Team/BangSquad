@@ -41,6 +41,26 @@ public:
 	// 블루프린트에서 위젯 클래스를 할당받기 위한 변수
 	UPROPERTY(EditDefaultsOnly, Category = "BS|UI")
 	TSubclassOf<class UUserWidget> BossSubtitleWidgetClass;
+	
+	// 보스 체력바 관련 UI 변수 및 함수
+	UPROPERTY(EditDefaultsOnly, Category = "BS|UI")
+	TSubclassOf<class UUserWidget> BossHPWidgetClass;
+	
+	// 생성된 체력바 위젯을 기억해둘 포인터
+	UPROPERTY()
+	class UUserWidget* ActiveBossHPWidget;
+	
+	// 보스 등장 시 체력바 띄우기
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_ShowBossHP(float MaxHP);
+	
+	// 데미지를 입을 때마다 보스 체력바 갱신
+	UFUNCTION(NetMulticast,Reliable)
+	void Multicast_UpdateBossHP(float CurrentHP, float MaxHP);
+	
+	// 보스 사망 시 체력바 지우기
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_HideBossHP();
 protected:
 	virtual void BeginPlay() override;
 

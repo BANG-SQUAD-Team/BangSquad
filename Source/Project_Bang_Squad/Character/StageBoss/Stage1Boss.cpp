@@ -56,12 +56,20 @@ void AStage1Boss::BeginPlay()
 		if (UHealthComponent* HC = FindComponentByClass<UHealthComponent>())
 		{
 			HC->OnHealthChanged.AddDynamic(this, &AStage1Boss::OnHealthChanged);
+			
+			
 		}
 
 		if (!IsValid(MeleeCollisionBox))
 		{
 			MeleeCollisionBox = Cast<UBoxComponent>(GetComponentByClass(UBoxComponent::StaticClass()));
 		}
+	}
+	
+	if (UHealthComponent* HC = FindComponentByClass<UHealthComponent>())
+	{
+		// 서버와 클라이언트가 각자의 컴퓨터에 보스가 로딩되면 즉시 UI를 띄움
+		Multicast_ShowBossHP_Implementation(HC->MaxHealth);
 	}
 }
 
@@ -320,6 +328,12 @@ void AStage1Boss::OnPhaseChanged(EBossPhase NewPhase)
 
 void AStage1Boss::OnHealthChanged(float CH, float MH)
 {
+	// 체력이 변할 때마다 UI 갱신 (서버가 클라이언트에게 명령)
+	if (HasAuthority())
+	{
+		Multicast_UpdateBossHP(CH, MH);
+	}
+	
 	// ü�� 70% ���� & �� ���� �̹ߵ� �� ���� & QTE �� �ƴ�
 	if (HasAuthority() && !bHasTriggeredDeathWall && !bHasTriggeredQTE_10 && CH > 0 && (CH / MH) <= 0.7f)
 	{
@@ -678,6 +692,9 @@ void AStage1Boss::OnDeathStarted()
 	Super::OnDeathStarted();
 	if (!HasAuthority()) return;
 	
+	// 보스가 죽으면 화면에서 체력바 삭제
+	Multicast_HideBossHP();
+	
 	Multicast_ShowBossSubtitle(FText::FromString(TEXT("보스를 물리쳤습니다! 포탈을 타고 이동하세요!")), 5.0f);
 	
 	if (AStageBossGameMode* GM = GetWorld()->GetAuthGameMode<AStageBossGameMode>())
@@ -698,3 +715,88 @@ void AStage1Boss::OnDeathStarted()
 	for (AActor* W : Walls) W->SetActorTickEnabled(false);
 }
 
+void AStage1Boss::Multicast_ShowBossHP_Implementation(float MaxHP)
+{
+	// 이미 만들어졌거나, 위젯 클래스가 없으면 패스
+	if (!BossHPWidgetClass || ActiveBossHPWidget) return;
+
+	// 멀티플레이어 환경에서 내 화면(LocalController)을 확실하게 찾는 방법
+	APlayerController* LocalPC = nullptr;
+	for (FConstPlayerControllerIterator Iterator = GetWorld()->GetPlayerControllerIterator(); Iterator; ++Iterator)
+	{
+		APlayerController* PC = Iterator->Get();
+		if (PC && PC->IsLocalController())
+		{
+			LocalPC = PC;
+			break;
+		}
+	}
+
+	if (!LocalPC) return;
+    
+	// 찾아낸 내 화면에 위젯 생성
+	ActiveBossHPWidget = CreateWidget<UUserWidget>(LocalPC, BossHPWidgetClass);
+	if (ActiveBossHPWidget)
+	{
+		ActiveBossHPWidget->AddToViewport(); // 화면에 띄우기
+		
+		// 1. 보스 아이콘(이미지) 세팅
+		if (BossData && BossData->BossIcon)
+		{
+			UFunction* InitFunc = ActiveBossHPWidget->FindFunction(FName("InitBossUI"));
+			if (InitFunc)
+			{
+				struct { UTexture2D* IconParam;} InitParams;
+				InitParams.IconParam = BossData->BossIcon;
+				ActiveBossHPWidget->ProcessEvent(InitFunc, &InitParams);
+			}
+		}
+		
+		// ==========================================================
+		//  보스 이름 세팅 (방금 만든 SetBossName 호출)
+		// ==========================================================
+		UFunction* NameFunc = ActiveBossHPWidget->FindFunction(FName("SetBossName"));
+		if (NameFunc)
+		{
+			// 블루프린트에서 만든 입력 파라미터(Text)와 동일한 형태의 구조체
+			struct { FText NameParam; } NameStruct;
+			NameStruct.NameParam = BossData->BossName;
+			ActiveBossHPWidget->ProcessEvent(NameFunc, &NameStruct);
+		}
+       
+		// 초기 체력 세팅 (블루프린트의 UpdateHP 함수 호출)
+		UFunction* UpdateFunc = ActiveBossHPWidget->FindFunction(FName("UpdateHP"));
+		if (UpdateFunc)
+		{
+			struct { double Current; double Max; } Params;
+			Params.Current = (double)MaxHP;
+			Params.Max = (double)MaxHP;
+			ActiveBossHPWidget->ProcessEvent(UpdateFunc, &Params);
+		}
+	}
+}
+
+void AStage1Boss::Multicast_UpdateBossHP_Implementation(float CurrentHP, float MaxHP)
+{
+	if (ActiveBossHPWidget)
+	{
+		// 위젯에 있는 UpdateHP 함수 찾아서 체력 넘겨주기
+		UFunction* UpdateFunc = ActiveBossHPWidget->FindFunction(FName("UpdateHP"));
+		if (UpdateFunc)
+		{
+			struct { double Current; double Max; } Params;
+			Params.Current = (double)CurrentHP;
+			Params.Max = (double)MaxHP;
+			ActiveBossHPWidget->ProcessEvent(UpdateFunc, &Params);
+		}
+	}
+}
+
+void AStage1Boss::Multicast_HideBossHP_Implementation()
+{
+	if (ActiveBossHPWidget)
+	{
+		ActiveBossHPWidget->RemoveFromParent(); // 화면에서 지움
+		ActiveBossHPWidget = nullptr;
+	}
+}
