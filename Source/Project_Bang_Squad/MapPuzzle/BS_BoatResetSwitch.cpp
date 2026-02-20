@@ -1,6 +1,9 @@
 
 #include "Project_Bang_Squad/MapPuzzle/BS_BoatResetSwitch.h"
 #include "Project_Bang_Squad/Character/Player/Mage/MagicBoat.h"
+#include "Components/SphereComponent.h"
+#include "Components/WidgetComponent.h"
+#include "GameFramework/Pawn.h"
 #include "Net/UnrealNetwork.h"
 
 ABS_BoatResetSwitch::ABS_BoatResetSwitch()
@@ -17,7 +20,31 @@ ABS_BoatResetSwitch::ABS_BoatResetSwitch()
 	PlayerSpawnPoint = CreateDefaultSubobject<USceneComponent>(TEXT("PlayerSpawnPoint"));
 	PlayerSpawnPoint->SetupAttachment(RootComponent);
 	PlayerSpawnPoint->SetRelativeLocation(FVector(200.f, 0.f, 0.f));
+	
+	// 3. 상호작용 콜리전
+	InteractSphere = CreateDefaultSubobject<USphereComponent>(TEXT("InteractSphere"));
+	InteractSphere->SetupAttachment(RootComponent);
+	InteractSphere->InitSphereRadius(150.0f);
+	InteractSphere->SetCollisionProfileName(TEXT("Trigger"));
+
+	// 4. 상호작용 UI 위젯
+	InteractWidget = CreateDefaultSubobject<UWidgetComponent>(TEXT("InteractWidget"));
+	InteractWidget->SetupAttachment(RootComponent);
+	InteractWidget->SetRelativeLocation(FVector(0.f, 0.f, 100.f)); 
+	InteractWidget->SetWidgetSpace(EWidgetSpace::Screen); 
+	InteractWidget->SetDrawSize(FVector2D(150.f, 50.f));
+	InteractWidget->SetVisibility(false);
 }
+
+void ABS_BoatResetSwitch::BeginPlay()
+{
+	Super::BeginPlay();
+
+	// 오버랩 이벤트 바인딩
+	InteractSphere->OnComponentBeginOverlap.AddDynamic(this, &ABS_BoatResetSwitch::OnSphereBeginOverlap);
+	InteractSphere->OnComponentEndOverlap.AddDynamic(this, &ABS_BoatResetSwitch::OnSphereEndOverlap);
+}
+
 
 void ABS_BoatResetSwitch::GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const
 {
@@ -34,6 +61,9 @@ void ABS_BoatResetSwitch::Interact_Implementation(APawn* InstigatorPawn)
 	// 1. 상태 변경 (쿨타임 시작)
 	bIsPressed = true;
 	OnRep_IsPressed();
+	
+	// 누르는 순간 호스트 화면에서 UI 즉시 숨김
+	if (InteractWidget) InteractWidget->SetVisibility(false);
 	
 	// 2. 보트 리셋 명령
 	if (TargetBoat)
@@ -54,5 +84,28 @@ void ABS_BoatResetSwitch::ResetButtonState()
 
 void ABS_BoatResetSwitch::OnRep_IsPressed()
 {
-	// 나중에 UI 변경 필요할 시 여기서 처리
+	if (bIsPressed && InteractWidget)
+	{
+		InteractWidget->SetVisibility(false);
+	}
+}
+
+void ABS_BoatResetSwitch::OnSphereBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
+{
+	if (bIsPressed) return;
+	
+	APawn* Pawn = Cast<APawn>(OtherActor);
+	if (Pawn && Pawn->IsLocallyControlled())
+	{
+		InteractWidget->SetVisibility(true);
+	}
+}
+
+void ABS_BoatResetSwitch::OnSphereEndOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
+{
+	APawn* Pawn = Cast<APawn>(OtherActor);
+	if (Pawn && Pawn->IsLocallyControlled())
+	{
+		InteractWidget->SetVisibility(false);
+	}
 }

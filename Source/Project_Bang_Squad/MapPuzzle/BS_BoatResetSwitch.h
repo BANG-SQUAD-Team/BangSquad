@@ -8,6 +8,8 @@
 #include "BS_BoatResetSwitch.generated.h"
 
 class AMagicBoat;
+class USphereComponent;
+class UWidgetComponent;
 
 UCLASS()
 class PROJECT_BANG_SQUAD_API ABS_BoatResetSwitch : public AActor, public IInteractionInterface
@@ -18,6 +20,8 @@ public:
 	ABS_BoatResetSwitch();
 
 protected:
+	virtual void BeginPlay() override;
+	
 	virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;
 
 	// 인터페이스 구현 (상호작용시 호출됨)
@@ -29,6 +33,13 @@ protected:
 	
 	// 일정 시간 후 버튼을 다시 튀어오르게 하는 함수
 	void ResetButtonState();
+	
+	//  3. 오버랩 이벤트 함수 
+	UFUNCTION()
+	void OnSphereBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+
+	UFUNCTION()
+	void OnSphereEndOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
 
 public:	
 	// 스위치 본체 메쉬 (움직이지 않음)
@@ -42,6 +53,12 @@ public:
 	// 연결할 보트
 	UPROPERTY(EditInstanceOnly, Category = "Settings")
 	AMagicBoat* TargetBoat;
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	USphereComponent* InteractSphere;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	UWidgetComponent* InteractWidget;
 	
 private:
 	// 중복 실행 방지용 플래그 (쿨타임)
