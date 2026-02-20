@@ -7,6 +7,8 @@
 #include "BS_Switch.generated.h"
 
 class AJumpPad;
+class USphereComponent;
+class UWidgetComponent;
 
 UCLASS()
 class PROJECT_BANG_SQUAD_API ABS_Switch : public AActor, public IInteractionInterface
@@ -26,6 +28,12 @@ protected:
 
     UFUNCTION()
     void OnRep_IsActivated();
+    
+    UFUNCTION()
+    void OnSphereBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+
+    UFUNCTION()
+    void OnSphereEndOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
 
 public:
     UPROPERTY(VisibleAnywhere, Category = "Components")
@@ -33,7 +41,13 @@ public:
 
     UPROPERTY(VisibleAnywhere, Category = "Components")
     UStaticMeshComponent* HandleMesh;
+    
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+    USphereComponent* InteractSphere;
 
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+    UWidgetComponent* InteractWidget;
+    
     /** 연결된 문 */
     UPROPERTY(EditInstanceOnly, Category = "Settings")
     class ABS_Door* TargetDoor;
