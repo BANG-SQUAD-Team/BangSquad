@@ -11,6 +11,12 @@
 #include "Project_Bang_Squad/Character/StageBoss/AQTE_Trap.h" // (경로가 폴더 안에 있다면 "Project_Bang_Squad/Character/StageBoss/AQTE_Trap.h" 로 맞춰주세요)
 #include "Project_Bang_Squad/Character/Base/BaseCharacter.h"
 #include "Kismet/KismetSystemLibrary.h" // SphereTrace용
+#include "Project_Bang_Squad/Character/StageBoss/BossSplitPattern.h"
+
+
+
+
+
 AStage2Boss::AStage2Boss()
 {
     AIControllerClass = AStage2SpiderAIController::StaticClass();
@@ -40,6 +46,8 @@ void AStage2Boss::BeginPlay()
         if (BossData->QTEAttackMontage)
             SmashMontage = BossData->QTEAttackMontage;
     }
+    // [테스트용 임시 코드] 70% 페이즈를 이미 본 것처럼 처리해서 스킵!
+    bPhase70Triggered = true;
 }
 
 void AStage2Boss::Tick(float DeltaTime)
@@ -63,12 +71,12 @@ void AStage2Boss::CheckHealthPhase()
 {
     if (!HealthComponent) return;
 
-    // [����] HealthComponent ���� ���� ���� ���� ���� ���
+    
     float MaxHP = HealthComponent->GetMaxHealth();
     float CurHP = HealthComponent->GetHealth();
     float HPRatio = (MaxHP > 0.0f) ? (CurHP / MaxHP) : 0.0f;
 
-    // 70% ������
+    // 70%
     if (!bPhase70Triggered && HPRatio <= 0.7f)
     {
         bPhase70Triggered = true;
@@ -77,7 +85,7 @@ void AStage2Boss::CheckHealthPhase()
         if (auto* AI = Cast<AStage2SpiderAIController>(GetController()))
             AI->StartPhasePattern();
 
-        // [����] StartSpawning -> SetSpawnerActive
+        // StartSpawning -> SetSpawnerActive
         if (MinionSpawner)
             MinionSpawner->SetSpawnerActive(true);
 
@@ -86,7 +94,25 @@ void AStage2Boss::CheckHealthPhase()
 
         UE_LOG(LogTemp, Warning, TEXT("Boss Phase 1 (70 Percent) Started!"));
     }
-    // 30% ������
+    // ==========================================================
+    // 2. [50% 구간] 인원 분배 패턴 기믹 (신규)
+    // ==========================================================
+    else if (!bPhase50Triggered && HPRatio <= 0.5f && HPRatio > 0.3f)
+    {
+        bPhase50Triggered = true;
+        bIsInvincible = true;
+
+        // AI 정지 (PhaseWait 대기 상태로 전환)
+        if (auto* AI = Cast<AStage2SpiderAIController>(GetController()))
+            AI->StartPhasePattern();
+
+        // 몽타주 재생을 통해 기믹 시작을 알림 (클라이언트 동기화)
+        Multicast_PlayPhase50Montage();
+
+        UE_LOG(LogTemp, Warning, TEXT("Boss Phase 2 (50 Percent) Started - Split Pattern Mechanic!"));
+    }
+
+    // 30%
     else if (!bPhase30Triggered && HPRatio <= 0.3f)
     {
         bPhase30Triggered = true;
@@ -104,6 +130,94 @@ void AStage2Boss::CheckHealthPhase()
         UE_LOG(LogTemp, Warning, TEXT("Boss Phase 2 (30 Percent) Started!"));
     }
 }
+
+// -------------------------------------------------------------
+// [50% 기믹 관련 함수 구현부]
+// -------------------------------------------------------------
+
+void AStage2Boss::Multicast_PlayPhase50Montage_Implementation()
+{
+    // [원칙 2] 모든 클라이언트에서 몽타주 재생
+    if (Phase50Montage)
+    {
+        PlayAnimMontage(Phase50Montage);
+    }
+}
+
+void AStage2Boss::SpawnSplitPattern()
+{
+    if (!HasAuthority()) return;
+
+    if (SplitPatternClass)
+    {
+        FVector SpawnLoc = GetActorLocation();
+        FRotator SpawnRot = FRotator::ZeroRotator;
+
+        ABossSplitPattern* SpawnedPattern = GetWorld()->SpawnActor<ABossSplitPattern>(SplitPatternClass, SpawnLoc, SpawnRot);
+
+        if (SpawnedPattern)
+        {
+            SpawnedPattern->OnSplitPatternFinished.AddDynamic(this, &AStage2Boss::HandleSplitPatternResult);
+
+            // [핵심] Phase50Montage의 총 재생 길이를 가져옵니다. (몽타주가 없으면 기본 5초)
+            float MontageLength = Phase50Montage ? Phase50Montage->GetPlayLength() : 5.0f;
+
+            // 장판에게 "내 몽타주 시간만큼만 켜져 있어라!" 하고 지시합니다.
+            SpawnedPattern->ActivatePattern(MontageLength);
+        }
+    }
+}
+void AStage2Boss::Multicast_SetBossVisibility_Implementation(bool bIsVisible)
+{
+    // 몽타주 Notify를 통해 보스 숨김/표시 처리
+    GetMesh()->SetVisibility(bIsVisible);
+}
+
+void AStage2Boss::HandleSplitPatternResult(bool bIsSuccess)
+{
+    // [원칙 1] 데미지 판정은 무조건 서버에서만!
+    if (!HasAuthority()) return;
+
+    bIsInvincible = false;
+    Multicast_SetBossVisibility(true);
+
+    if (auto* AI = Cast<AStage2SpiderAIController>(GetController()))
+    {
+        AI->EndPhasePattern();
+    }
+
+    if (bIsSuccess)
+    {
+        UE_LOG(LogTemp, Log, TEXT("50%% 인원 분배 패턴 성공!"));
+        // TODO: 기획에 따라 보스가 잠시 기절(그로기)하는 로직을 넣어도 좋습니다.
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("50%% 인원 분배 패턴 실패! 전멸기 데미지 적용!"));
+
+        // ==========================================================
+        // [실패 패널티: 전멸기 데미지 구현]
+        // ==========================================================
+        TArray<AActor*> AllPlayers;
+        // 맵에 있는 모든 플레이어(ABaseCharacter)를 찾습니다.
+        UGameplayStatics::GetAllActorsOfClass(GetWorld(), ABaseCharacter::StaticClass(), AllPlayers);
+
+        for (AActor* PlayerActor : AllPlayers)
+        {
+            if (ABaseCharacter* Player = Cast<ABaseCharacter>(PlayerActor))
+            {
+                if (!Player->IsDead()) // 아직 살아있는 플레이어라면
+                {
+                    // 무자비한 9999 데미지를 가합니다!
+                    UGameplayStatics::ApplyDamage(Player, 9999.0f, GetController(), this, UDamageType::StaticClass());
+                }
+            }
+        }
+    }
+}
+
+
+
 
 void AStage2Boss::CheckMinionsStatus()
 {

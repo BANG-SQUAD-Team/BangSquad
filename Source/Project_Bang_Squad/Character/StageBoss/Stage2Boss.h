@@ -12,6 +12,8 @@ class AEnemySpawner;
 class UHealthComponent;
 class UAnimMontage;
 class AQTE_Trap;
+class ABossSplitPattern;
+class UAnimMontage;
 
 UCLASS()
 class PROJECT_BANG_SQUAD_API AStage2Boss : public AEnemyCharacterBase
@@ -99,6 +101,31 @@ public:
     UPROPERTY(EditAnywhere, Category = "Boss|Combat")
     float MeleeZOffset = 50.0f;
 
+
+
+
+    // --- [기믹 실행 및 결과 처리] ---
+    // Notify에서 호출할 실제 스폰 함수
+    UFUNCTION(BlueprintCallable, Category = "Boss|Pattern")
+    void SpawnSplitPattern();
+
+    // 패턴이 끝나면 통보받을 콜백
+    UFUNCTION()
+    void HandleSplitPatternResult(bool bIsSuccess);
+
+    // --- [비주얼 동기화 (원칙 2)] ---
+    UFUNCTION(NetMulticast, Reliable)
+    void Multicast_PlayPhase50Montage();
+
+    UFUNCTION(NetMulticast, Reliable)
+    void Multicast_SetBossVisibility(bool bIsVisible);
+
+
+
+
+
+
+
 protected:
     void CheckMinionsStatus();
 
@@ -126,7 +153,18 @@ protected:
     // --- [State] ---
     bool bIsInvincible = false;
     bool bPhase70Triggered = false;
+    bool bPhase50Triggered = false;
     bool bPhase30Triggered = false;
+
+    // --- [50% 기믹 전용 세팅] ---
+    // 팀원이 만든 패턴 액터 할당용
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Boss|Pattern")
+    TSubclassOf<ABossSplitPattern> SplitPatternClass;
+
+    // 50% 페이즈 돌입 시 재생할 기믹 몽타주
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Pattern")
+    TObjectPtr<UAnimMontage> Phase50Montage;
+
 
     // --- [Anim] ---
     UPROPERTY(EditAnywhere, Category = "Boss|Anim")
