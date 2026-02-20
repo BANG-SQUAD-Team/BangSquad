@@ -245,6 +245,11 @@ void ABaseCharacter::BeginPlay()
 			bIsMiniGameMode = true;
 			UnlockedStageLevel = 0;
 		}
+		if (MapName.Contains(TEXT("Stage2_MiniGame")))
+		{
+			bIsMiniGameMode = true;
+			UnlockedStageLevel = 0;
+		}
 		
 		if (MapName.Contains(TEXT("LobbyMap")))
 		{

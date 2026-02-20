@@ -33,7 +33,14 @@ class PROJECT_BANG_SQUAD_API AStage1Boss : public AStageBossBase
 
 public:
 	AStage1Boss();
+	
+	// 모든 클라이언트의 화면에 자막 UI를 띄우도록 명령하는 함수
+	UFUNCTION(NetMulticast, Reliable, BlueprintCallable, Category = "BS|UI")
+	void Multicast_ShowBossSubtitle(const FText& Message, float Duration = 3.0f);
 
+	// 블루프린트에서 위젯 클래스를 할당받기 위한 변수
+	UPROPERTY(EditDefaultsOnly, Category = "BS|UI")
+	TSubclassOf<class UUserWidget> BossSubtitleWidgetClass;
 protected:
 	virtual void BeginPlay() override;
 
