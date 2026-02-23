@@ -7,6 +7,7 @@
 #include "Project_Bang_Squad/Character/Component/HealthComponent.h"
 #include "Project_Bang_Squad/Core/BSGameInstance.h"
 #include "Project_Bang_Squad/Projectile/SlashProjectile.h"
+#include "Project_Bang_Squad/Character/Damage/DamageTextActor.h"
 
 AEnemyCharacterBase::AEnemyCharacterBase()
 {
@@ -108,6 +109,14 @@ float AEnemyCharacterBase::TakeDamage(float DamageAmount, struct FDamageEvent co
         // 여기서 HealthComponent의 체력이 깎이고 -> OnHealthChanged 델리게이트가 호출됨
         HC->ApplyDamage(ActualDamage);
     }
+	
+	// =================================================================
+	// 실제 데미지가 0보다 크면, 클라이언트들에게 숫자 띄우기 지시!
+	// =================================================================
+	if (ActualDamage > 0.0f)
+	{
+		Multicast_SpawnDamageText(ActualDamage, GetActorLocation());
+	}
 
     return ActualDamage;
 }
@@ -340,4 +349,30 @@ void AEnemyCharacterBase::AnimNotify_SpawnSlash()
         Projectile->Damage = SlashDamage;
     }
 
+}
+
+void AEnemyCharacterBase::Multicast_SpawnDamageText_Implementation(float Damage, FVector Location)
+{
+	// 화면이 없는 데디케이티드 서버이거나, 블루프린트 설정이 안 되어있다면 무시
+	if (IsRunningDedicatedServer() || !DamageTextClass) return;
+
+	FActorSpawnParameters Params;
+	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	// 몬스터 머리 위쯤(Z축 + 120)에 데미지 액터 소환
+	FVector SpawnLoc = Location + FVector(0.f, 0.f, 120.f);
+    
+	// 소환 실행
+	ADamageTextActor* TextActor = GetWorld()->SpawnActor<ADamageTextActor>(
+		DamageTextClass, 
+		SpawnLoc, 
+		FRotator::ZeroRotator, 
+		Params
+	);
+
+	// 액터가 성공적으로 생겼다면 데미지 수치(숫자) 전달
+	if (TextActor)
+	{
+		TextActor->InitializeDamage(Damage);
+	}
 }

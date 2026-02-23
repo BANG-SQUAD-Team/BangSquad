@@ -569,7 +569,7 @@ void AMageCharacter::ProcessSkill(FName SkillRowName, FVector TargetLocation)
              }
              if (Data->ProjectileClass)
              {
-                float Dmg = Data->Damage;
+                float Dmg = Data->GetRandomizedDamage();
                 FTimerDelegate TimerDel;
                 TimerDel.BindUObject(this, &AMageCharacter::SpawnSkill2Rock, Data->ProjectileClass.Get(), Dmg);
                 
@@ -588,7 +588,7 @@ void AMageCharacter::ProcessSkill(FName SkillRowName, FVector TargetLocation)
 
              if (Data->ProjectileClass)
              {
-                float Dmg = Data->Damage;
+                float Dmg = Data->GetRandomizedDamage();
                 FTimerDelegate TimerDel;
                 
                 // 완벽하게 동기화된 클라이언트의 에임 지점(TargetLocation)을 넘겨서 투사체 생성

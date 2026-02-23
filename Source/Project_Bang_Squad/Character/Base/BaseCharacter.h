@@ -29,7 +29,22 @@ public:
 	FName SkillName;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
-	float Damage = 0.f;
+	float MinDamage = 0.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
+	float MaxDamage = 0.f;
+	
+	float GetRandomizedDamage() const
+	{
+		// 혹시라도 최댓값을 최솟값보다 작게 적는 실수를 방지하는 안전 코드
+		if (MinDamage >= MaxDamage) 
+		{
+			return MinDamage;
+		}
+        
+		// 최솟값과 최댓값 사이에서 랜덤 소수점 추출!
+		return FMath::RandRange(MinDamage, MaxDamage);
+	}
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
 	class UAnimMontage* SkillMontage = nullptr;

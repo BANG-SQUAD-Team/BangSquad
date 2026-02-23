@@ -122,7 +122,7 @@ void AStrikerCharacter::Server_Attack_Implementation(FName SkillName)
 
 		if (Row)
 		{
-			CurrentSkillDamage = Row->Damage;
+			CurrentSkillDamage = Row->GetRandomizedDamage();
 			if (Row->Cooldown > 0.0f) AttackCooldownTime = Row->Cooldown;
 
 			// 데이터 테이블에서 딜레이 시간 가져옴
@@ -271,7 +271,7 @@ void AStrikerCharacter::ApplyJobAbilityHit()
     {
         static const FString ContextString(TEXT("Striker JobAbility Damage"));
         FSkillData* Data = SkillDataTable->FindRow<FSkillData>(TEXT("JobAbility"), ContextString);
-        if (Data) AbilityDamage = Data->Damage;
+        if (Data) AbilityDamage = Data->GetRandomizedDamage();
     }
 
     FVector MyLoc = GetActorLocation();
@@ -387,7 +387,7 @@ void AStrikerCharacter::Server_TrySkill1_Implementation(AActor* TargetActor)
 		if (Data) 
 			{ 
 			if (!IsSkillUnlocked(Data->RequiredStage)) return;
-			SkillDamage = Data->Damage; 
+			SkillDamage = Data->GetRandomizedDamage();
 			if (Data->SkillMontage) Multicast_PlaySkill1FX(TargetChar);
 			}
 	}
@@ -643,7 +643,7 @@ void AStrikerCharacter::Server_Skill2Impact_Implementation()
     {
         static const FString ContextString(TEXT("StrikerSkill2"));
         FSkillData* Data = SkillDataTable->FindRow<FSkillData>(TEXT("Skill2"), ContextString);
-        if (Data) SlamDamage = Data->Damage;
+        if (Data) SlamDamage = Data->GetRandomizedDamage();
     }
 
     for (AActor* Actor : OverlappingActors)

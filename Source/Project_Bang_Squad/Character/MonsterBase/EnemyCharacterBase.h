@@ -141,4 +141,15 @@ public:
     // 노티파이에서 호출할 공통 함수
     UFUNCTION(BlueprintCallable, Category = "Combat")
     void AnimNotify_SpawnSlash();
+    
+    // =================================================================
+    // 데미지 플로팅 관련 시스템
+    // =================================================================
+    // 블루프린트에서 데미지 텍스트 액터를 할당받을 변수
+    UPROPERTY(EditDefaultsOnly, Category = "UI")
+    TSubclassOf<class ADamageTextActor> DamageTextClass;
+
+    // 모든 클라이언트 화면에 데미지 텍스트를 띄우라고 명령
+    UFUNCTION(NetMulticast, Unreliable)
+    void Multicast_SpawnDamageText(float Damage, FVector Location);
 };

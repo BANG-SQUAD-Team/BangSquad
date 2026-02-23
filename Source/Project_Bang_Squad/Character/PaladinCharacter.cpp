@@ -338,7 +338,7 @@ void APaladinCharacter::ProcessSkill(FName SkillRowName)
         if (!IsSkillUnlocked(Data->RequiredStage)) return;
 
         // 스탯 로드
-        CurrentSkillDamage = Data->Damage;
+        CurrentSkillDamage = Data->GetRandomizedDamage();
         CurrentActionDelay = Data->ActionDelay;
 
         // 쿨타임 체크
@@ -391,7 +391,7 @@ void APaladinCharacter::ProcessSkill(FName SkillRowName)
                 LaunchCharacter(LaunchDir, true, true);
 
                 // 3. 착지 시 데미지 타이머 설정
-                float FinalDamage = Data->Damage;
+                float FinalDamage = Data->GetRandomizedDamage();
                 bIsSmashing = true; 
 
                 if (CurrentActionDelay > 0.0f)
@@ -574,7 +574,7 @@ void APaladinCharacter::Server_Skill2_Implementation()
         {
             if (!IsSkillUnlocked(Data->RequiredStage)) return;
 
-            FinalDamage = Data->Damage;
+            FinalDamage = Data->GetRandomizedDamage();
             if (Data->Cooldown > 0.0f) FinalCooldown = Data->Cooldown;
             DelayTime = Data->ActionDelay;
 

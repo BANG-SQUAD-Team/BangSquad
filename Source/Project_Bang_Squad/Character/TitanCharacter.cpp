@@ -271,7 +271,7 @@ void ATitanCharacter::Server_Attack_Implementation(FName SkillName)
 
        if (Row)
        {
-          CurrentSkillDamage = Row->Damage;
+          CurrentSkillDamage = Row->GetRandomizedDamage();
           if (Row->Cooldown > 0.0f) AttackCooldownTime = Row->Cooldown;
           ActionDelay = Row->ActionDelay;
        }
@@ -949,7 +949,7 @@ void ATitanCharacter::Server_Skill1_Implementation()
     if (Row)
     {
        if (!IsSkillUnlocked(Row->RequiredStage)) return;
-       CurrentSkillDamage = Row->Damage;
+       CurrentSkillDamage = Row->GetRandomizedDamage();
        if (Row->Cooldown > 0.0f) Skill1CooldownTime = Row->Cooldown;
        Multicast_Skill1();
 
@@ -1158,7 +1158,7 @@ void ATitanCharacter::Server_Skill2_Implementation()
     if (Row)
     {
        if (!IsSkillUnlocked(Row->RequiredStage)) return;
-       CurrentSkillDamage = Row->Damage;
+       CurrentSkillDamage = Row->GetRandomizedDamage();
        if (Row->Cooldown > 0.0f) Skill2CooldownTime = Row->Cooldown;
        Multicast_Skill2();
     	
