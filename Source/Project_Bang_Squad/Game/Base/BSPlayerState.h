@@ -87,6 +87,9 @@ public:
 	UFUNCTION(Server, Reliable, BlueprintCallable, Category = "BS|Shop")
 	void Server_TrySell(FName ItemID, int32 SellAmount);
 
+	UFUNCTION(Client, Reliable)
+	void Client_PurchaseResult(bool bSuccess);
+
 	// ★ [3] 아이템 보유 확인 (오류 해결을 위해 필수!)
 	UFUNCTION(BlueprintCallable, Category = "BS|Inventory")
 	bool HasItem(FName ItemID) const;

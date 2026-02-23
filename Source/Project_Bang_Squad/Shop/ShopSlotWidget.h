@@ -4,6 +4,9 @@
 #include "Project_Bang_Squad/Shop/BangSquadShopData.h"
 #include "ShopSlotWidget.generated.h"
 
+
+class UShopTooltipWidget;
+
 // ★ [수정] ID(FName)와 데이터(FShopItemData)를 둘 다 보내도록 변경
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnSlotSelected, FName, ItemID, const FShopItemData&, ItemData);
 
@@ -50,4 +53,8 @@ protected:
 public:
 	void SetHighlight(bool bIsSelected);
 	void SetOwnedStatus(bool bOwned);
+
+	//툴팁 위젯
+	UPROPERTY(EditDefaultsOnly, Category = "Tooltip")
+	TSubclassOf<UShopTooltipWidget> TooltipClass;
 };

@@ -3,6 +3,7 @@
 #include "Components/Image.h"     
 #include "Components/TextBlock.h" 
 #include "Components/Border.h"
+#include "ShopTooltipWidget.h"
 
 void UShopSlotWidget::NativeConstruct()
 {
@@ -15,10 +16,9 @@ void UShopSlotWidget::NativeConstruct()
     }
 }
 
-// ★ [수정] NewID(RowName)를 받아서 저장합니다.
 void UShopSlotWidget::InitSlotData(FName NewID, const FShopItemData& NewData, bool bOwned, int32 Price)
 {
-    SlotItemID = NewID;   // ★ ID 저장
+    SlotItemID = NewID;   
     SlotItemData = NewData;
     bIsOwnedItem = bOwned;
 
@@ -45,23 +45,26 @@ void UShopSlotWidget::InitSlotData(FName NewID, const FShopItemData& NewData, bo
     if (Txt_Name)
     {
         FString NameStr = SlotItemData.ItemName.ToString();
-        FString FinalStr;
+        Txt_Name->SetText(FText::FromString(NameStr));
 
         if (bIsOwnedItem)
         {
-            // 판매 가격 표시
-            int32 SellPrice = Price * 0.2f;
-            FinalStr = FString::Printf(TEXT("%s (+%d G)"), *NameStr, SellPrice);
             Txt_Name->SetColorAndOpacity(FLinearColor::Green);
         }
         else
         {
-            // 구매 가격 표시
-            FinalStr = FString::Printf(TEXT("%s"), *NameStr);
             Txt_Name->SetColorAndOpacity(FLinearColor::White);
         }
+    }
 
-        Txt_Name->SetText(FText::FromString(FinalStr));
+    if (TooltipClass)
+    {
+        UShopTooltipWidget* TooltipWidget = CreateWidget<UShopTooltipWidget>(this, TooltipClass);
+        if (TooltipWidget)
+        {
+            TooltipWidget->SetupTooltip(Price, bOwned, SlotItemData.Description);
+            SetToolTip(TooltipWidget); // 언리얼 기본 함수: 마우스 Hover 시 이 위젯을 띄움
+        }
     }
 }
 

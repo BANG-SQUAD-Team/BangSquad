@@ -116,6 +116,7 @@ public:
 	UFUNCTION()
 	void HandleSellResult(bool bSuccess);
 
+
 private:
 	FShopItemData SelectedSellData;
 };

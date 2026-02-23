@@ -10,7 +10,7 @@ void ABSPlayerState::BeginPlay()
 	Super::BeginPlay();
 	if (HasAuthority())
 	{
-		//SetCoin(10000); // 테스트용: 1만 골드 지급
+		SetCoin(10000); // 테스트용: 1만 골드 지급
 	}
 }
 
@@ -152,14 +152,14 @@ void ABSPlayerState::Server_TryPurchase_Implementation(FName ItemID, int32 Cost,
 		AddCoin(-Cost);
 		AddItem(ItemID); // 소유 목록 추가
 
-		OnPurchaseResult.Broadcast(true);
+		Client_PurchaseResult(true);
 
-		// ★ [추가] 구매했으면 바로 장착까지 해줍니다! (편의성)
 		Server_EquipItem(ItemID, ItemType);
 	}
 	else
 	{
-		OnPurchaseResult.Broadcast(false);
+		// [수정] 실패 신호도 클라이언트로!
+		Client_PurchaseResult(false);
 	}
 }
 
@@ -177,15 +177,17 @@ void ABSPlayerState::Server_TrySell_Implementation(FName ItemID, int32 SellAmoun
 		// 3. 돈 지급
 		AddCoin(SellAmount);
 
-		// 4. 성공 알림
-		OnPurchaseResult.Broadcast(true);
-
-		UE_LOG(LogTemp, Warning, TEXT("판매 성공! ID: %s, 획득: %d G"), *ItemID.ToString(), SellAmount);
+		Client_PurchaseResult(true);
 	}
 	else
 	{
-		// 가지고 있지도 않은데 팔려고 함 (해킹 방지 등)
-		UE_LOG(LogTemp, Error, TEXT("판매 실패! 미보유 아이템: %s"), *ItemID.ToString());
-		OnPurchaseResult.Broadcast(false);
+		// [수정] 클라이언트로 판매 실패 신호 쏘기
+		Client_PurchaseResult(false);
 	}
+}
+
+void ABSPlayerState::Client_PurchaseResult_Implementation(bool bSuccess)
+{
+	// 이제 이 코드는 '클라이언트(내 컴퓨터)'에서 실행되므로 UI가 들을 수 있습니다!
+	OnPurchaseResult.Broadcast(bSuccess);
 }

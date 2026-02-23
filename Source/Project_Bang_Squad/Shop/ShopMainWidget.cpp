@@ -35,6 +35,12 @@ void UShopMainWidget::NativeConstruct()
     {
         Txt_Price->SetText(FText::FromString(TEXT("0 G")));
     }
+
+    if (ABSPlayerState* PS = GetOwningPlayerState<ABSPlayerState>())
+    {
+        PS->OnPurchaseResult.RemoveDynamic(this, &UShopMainWidget::HandlePurchaseResult);
+        PS->OnPurchaseResult.AddDynamic(this, &UShopMainWidget::HandlePurchaseResult);
+    }
 }
 
 void UShopMainWidget::UpdatePurchaseButtonState()
@@ -94,7 +100,6 @@ void UShopMainWidget::InitShop(FName MyJobTag)
 {
     CurrentJobTag = MyJobTag;
 
-    // --- 마네킹 찾기 로직 (기존과 동일) ---
     TArray<AActor*> AllStudios;
     if (ShopStudioClass)
     {
@@ -132,6 +137,15 @@ void UShopMainWidget::InitShopList()
     if (Grid_SkinBox) Grid_SkinBox->ClearChildren();
 
     ABSPlayerState* PS = GetOwningPlayerState<ABSPlayerState>();
+
+    if (!PS)
+    {
+        UE_LOG(LogTemp, Error, TEXT("[ShopUI] InitShopList: PlayerState가 아직 준비되지 않았습니다! (nullptr)"));
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[ShopUI] InitShopList: PlayerState는 확인됨. 인벤토리 데이터가 넘어왔는지 확인 필요."));
+    }
 
     // 1. 아이템 테이블 처리
     if (ItemDataTable && SlotWidgetClass)
@@ -394,12 +408,13 @@ void UShopMainWidget::HandlePurchaseResult(bool bSuccess)
 {
     if (bSuccess)
     {
-        InitShopList(); // 목록 갱신
+        FTimerHandle RefreshTimer;
+        GetWorld()->GetTimerManager().SetTimer(RefreshTimer, this, &UShopMainWidget::InitShopList, 0.2f, false);
+
         bIsHeadSelected = false;
         bIsSkinSelected = false;
         CurrentShopState = EShopState::Buying;
 
-        // 초기화 후 버튼 상태도 다시 설정
         if (Btn_Purchase) Btn_Purchase->SetIsEnabled(true);
         if (Btn_Sell) Btn_Sell->SetIsEnabled(false);
 
