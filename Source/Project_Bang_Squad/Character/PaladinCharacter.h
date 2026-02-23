@@ -123,7 +123,7 @@ protected:
     UPROPERTY()
     UNiagaraComponent* WeaponTrailComp;
 
-    UFUNCTION(NetMulticast, Unreliable)
+    UFUNCTION(NetMulticast, Reliable)
     void Multicast_SetTrailActive(bool bActive);
 
     // ====================================================================================

@@ -305,7 +305,9 @@ void APaladinCharacter::Client_TriggerHitStop_Implementation()
 
     // 2. 복구 타이머
     GetWorldTimerManager().ClearTimer(HitStopTimer);
-    GetWorldTimerManager().SetTimer(HitStopTimer, this, &APaladinCharacter::RestoreTimeDilation, HitStopDuration, false);
+    
+    float ActualDelay = HitStopDuration * HitStopTimeDilation;
+    GetWorldTimerManager().SetTimer(HitStopTimer, this, &APaladinCharacter::RestoreTimeDilation, ActualDelay, false);
 
     // 3. 카메라 흔들림
     if (APlayerController* PC = Cast<APlayerController>(GetController()))
@@ -829,10 +831,9 @@ float APaladinCharacter::TakeDamage(float DamageAmount, FDamageEvent const& Dama
     // [Defense Logic] 방어 중일 때 전방 공격 차단
     if (HasAuthority() && bIsGuarding && !bIsShieldBroken && DamageCauser)
     {
-        FVector LocalEnemyLoc = GetActorTransform().InverseTransformPosition(DamageCauser->GetActorLocation());
-        
-        // 적이 내 앞쪽(X > 100)에 있는가?
-        if (LocalEnemyLoc.X > 100.0f)
+        FVector DirectionFromAttacker = (GetActorLocation()) - DamageCauser->GetActorLocation();
+     
+        if (IsBlockingDirection(DirectionFromAttacker))
         {
             ActualDamage = 0.0f; // 본체 데미지 무효화
             CurrentShieldHP -= DamageAmount;

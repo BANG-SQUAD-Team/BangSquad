@@ -25,15 +25,16 @@ class PROJECT_BANG_SQUAD_API AMageCharacter : public ABaseCharacter
 
 public:
     // ====================================================================================
-    //  섹션 1: 생성자 및 필수 오버라이드 (Constructor & Essentials)
+    //  섹션 1: 생성자 및 필수 오버라이드
     // ====================================================================================
     AMageCharacter();
 
     virtual void Tick(float DeltaTime) override;
     virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
-    
+    virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
+
     // ====================================================================================
-    //  섹션 7: 네트워크 및 유틸리티 (Network RPCs)
+    //  섹션 2: 네트워크 및 서버 통신 (RPC)
     // ====================================================================================
     UFUNCTION(Server, Reliable)
     void Server_ProcessSkill(FName SkillRowName, FVector TargetLocation);
@@ -44,174 +45,157 @@ public:
     UFUNCTION(NetMulticast, Reliable)
     void Multicast_PlayMontage(UAnimMontage* MontageToPlay);
     
-    UFUNCTION(Server,Reliable)
+    UFUNCTION(Server, Reliable)
     void Server_StopMontage(UAnimMontage* MontageToStop);
     
     UFUNCTION(NetMulticast, Reliable)
     void Multicast_StopMontage(UAnimMontage* MontageToStop);
 
-    // 범용 상호작용 RPC (기둥 파괴, 보트 이동 모두 처리)
+    // 범용 상호작용 (기둥 회전, 보트 이동 등)
     UFUNCTION(Server, Reliable)
     void Server_InteractActor(AActor* TargetActor, FVector Direction);
     
-    // 기존 기둥 파괴 RPC
+    // 기둥 파괴 명령
     UFUNCTION(Server, Reliable)
     void Server_TriggerPillarFall(APillar* TargetPillar);
     
-    // 서버한테 보트 탑승/하차 상태를 알리는 함수
+    // 보트 탑승/하차 상태 동기화
     UFUNCTION(Server, Reliable)
     void Server_SetBoatRideState(AMagicBoat* Boat, bool bRiding);
 
-    // // 데미지 처리 함수 오버라이드
-    virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
-
 protected:
-    
-    FVector GetCrosshairTargetLocation();
     // ====================================================================================
-    //  섹션 2: 초기화 및 상태 이벤트 (Initialization & State Events)
+    //  섹션 3: 라이프사이클 이벤트
     // ====================================================================================
     virtual void BeginPlay() override;
     virtual void OnDeath() override;
     
     // ====================================================================================
-    //  섹션 3: 조작 및 인터랙션 (Control & Interaction)
+    //  섹션 4: 시점 조작 및 상호작용
     // ====================================================================================
-    
-    // Look 함수 (override 제거하고 독자 함수로 선언 -> BaseCharacter::Look 대체)
+    // 부모 클래스의 Look 함수 대체 (상호작용 시점 제어 포함)
     virtual void Look(const FInputActionValue& Value) override;
     
-    // 범용 타겟 감지 함수 (타이머로 작동)
-    void CheckInteractableTarget();
-    FTimerHandle InteractionTimerHandle;
+    // 크로스헤어가 가리키는 실제 월드 좌표 계산
+    FVector GetCrosshairTargetLocation();
 
+    // 상호작용 가능한 타겟 감지용 타이머
+    FTimerHandle InteractionTimerHandle;
+    void CheckInteractableTarget();
+
+    // 염력 상호작용 최대 사거리
     UPROPERTY(EditAnywhere, Category = "Telekinesis")
     float TraceDistance = 5000.f;
 
     // ====================================================================================
-    //  섹션 4: 전투 및 스킬 시스템 (Combat & Skills)
+    //  섹션 5: 전투 및 스킬 시스템
     // ====================================================================================
     virtual void Attack() override;
     virtual void Skill1() override;
     virtual void Skill2() override;
     
-    // 스킬 1번 사용 시 재생할 파티클 (에디터에서 할당)
-    UPROPERTY(EditDefaultsOnly, Category = "VFX")
-    UParticleSystem* Skill1CastEffect;
-
-    //  모든 클라이언트에서 파티클을 재생하라고 명령하는 함수
-    UFUNCTION(NetMulticast, Unreliable)
-    void Multicast_PlaySkill1VFX();
+    // 스킬 데이터 및 쿨타임 관리
+    TMap<FName, FSkillData*> SkillDataCache;
     
-    // 에디터에서 넣을 지팡이 트레일 VFX
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "VFX")
-    UNiagaraSystem* StaffTrailVFX;
-
-    // 실제 생성될 컴포넌트
     UPROPERTY()
-    UNiagaraComponent* StaffTrailComp;
-    
-    // 무기 메쉬 캐싱 (지팡이에 붙이기 위함)
-    UPROPERTY()
-    UStaticMeshComponent* CachedWeaponMesh;
+    TMap<FName, FTimerHandle> SkillTimers;
 
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
-    TObjectPtr<UStaticMeshComponent> WeaponRootComp;
-
-    // 멀티캐스트로 켜고 끄기
-    UFUNCTION(NetMulticast, Unreliable)
-    void Multicast_SetTrailActive(bool bActive);
-    
-    // 에디터에서 할당할 아우라 이펙트 (Loop 설정 필수!)
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "VFX")
-    UNiagaraSystem* JobAuraVFX;
-
-    //  아우라 크기 조절 변수 (기본값 1.0)
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "VFX")
-    FVector JobAuraScale = FVector(1.0f);
-    
-    // 실제 생성될 컴포넌트
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "VFX")
-    UNiagaraComponent* JobAuraComp;
-
-    // 서버에게 아우라 상태 변경 요청
-    UFUNCTION(Server, Reliable)
-    void Server_SetAuraActive(bool bActive);
-
-    // 모든 클라이언트에게 아우라 켜기/끄기 전파
-    UFUNCTION(NetMulticast, Reliable)
-    void Multicast_SetAuraActive(bool bActive);
+    void ProcessSkill(FName SkillRowName, FVector TargetLocation = FVector::ZeroVector);
     
     // 콤보 시스템
     int32 CurrentComboIndex = 0;
     FTimerHandle ComboResetTimer;
     void ResetCombo();
 
-    // 투사체 발사 각도 보정 (위쪽으로 얼마나 더 들 것인지)
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
-    float ProjectilePitchOffset = 2.0f;
-    
-    // 스킬 처리 및 투사체
-    void ProcessSkill(FName SkillRowName, FVector TargetLocation = FVector::ZeroVector);
+    // --- 스킬 1 (기본 투사체) ---
+    UPROPERTY(EditDefaultsOnly, Category = "VFX")
+    UParticleSystem* Skill1CastEffect;
+
+    UFUNCTION(NetMulticast, Unreliable)
+    void Multicast_PlaySkill1VFX();
     
     FTimerHandle ProjectileTimerHandle;
     void SpawnDelayedProjectile(UClass* ProjectileClass, float DamageAmount, FVector TargetLocation);
-    
-    // 스킬 쿨타임 관리 (Key: 스킬이름, Value: 타이머 핸들)
-    UPROPERTY()
-    TMap<FName, FTimerHandle> SkillTimers;
-    
-    
-    // 데이터 테이블 캐싱 변수
-    TMap<FName, FSkillData*> SkillDataCache;
 
-    // 스킬 2번 소환 타이머 핸들
-    FTimerHandle RockSpawnTimerHandle;
-    // 바위 소환 함수
-    void SpawnSkill2Rock(UClass* RockClass, float DamageAmount);
-    // 스킬 2번 이펙트
+    // 투사체 발사 각도 보정 (위로 띄우는 정도)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
+    float ProjectilePitchOffset = 2.0f;
+
+    // --- 스킬 2 (바위 소환) ---
     UPROPERTY(EditDefaultsOnly, Category = "VFX")
     UParticleSystem* Skill2CastEffect;
     
-    // 생성된 파티클을 제어하기 위해 저장할 변수
     UPROPERTY()
     UParticleSystemComponent* Skill2CastComp;
+
+    FTimerHandle RockSpawnTimerHandle;
+    void SpawnSkill2Rock(UClass* RockClass, float DamageAmount);
     
+    // --- 무기 이펙트 (트레일 및 아우라) ---
+    UPROPERTY()
+    UStaticMeshComponent* CachedWeaponMesh;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
+    TObjectPtr<UStaticMeshComponent> WeaponRootComp;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "VFX")
+    UNiagaraSystem* StaffTrailVFX;
+
+    UPROPERTY()
+    UNiagaraComponent* StaffTrailComp;
+    
+    UFUNCTION(NetMulticast, Unreliable)
+    void Multicast_SetTrailActive(bool bActive);
+    
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "VFX")
+    UNiagaraSystem* JobAuraVFX;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "VFX")
+    FVector JobAuraScale = FVector(1.0f);
+    
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "VFX")
+    UNiagaraComponent* JobAuraComp;
+
+    UFUNCTION(Server, Reliable)
+    void Server_SetAuraActive(bool bActive);
+
+    UFUNCTION(NetMulticast, Reliable)
+    void Multicast_SetAuraActive(bool bActive);
+
     // ====================================================================================
-    //  섹션 5: 직업 능력 (Job Ability - Telekinesis/Boat)
+    //  섹션 6: 직업 능력 (염력 조종)
     // ====================================================================================
     virtual void JobAbility() override;
     void EndJobAbility();
 
-    // 상태 플래그
+    // 조종 상태 플래그
     bool bIsPillarMode = false;
     bool bIsBoatMode = false;
 
-    // 기둥 관련 변수
+    // 기둥 관련 타겟
     UPROPERTY()
     APillar* FocusedPillar;
     UPROPERTY()
     APillar* CurrentTargetPillar;
 
-    // 보트(범용) 관련 변수
+    // 보트 및 범용 상호작용 타겟
     UPROPERTY()
-    AActor* HoveredActor; // 마우스 오버된 대상
+    AActor* HoveredActor; 
     UPROPERTY()
-    AActor* CurrentControlledActor; // 조종 중인 대상
+    AActor* CurrentControlledActor; 
 
 public:
     // ====================================================================================
-    //  컴포넌트 (Components)
+    //  컴포넌트
     // ====================================================================================
-    
-    // [보트용] 탑다운 카메라
+    // 탑다운 시점 카메라 (보트 조종용)
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
     USpringArmComponent* TopDownSpringArm;
     
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
     UCameraComponent* TopDownCamera;
     
-    // [기둥용] 타임라인
+    // 카메라 줌인 타임라인 (기둥 조종용)
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Timeline")
     UTimelineComponent* CameraTimelineComp;
 
@@ -220,7 +204,7 @@ public:
 
 private:
     // ====================================================================================
-    //  Internal Helpers (Private)
+    //  내부 헬퍼 함수 및 변수
     // ====================================================================================
     UFUNCTION()
     void CameraTimelineProgress(float Alpha);
@@ -228,7 +212,6 @@ private:
     UFUNCTION()
     void OnCameraTimelineFinished();
 
-    // 기둥 전용 락온 로직
     void LockOnPillar(float DeltaTime);
 
     float DefaultArmLength;
