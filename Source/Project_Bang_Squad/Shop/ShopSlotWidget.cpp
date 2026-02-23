@@ -2,6 +2,7 @@
 #include "Components/Button.h"  
 #include "Components/Image.h"     
 #include "Components/TextBlock.h" 
+#include "Components/Border.h"
 
 void UShopSlotWidget::NativeConstruct()
 {
@@ -20,6 +21,9 @@ void UShopSlotWidget::InitSlotData(FName NewID, const FShopItemData& NewData, bo
     SlotItemID = NewID;   // ★ ID 저장
     SlotItemData = NewData;
     bIsOwnedItem = bOwned;
+
+    SetOwnedStatus(bIsOwnedItem);
+    SetHighlight(false);
 
     // 1. 아이콘 설정
     if (Img_Icon && SlotItemData.Icon)
@@ -67,5 +71,26 @@ void UShopSlotWidget::OnItemClicked()
     {
         // ★ [수정] 저장해둔 ID와 데이터를 같이 보냅니다!
         OnSlotSelected.Broadcast(SlotItemID, SlotItemData);
+    }
+}
+
+void UShopSlotWidget::SetHighlight(bool bIsSelected)
+{
+    if (SelectionBorder)
+    {
+        SelectionBorder->SetVisibility(bIsSelected ? ESlateVisibility::Visible : ESlateVisibility::Hidden);
+    }
+}
+
+void UShopSlotWidget::SetOwnedStatus(bool bOwned)
+{
+    if (Img_CheckMark)
+    {
+        Img_CheckMark->SetVisibility(bOwned ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
+    }
+
+    if (Img_Icon)
+    {
+        Img_Icon->SetColorAndOpacity(bOwned ? FLinearColor(0.5f, 0.5f, 0.5f, 1.0f) : FLinearColor::White);
     }
 }

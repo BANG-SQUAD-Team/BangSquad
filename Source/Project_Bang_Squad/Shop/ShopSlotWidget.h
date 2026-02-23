@@ -15,7 +15,6 @@ class PROJECT_BANG_SQUAD_API UShopSlotWidget : public UUserWidget
 public:
 	FShopItemData SlotItemData;
 
-	// ★ [추가] 내 아이템의 ID (RowName)
 	FName SlotItemID;
 
 	bool bIsOwnedItem = false;
@@ -41,4 +40,14 @@ protected:
 
 	UFUNCTION()
 	void OnItemClicked();
+
+	UPROPERTY(meta = (BindWidget))
+	class UBorder* SelectionBorder;
+
+	UPROPERTY(meta = (BindWidget))
+	class UImage* Img_CheckMark;
+
+public:
+	void SetHighlight(bool bIsSelected);
+	void SetOwnedStatus(bool bOwned);
 };

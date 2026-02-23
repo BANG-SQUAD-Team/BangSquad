@@ -200,58 +200,69 @@ void UShopMainWidget::InitShopList()
     }
 }
 
-// ★ [수정] ID(ItemID)와 데이터(SelectedItem)를 모두 받습니다.
 void UShopMainWidget::OnSlotClicked(FName ItemID, const FShopItemData& SelectedItem)
 {
-    // ★ 1. [기능 추가] 선택 취소 (Toggle) 로직
-    // 머리를 눌렀는데, 이미 그 머리가 선택되어 있었다면? -> 취소!
+    ABSPlayerState* PS = GetOwningPlayerState<ABSPlayerState>();
+    bool bTargetOwned = PS ? PS->HasItem(ItemID) : false; // 클릭한 아이템 보유 여부
+
+    bool bIsCurrentlySelected = false; // 방금 클릭한 것이 '선택 활성화' 되었는지 체크
+
     if (SelectedItem.ItemType == EItemType::HeadGear)
     {
         if (bIsHeadSelected && SelectedHeadID == ItemID)
         {
-            // 선택 해제
             bIsHeadSelected = false;
             SelectedHeadID = NAME_None;
-
-            // 마네킹 머리 벗기기 (빈 데이터나 nullptr로 처리)
-            // UpdateMannequinPreview(FShopItemData()); // 빈 데이터로 초기화 필요
-            UE_LOG(LogTemp, Log, TEXT("머리 장식 선택 취소"));
-
-            UpdatePurchaseButtonState(); // 버튼 갱신
-            return; // 종료
+            // UpdateMannequinPreview(FShopItemData()); // 빈 데이터로 벗기기 필요
         }
-
-        // 새로운 선택
-        bIsHeadSelected = true;
-        SelectedHeadID = ItemID;
-        SelectedHeadData = SelectedItem;
-        UpdateMannequinPreview(SelectedItem);
+        else
+        {
+            bIsHeadSelected = true;
+            SelectedHeadID = ItemID;
+            SelectedHeadData = SelectedItem;
+            UpdateMannequinPreview(SelectedItem);
+            bIsCurrentlySelected = true;
+        }
+        RefreshBoxHighlights(Grid_ItemBox, SelectedHeadID);
     }
     else if (SelectedItem.ItemType == EItemType::Skin)
     {
         if (bIsSkinSelected && SelectedSkinID == ItemID)
         {
-            // 선택 해제
             bIsSkinSelected = false;
             SelectedSkinID = NAME_None;
-
-            // 마네킹 스킨 벗기기 (기본 스킨으로 복구 필요)
             // UpdateSkinPreview(FShopItemData()); 
-            UE_LOG(LogTemp, Log, TEXT("스킨 선택 취소"));
-
-            UpdatePurchaseButtonState();
-            return;
         }
-
-        // 새로운 선택
-        bIsSkinSelected = true;
-        SelectedSkinID = ItemID;
-        SelectedSkinData = SelectedItem;
-        UpdateSkinPreview(SelectedItem);
+        else
+        {
+            bIsSkinSelected = true;
+            SelectedSkinID = ItemID;
+            SelectedSkinData = SelectedItem;
+            UpdateSkinPreview(SelectedItem);
+            bIsCurrentlySelected = true;
+        }
+        RefreshBoxHighlights(Grid_SkinBox, SelectedSkinID);
     }
 
-    // ★ 2. 버튼 상태 갱신 (구매 모드인지 장착 모드인지 계산)
-    UpdatePurchaseButtonState();
+    if (bIsCurrentlySelected && bTargetOwned)
+    {
+        CurrentShopState = EShopState::Selling;
+        CurrentSelectedRowName = ItemID;
+        SelectedSellData = SelectedItem;
+
+        Btn_Sell->SetIsEnabled(true);
+        Btn_Purchase->SetIsEnabled(false);
+
+        // UpdateTotalPrice()를 호출하여 UI 갱신 (기존 함수 활용)
+        UpdateTotalPrice();
+    }
+    else
+    {
+        // 아무것도 선택 안 했거나, 안 가진 걸 선택했다면 구매 모드
+        CurrentShopState = EShopState::Buying;
+        Btn_Sell->SetIsEnabled(false);
+        UpdatePurchaseButtonState();
+    }
 }
 
 void UShopMainWidget::UpdateMannequinPreview(const FShopItemData& SelectedItem)
@@ -411,4 +422,41 @@ int32 UShopMainWidget::GetPriceByRarity(EItemRarity Rarity)
 int32 UShopMainWidget::GetSellPrice(int32 OriginalPrice)
 {
     return (int32)(OriginalPrice * 0.8f);
+}
+
+void UShopMainWidget::RefreshBoxHighlights(UWrapBox* TargetBox, FName SelectedID)
+{
+    if (!TargetBox) return;
+
+    for (UWidget* Child : TargetBox->GetAllChildren())
+    {
+        if (UShopSlotWidget* ShopSlot = Cast<UShopSlotWidget>(Child))
+        {
+            ShopSlot->SetHighlight(ShopSlot->SlotItemID == SelectedID && SelectedID != NAME_None);
+        }
+    }
+}
+
+void UShopMainWidget::HandleSellResult(bool bSuccess)
+{
+    if (bSuccess)
+    {
+        UE_LOG(LogTemp, Log, TEXT("판매 성공! UI 리스트를 갱신합니다."));
+
+        // 1. 선택 상태 초기화
+        bIsHeadSelected = false;
+        bIsSkinSelected = false;
+        SelectedHeadID = NAME_None;
+        SelectedSkinID = NAME_None;
+        CurrentShopState = EShopState::Buying;
+
+        // 2. 버튼 상태 리셋
+        if (Btn_Sell) Btn_Sell->SetIsEnabled(false);
+
+        // 3. 상점 리스트 재생성 (★ 이 과정에서 팔린 아이템의 체크 표시가 자연스럽게 사라집니다!)
+        InitShopList();
+
+        // 4. 가격 텍스트 초기화
+        UpdatePurchaseButtonState();
+    }
 }

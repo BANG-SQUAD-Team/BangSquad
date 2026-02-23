@@ -111,6 +111,11 @@ public:
 	int32 GetPriceByRarity(EItemRarity Rarity);
 	int32 GetSellPrice(int32 OriginalPrice);
 
+	void RefreshBoxHighlights(class UWrapBox* TargetBox, FName SelectedID);
+
+	UFUNCTION()
+	void HandleSellResult(bool bSuccess);
+
 private:
 	FShopItemData SelectedSellData;
 };
