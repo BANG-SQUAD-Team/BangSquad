@@ -114,4 +114,16 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Stage2_Spider")
     TObjectPtr<UAnimMontage> WipePatternMontage;
 
+    // =============================================================
+    // [5] Stage 3 미드보스 (기본 평타 + 원거리 공격)
+    // =============================================================
+
+    // 원거리 공격용 투사체 클래스
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Stage3_MidBoss")
+    TSubclassOf<AActor> Stage3RangedProjectileClass;
+
+    // 원거리 공격 발동 몽타주
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Stage3_MidBoss")
+    TObjectPtr<UAnimMontage> Stage3RangedAttackMontage;
+
 };
