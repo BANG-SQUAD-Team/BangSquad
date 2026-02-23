@@ -6,13 +6,13 @@
 #include "Kismet/GameplayStatics.h"
 #include "Components/CapsuleComponent.h"
 #include "Project_Bang_Squad/Character/Base/BaseCharacter.h"
-
+#include "Project_Bang_Squad/Character/Monsterbase/Stage3AIController.h"
 
 
 AStage3MidBoss::AStage3MidBoss()
 {
 	PrimaryActorTick.bCanEverTick = true;
-	// AIControllerClass = AStage3MidBossAIController::StaticClass(); // AI 컨트롤러 생성 후 주석 해제
+	AIControllerClass = AStage3AIController::StaticClass();
 }
 
 void AStage3MidBoss::BeginPlay()
