@@ -121,12 +121,15 @@ public:
     void Multicast_SetBossVisibility(bool bIsVisible);
 
 
-
+    // [신규 추가] 클라이언트 동기화용 섹션 점프 함수
+    UFUNCTION(NetMulticast, Reliable)
+    void Multicast_JumpMontageSection(FName SectionName);
 
 
 
 
 protected:
+    UFUNCTION()
     void CheckMinionsStatus();
 
 protected:
@@ -137,8 +140,13 @@ protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
     TObjectPtr<UHealthComponent> HealthComponent;
 
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Phase")
-    TObjectPtr<AEnemySpawner> MinionSpawner;
+    // 70% 페이즈용 스포너
+    UPROPERTY(EditInstanceOnly, BlueprintReadWrite, Category = "Boss|Pattern")
+    TObjectPtr<class AEnemySpawner> Phase70Spawner;
+
+    // 30% 페이즈용 스포너
+    UPROPERTY(EditInstanceOnly, BlueprintReadWrite, Category = "Boss|Pattern")
+    TObjectPtr<class AEnemySpawner> Phase30Spawner;
 
     // --- [Settings] ---
     UPROPERTY(EditAnywhere, Category = "Boss|Combat")
@@ -191,6 +199,11 @@ protected:
     UPROPERTY(EditAnywhere, Category = "Boss|Combat")
     float FollowUpTraceRadius = 300.0f;
 
+
+
+    // 70%, 30% 쫄몹 소환 페이즈 때 재생할 '섹션이 나뉜' 몽타주
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Pattern")
+    TObjectPtr<UAnimMontage> SummonPhaseMontage;
 
 
 };

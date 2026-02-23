@@ -12,7 +12,7 @@
 #include "Project_Bang_Squad/Character/Base/BaseCharacter.h"
 #include "Kismet/KismetSystemLibrary.h" // SphereTrace용
 #include "Project_Bang_Squad/Character/StageBoss/BossSplitPattern.h"
-
+#include "Components/CapsuleComponent.h"
 
 
 
@@ -47,7 +47,7 @@ void AStage2Boss::BeginPlay()
             SmashMontage = BossData->QTEAttackMontage;
     }
     // [테스트용 임시 코드] 70% 페이즈를 이미 본 것처럼 처리해서 스킵!
-    bPhase70Triggered = true;
+    //bPhase70Triggered = true;
 }
 
 void AStage2Boss::Tick(float DeltaTime)
@@ -69,66 +69,62 @@ float AStage2Boss::TakeDamage(float DamageAmount, FDamageEvent const& DamageEven
 
 void AStage2Boss::CheckHealthPhase()
 {
-    if (!HealthComponent) return;
+	if (!HealthComponent) return;
 
-    
-    float MaxHP = HealthComponent->GetMaxHealth();
-    float CurHP = HealthComponent->GetHealth();
-    float HPRatio = (MaxHP > 0.0f) ? (CurHP / MaxHP) : 0.0f;
+	float MaxHP = HealthComponent->GetMaxHealth();
+	float CurHP = HealthComponent->GetHealth();
+	float HPRatio = (MaxHP > 0.0f) ? (CurHP / MaxHP) : 0.0f;
 
-    // 70%
-    if (!bPhase70Triggered && HPRatio <= 0.7f)
-    {
-        bPhase70Triggered = true;
-        bIsInvincible = true;
+	// ==========================================================
+	// 1. [70% / 30% 구간] 쫄몹 소환 기믹 (스포너 2개 분리 버전)
+	// ==========================================================
+	if ((!bPhase70Triggered && HPRatio <= 0.7f && HPRatio > 0.5f) ||
+		(!bPhase30Triggered && HPRatio <= 0.3f))
+	{
+		AEnemySpawner* ActiveSpawner = nullptr;
 
-        if (auto* AI = Cast<AStage2SpiderAIController>(GetController()))
-            AI->StartPhasePattern();
+		if (HPRatio <= 0.3f) 
+		{
+			bPhase30Triggered = true;
+			ActiveSpawner = Phase30Spawner; // 30% 스포너 선택
+		}
+		else 
+		{
+			bPhase70Triggered = true;
+			ActiveSpawner = Phase70Spawner; // 70% 스포너 선택
+		}
 
-        // StartSpawning -> SetSpawnerActive
-        if (MinionSpawner)
-            MinionSpawner->SetSpawnerActive(true);
+		bIsInvincible = true;
 
-        FTimerHandle CheckHandle;
-        GetWorld()->GetTimerManager().SetTimer(CheckHandle, this, &AStage2Boss::CheckMinionsStatus, 1.0f, true);
+		if (auto* AI = Cast<AStage2SpiderAIController>(GetController()))
+			AI->StartPhasePattern();
 
-        UE_LOG(LogTemp, Warning, TEXT("Boss Phase 1 (70 Percent) Started!"));
-    }
-    // ==========================================================
-    // 2. [50% 구간] 인원 분배 패턴 기믹 (신규)
-    // ==========================================================
-    else if (!bPhase50Triggered && HPRatio <= 0.5f && HPRatio > 0.3f)
-    {
-        bPhase50Triggered = true;
-        bIsInvincible = true;
+		if (SummonPhaseMontage)
+			Multicast_PlayBossMontage(SummonPhaseMontage);
 
-        // AI 정지 (PhaseWait 대기 상태로 전환)
-        if (auto* AI = Cast<AStage2SpiderAIController>(GetController()))
-            AI->StartPhasePattern();
+		if (ActiveSpawner)
+		{
+			ActiveSpawner->OnSpawnerCleared.AddUniqueDynamic(this, &AStage2Boss::CheckMinionsStatus);
+			ActiveSpawner->SetSpawnerActive(true);
+		}
+	}
+	// ==========================================================
+	// 2. [50% 구간] 인원 분배 패턴 기믹
+	// ==========================================================
+	else if (!bPhase50Triggered && HPRatio <= 0.5f && HPRatio > 0.3f)
+	{
+		bPhase50Triggered = true;
+		bIsInvincible = true;
 
-        // 몽타주 재생을 통해 기믹 시작을 알림 (클라이언트 동기화)
-        Multicast_PlayPhase50Montage();
+		// AI 정지 (PhaseWait 대기 상태로 전환)
+		if (auto* AI = Cast<AStage2SpiderAIController>(GetController()))
+			AI->StartPhasePattern();
 
-        UE_LOG(LogTemp, Warning, TEXT("Boss Phase 2 (50 Percent) Started - Split Pattern Mechanic!"));
-    }
+		// 몽타주 재생을 통해 기믹 시작을 알림 (클라이언트 동기화)
+		Multicast_PlayPhase50Montage();
 
-    // 30%
-    else if (!bPhase30Triggered && HPRatio <= 0.3f)
-    {
-        bPhase30Triggered = true;
-        bIsInvincible = true;
-
-        if (auto* AI = Cast<AStage2SpiderAIController>(GetController()))
-            AI->StartPhasePattern();
-
-        if (MinionSpawner)
-            MinionSpawner->SetSpawnerActive(true);
-
-        FTimerHandle CheckHandle;
-        GetWorld()->GetTimerManager().SetTimer(CheckHandle, this, &AStage2Boss::CheckMinionsStatus, 1.0f, true);
-
-        UE_LOG(LogTemp, Warning, TEXT("Boss Phase 2 (30 Percent) Started!"));
-    }
+		UE_LOG(LogTemp, Warning, TEXT("Boss Phase 2 (50 Percent) Started - Split Pattern Mechanic!"));
+	}
 }
 
 // -------------------------------------------------------------
@@ -219,27 +215,33 @@ void AStage2Boss::HandleSplitPatternResult(bool bIsSuccess)
 
 
 
+// 웨이브가 끝났을 때
 void AStage2Boss::CheckMinionsStatus()
 {
-    // [�ʿ�] EnemySpawner�� GetCurrentEnemyCount() �Լ��� �ʿ��մϴ�.
-    if (MinionSpawner && MinionSpawner->GetCurrentEnemyCount() <= 0)
+    bIsInvincible = false;
+
+    if (GetMesh() && GetMesh()->GetAnimInstance() && SummonPhaseMontage)
     {
-        bIsInvincible = false;
-
-        if (auto* AI = Cast<AStage2SpiderAIController>(GetController()))
-        {
-            AI->EndPhasePattern();
-        }
-
-        GetWorld()->GetTimerManager().ClearAllTimersForObject(this);
-
-        UE_LOG(LogTemp, Warning, TEXT("Phase Ended! Boss Vulnerable."));
+        Multicast_JumpMontageSection(FName("End"));
     }
-}
 
-// Source/Project_Bang_Squad/Character/StageBoss/Stage2Boss.cpp
-#include "Components/CapsuleComponent.h"
-// ...
+    if (auto* AI = Cast<AStage2SpiderAIController>(GetController()))
+    {
+        AI->EndPhasePattern();
+    }
+
+    // 어느 스포너가 켜졌었는지 확인할 필요 없이, 둘 다 방송 구독을 안전하게 해제합니다.
+    if (Phase70Spawner)
+    {
+        Phase70Spawner->OnSpawnerCleared.RemoveDynamic(this, &AStage2Boss::CheckMinionsStatus);
+    }
+    if (Phase30Spawner)
+    {
+        Phase30Spawner->OnSpawnerCleared.RemoveDynamic(this, &AStage2Boss::CheckMinionsStatus);
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("웨이브 클리어! 무적 해제 및 루프 종료!"));
+}
 
 // 1. 패턴 시작: 조준하고 몽타주만 틉니다. (발사는 안 함)
 void AStage2Boss::PerformWebShot(AActor* Target)
@@ -524,5 +526,14 @@ void AStage2Boss::PerformMeleeHitCheck()
                 UGameplayStatics::ApplyDamage(HitPlayer, DamageToApply, GetController(), this, UDamageType::StaticClass());
             }
         }
+    }
+}
+
+// [신규 멀티캐스트] 클라이언트 동기화용 섹션 점프 함수
+void AStage2Boss::Multicast_JumpMontageSection_Implementation(FName SectionName)
+{
+    if (GetMesh() && GetMesh()->GetAnimInstance() && SummonPhaseMontage)
+    {
+        GetMesh()->GetAnimInstance()->Montage_JumpToSection(SectionName, SummonPhaseMontage);
     }
 }

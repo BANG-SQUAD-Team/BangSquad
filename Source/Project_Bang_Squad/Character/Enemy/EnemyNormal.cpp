@@ -435,6 +435,7 @@ void AEnemyNormal::OnDeathStarted()
 	StopChase();
 	bIsAttacking = false;
 	DisableWeaponCollision();
+	SetLifeSpan(3.0f);
 }
 // 부모(HealthComponent)가 체력 변화를 감지했을 때 호출됨 (서버에서 실행됨)
 void AEnemyNormal::OnHPChanged(float CurrentHP, float MaxHP)
