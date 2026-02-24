@@ -62,7 +62,7 @@ float AJobCrystal::TakeDamage(float DamageAmount, FDamageEvent const& DamageEven
     if (!bIsCorrectJob)
     {
         // [TODO: ���� ���������� �Ʒ� �ּ�(return 0.0f)�� �����Ͽ� Ÿ ���� ������ ��ȿȭ �ʼ�!]
-         return 0.0f; 
+         // return 0.0f; 
 
         // [TEST MODE] ������ �׽�Ʈ ���̴� ��� ���� ������ ��
        // UE_LOG(LogTemp, Warning, TEXT("[TEST] Job Mismatch! But damage allowed. (Required: %d)"), (int32)RequiredJobType);

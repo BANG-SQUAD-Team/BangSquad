@@ -64,18 +64,21 @@ void AStage1Boss::BeginPlay()
 		}
 	}
 	
-	if (UHealthComponent* HC = FindComponentByClass<UHealthComponent>())
+	FTimerHandle LocalUITimer;
+	TWeakObjectPtr<AStage1Boss> WeakThis = this; 
+
+	GetWorldTimerManager().SetTimer(LocalUITimer, [WeakThis]()
 	{
-		// 서버와 클라이언트가 각자의 컴퓨터에 보스가 로딩되면 즉시 UI를 띄움
-		if (HasAuthority())
+		if (WeakThis.IsValid())
 		{
-			FTimerHandle UI_Timer;
-			GetWorldTimerManager().SetTimer(UI_Timer, [this, MaxHealth = HC->MaxHealth]()
-			{
-				Multicast_ShowBossHP(MaxHealth);
-			}, 1.0f, false);
+			float InitialMaxHP = 100.0f;
+			if (WeakThis->BossData) InitialMaxHP = WeakThis->BossData->MaxHealth;
+			else if (UHealthComponent* HC = WeakThis->FindComponentByClass<UHealthComponent>()) InitialMaxHP = HC->MaxHealth;
+
+			// 직접 내 화면에 UI 생성 (서버/클라 공통 실행)
+			WeakThis->Multicast_ShowBossHP_Implementation(InitialMaxHP);
 		}
-	}
+	}, 1.0f, false);
 }
 
 // 보스 패턴 발동시 나오는 자막 코드

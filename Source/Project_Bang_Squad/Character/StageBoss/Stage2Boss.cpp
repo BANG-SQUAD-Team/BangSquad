@@ -58,19 +58,22 @@ void AStage2Boss::BeginPlay()
             HealthComponent->OnHealthChanged.AddDynamic(this, &AStage2Boss::OnHealthChanged);
         }
     }
+    
+    FTimerHandle LocalUITimer;
+    TWeakObjectPtr<AStage2Boss> WeakThis = this; 
 
-    if (HealthComponent)
+    GetWorldTimerManager().SetTimer(LocalUITimer, [WeakThis]()
     {
-        // 서버와 클라이언트 모두 각자의 화면에 체력바를 띄움
-        if (HasAuthority())
+        if (WeakThis.IsValid())
         {
-            FTimerHandle UI_Timer;
-            GetWorldTimerManager().SetTimer(UI_Timer, [this, MaxHealth = HealthComponent->MaxHealth]()
-            {
-                Multicast_ShowBossHP(MaxHealth);
-            }, 1.0f, false);
+            float InitialMaxHP = 100.0f;
+            if (WeakThis->BossData) InitialMaxHP = WeakThis->BossData->MaxHealth;
+            else if (WeakThis->HealthComponent) InitialMaxHP = WeakThis->HealthComponent->MaxHealth;
+
+            // 직접 내 화면에 UI 생성
+            WeakThis->Multicast_ShowBossHP_Implementation(InitialMaxHP);
         }
-    }
+    }, 1.0f, false);
 }
 
 void AStage2Boss::Tick(float DeltaTime)
