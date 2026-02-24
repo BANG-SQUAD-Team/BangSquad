@@ -151,9 +151,48 @@ void UBSGameInstance::RefreshServerList()
 void UBSGameInstance::OpenMainMenuLevel()
 {
 	APlayerController* PC = GetFirstLocalPlayerController();
-	FString Path = MapDataAsset->GetMapPath(EStageIndex::Lobby, EStageSection::Menu);
-	if (!PC) return;
-	PC->ClientTravel(Path, ETravelType::TRAVEL_Absolute);
+	
+	const FMapInfo* MapInfo = MapDataAsset->GetMapInfo(EStageIndex::Lobby, EStageSection::Menu);
+	
+	if (!PC || !MapInfo) return;
+	FString Path = MapInfo->Level.GetLongPackageName();
+	
+	// 로비 전용 로딩 이미지
+	ShowLoadingScreen(MapInfo->LoadingImage);
+	
+	FTimerHandle TravelTimer;
+	GetWorld()->GetTimerManager().SetTimer(
+		TravelTimer,
+		[PC, Path]()
+		{
+			PC->ClientTravel(Path, ETravelType::TRAVEL_Absolute);
+		},
+		2.0f,
+		false
+		);
+}
+
+void UBSGameInstance::ShowLoadingScreen(UTexture2D* LoadingImage)
+{
+	// 위젯이 세팅 되어있고, 넘겨받은 이미지가 있을 때만 실행
+	if (LoadingWidgetClass && LoadingImage && GetWorld())
+	{
+		if (UUserWidget* LoadingUI = CreateWidget<UUserWidget>(this, LoadingWidgetClass))
+			// 위젯 블루프린트의 이벤트를 호출하여 이미지 전달
+		{
+			UFunction* Func =LoadingUI->FindFunction(FName("SetLoadingImage"));
+			if (Func)
+			{
+				struct { UTexture2D* img; } Params;
+				Params.img = LoadingImage;
+				LoadingUI->ProcessEvent(Func, &Params);
+			}
+			
+			// 화면 꽉 차게 제일 위에 띄움
+			LoadingUI->AddToViewport(9999);
+		}
+			
+	}
 }
 
 void UBSGameInstance::OnCreateSessionComplete(FName InSessionName, bool IsSuccess)
@@ -371,12 +410,28 @@ void UBSGameInstance::MoveToStage(EStageIndex InStage, EStageSection InSection)
 		SetCurrentStage(InStage);
 		ClearMonsterData();
 	}
-
-	FString Path = MapDataAsset->GetMapPath(InStage, InSection);
-
-	if (!Path.IsEmpty())
+	
+	// 맵 데이터 정보 가져오기
+	const FMapInfo* MapInfo = MapDataAsset->GetMapInfo(InStage, InSection);
+	
+	if (MapInfo && !MapInfo->Level.IsNull() && GetWorld())
 	{
-		GetWorld()->ServerTravel(Path + "?listen");
+		FString Path = MapInfo->Level.GetLongPackageName();
+		
+		// 1. 해당 맵에 세팅된 로딩 이미지를 띄움
+		ShowLoadingScreen(MapInfo->LoadingImage);
+		
+		// 2. 3초 뒤에 레벨 이동
+		FTimerHandle TravelTimer;
+		GetWorld()->GetTimerManager().SetTimer(
+			TravelTimer,
+			[this, Path]()
+			{
+				GetWorld()->ServerTravel(Path + "?listen");
+			},
+			2.0f,
+			false
+			);
 	}
 }
 

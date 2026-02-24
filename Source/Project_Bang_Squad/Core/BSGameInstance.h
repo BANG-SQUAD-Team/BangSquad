@@ -222,6 +222,16 @@ public:
 		UE_LOG(LogTemp, Warning, TEXT("📂 [GameInstance] No data for %s (Start 0 G)"), *PlayerKey);
 		return 0;
 	}
+	
+	// =========================================================================
+	//  로딩 UI 시스템
+	// =========================================================================
+	UPROPERTY(EditAnywhere, Category = "UI|Loading")
+	TSubclassOf<class UUserWidget> LoadingWidgetClass;
+	
+	// 스테이지 번호가 아닌, 맵 데이터에 있는 이미지 자체를 받는다.
+	UFUNCTION(BlueprintCallable, Category = "UI|Loading")
+	void ShowLoadingScreen(UTexture2D* LoadingImage);
 
 #pragma region Save Actor
 
