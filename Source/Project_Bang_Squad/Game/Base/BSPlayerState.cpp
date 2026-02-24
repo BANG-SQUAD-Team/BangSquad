@@ -4,7 +4,6 @@
 #include "Net/UnrealNetwork.h"
 #include "Project_Bang_Squad/Character/Base/BaseCharacter.h"
 
-// --- [기존] 직업 및 리스폰 로직 ---
 void ABSPlayerState::BeginPlay()
 {
 	Super::BeginPlay();
@@ -47,6 +46,9 @@ void ABSPlayerState::CopyProperties(APlayerState* PlayerState)
 		NewPS->RespawnEndTime = RespawnEndTime;
 		NewPS->CoinAmount = CoinAmount;
 		NewPS->OwnedItemIds = OwnedItemIds; // 아이템 목록도 복사
+
+		NewPS->CurrentEquippedHeadID = CurrentEquippedHeadID;
+		NewPS->CurrentEquippedSkinID = CurrentEquippedSkinID;
 	}
 }
 

@@ -343,33 +343,47 @@ void AStrikerCharacter::Server_ApplyAttackForwardForce_Implementation()
 // 스킬 1
 void AStrikerCharacter::Skill1()
 {
-	if (!CanAttack()) return;
-	float CurrentTime = GetWorld()->GetTimeSeconds();
-	if (CurrentTime < Skill1ReadyTime) return;
-	AActor* Target = FindBestAirborneTarget();
-	if (Target)
-	{
-		float ActualCooldown = 0.0f;
-		if (SkillDataTable)
-		{
-			static const FString ContextString(TEXT("StrikerSkill1Cooldown"));
-			FSkillData* Data = SkillDataTable->FindRow<FSkillData>(TEXT("Skill1"), ContextString);
-          
-			// Data가 있으면 해금 여부 확인
-			if (Data)
-			{
-				// 해금되지 않았다면 즉시 리턴 (쿨타임도 안 돌고 서버 요청도 안 함)
-				if (!IsSkillUnlocked(Data->RequiredStage)) return;
+    if (!CanAttack()) return;
+    float CurrentTime = GetWorld()->GetTimeSeconds();
+    if (CurrentTime < Skill1ReadyTime) return;
 
-				if (Data->Cooldown > 0.0f) ActualCooldown = Data->Cooldown;
-			}
-		}
-		Skill1ReadyTime = CurrentTime + ActualCooldown;
-		
-		TriggerSkillCooldown(1, ActualCooldown);
-		Server_TrySkill1(Target);
-	}
+    TArray<ACharacter*> FoundTargets;
+
+    // 1. 공중 타겟 우선 탐색
+    AActor* AirborneTarget = FindBestAirborneTarget();
+    if (AirborneTarget)
+    {
+        FoundTargets.Add(Cast<ACharacter>(AirborneTarget));
+    }
+    else
+    {
+        // 2. 공중 타겟이 없으면 지상 타겟들 탐색
+        FindForwardGroundTargets(FoundTargets);
+    }
+
+    // 타겟이 하나라도 있으면 스킬 발동
+    if (FoundTargets.Num() > 0)
+    {
+        float ActualCooldown = 0.0f;
+        if (SkillDataTable)
+        {
+            static const FString ContextString(TEXT("StrikerSkill1Cooldown"));
+            FSkillData* Data = SkillDataTable->FindRow<FSkillData>(TEXT("Skill1"), ContextString);
+
+            if (Data)
+            {
+                if (!IsSkillUnlocked(Data->RequiredStage)) return;
+                if (Data->Cooldown > 0.0f) ActualCooldown = Data->Cooldown;
+            }
+        }
+        Skill1ReadyTime = CurrentTime + ActualCooldown;
+        TriggerSkillCooldown(1, ActualCooldown);
+
+        // 다중 타겟을 서버로 전송
+        Server_StartChainStrike(FoundTargets);
+    }
 }
+
 void AStrikerCharacter::Server_TrySkill1_Implementation(AActor* TargetActor)
 {
 	ACharacter* TargetChar = Cast<ACharacter>(TargetActor);
@@ -487,9 +501,106 @@ void AStrikerCharacter::SpawnRandomSlashFX()
     }
 }
 
+void AStrikerCharacter::FindForwardGroundTargets(TArray<ACharacter*>& OutTargets)
+{
+    FVector MyLoc = GetActorLocation();
+    FVector CamFwd = GetControlRotation().Vector();
+    CamFwd.Z = 0.f;
+    CamFwd.Normalize();
+
+    TArray<AActor*> OverlappingActors;
+    TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;
+    ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_Pawn));
+
+    // 반경 1200 내의 액터 탐색 (원하는 범위로 조절)
+    UKismetSystemLibrary::SphereOverlapActors(GetWorld(), MyLoc, 1200.f, ObjectTypes, ACharacter::StaticClass(), { this }, OverlappingActors);
+
+    for (AActor* Actor : OverlappingActors)
+    {
+        ACharacter* CharActor = Cast<ACharacter>(Actor);
+        if (!CharActor) continue;
+
+        bool bIsNormal = Actor->IsA(AEnemyNormal::StaticClass());
+        bool bIsMidBoss = Actor->IsA(AEnemyMidBoss::StaticClass());
+
+        if (!bIsNormal && !bIsMidBoss) continue;
+
+        // 공중에 있지 않은(지상) 적만 판별
+        if (!CharActor->GetCharacterMovement()->IsFalling())
+        {
+            FVector DirToEnemy = (CharActor->GetActorLocation() - MyLoc);
+            DirToEnemy.Z = 0.f;
+            DirToEnemy.Normalize();
+
+            // 전방 시야각 판별 (0.5면 대략 전방 120도 이내)
+            float DotResult = FVector::DotProduct(CamFwd, DirToEnemy);
+            if (DotResult > 0.5f)
+            {
+                OutTargets.Add(CharActor);
+            }
+        }
+    }
+}
+
+void AStrikerCharacter::Server_StartChainStrike_Implementation(const TArray<ACharacter*>& Targets)
+{
+    // 타겟 목록과 인덱스 초기화
+    ChainTargets = Targets;
+    CurrentChainIndex = 0;
+
+    // 첫 번째 타격 즉시 실행
+    ExecuteChainStrikeStep();
+}
+
+void AStrikerCharacter::ExecuteChainStrikeStep()
+{
+    // 더 이상 공격할 타겟이 없거나 유효하지 않으면 스킬 종료
+    if (CurrentChainIndex >= ChainTargets.Num() || !IsValid(ChainTargets[CurrentChainIndex]))
+    {
+        EndSkill1();
+        return;
+    }
+
+    ACharacter* TargetChar = ChainTargets[CurrentChainIndex];
+    CurrentComboTarget = TargetChar;
+
+    float SkillDamage = 0.f;
+    if (SkillDataTable)
+    {
+        static const FString ContextString(TEXT("Striker Skill1 Context"));
+        FSkillData* Data = SkillDataTable->FindRow<FSkillData>(TEXT("Skill1"), ContextString);
+        if (Data)
+        {
+            SkillDamage = Data->GetRandomizedDamage();
+            Multicast_PlaySkill1FX(TargetChar); // 모습 숨기고 유령 베기 연출
+        }
+    }
+
+    // 적의 위치로 순간이동 (적의 뒤편이나 살짝 앞쪽)
+    FVector TeleportLoc = TargetChar->GetActorLocation() - (TargetChar->GetActorForwardVector() * 100.f) + FVector(0, 0, 50.f);
+    SetActorLocation(TeleportLoc);
+
+    // 적을 바라보도록 회전
+    FVector LookDir = TargetChar->GetActorLocation() - TeleportLoc;
+    LookDir.Z = 0.f;
+    SetActorRotation(LookDir.Rotation());
+
+    // 중력 무시 (공중에 떠있는 느낌 유지)
+    GetCharacterMovement()->GravityScale = 0.f;
+    GetCharacterMovement()->Velocity = FVector::ZeroVector;
+
+    // 데미지 적용
+    UGameplayStatics::ApplyDamage(TargetChar, SkillDamage, GetController(), this, UDamageType::StaticClass());
+
+    // 다음 타겟을 위해 인덱스 증가
+    CurrentChainIndex++;
+
+    // 0.2초 뒤에 다음 스텝(다음 적에게 이동) 실행 (속도를 조절해 '슈슈슉' 느낌을 맞추세요)
+    GetWorldTimerManager().SetTimer(ChainStrikeTimerHandle, this, &AStrikerCharacter::ExecuteChainStrikeStep, 0.2f, false);
+}
+
 void AStrikerCharacter::EndSkill1()
 {
-    // 1. [서버 전용 로직] 중력, 타겟 해제 같은 건 서버가 해야 함
     GetCharacterMovement()->GravityScale = 1.0f;
 
     if (CurrentComboTarget)
@@ -498,7 +609,10 @@ void AStrikerCharacter::EndSkill1()
         CurrentComboTarget = nullptr;
     }
 
-    // 2. [추가] 이제 서버가 외칩니다. "야! 다들 다시 나타나!"
+    // 체인 배열 및 타이머 초기화
+    ChainTargets.Empty();
+    GetWorldTimerManager().ClearTimer(ChainStrikeTimerHandle);
+
     Multicast_EndSkill1();
 }
 

@@ -119,4 +119,6 @@ public:
 
 private:
 	FShopItemData SelectedSellData;
+
+	FName PendingSkinPurchaseID = NAME_None;
 };

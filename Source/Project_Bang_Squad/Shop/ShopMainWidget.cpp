@@ -335,59 +335,48 @@ void UShopMainWidget::OnClick_PurchaseButton()
 
     if (!bIsHeadSelected && !bIsSkinSelected) return;
 
-    // 1. 실제로 지불해야 할 금액 계산 (검증)
     int32 RequiredGold = 0;
-    if (bIsHeadSelected && !PS->HasItem(SelectedHeadID))
-        RequiredGold += GetPriceByRarity(SelectedHeadData.Rarity);
+    bool bNeedHeadBuy = bIsHeadSelected && !PS->HasItem(SelectedHeadID);
+    bool bNeedSkinBuy = bIsSkinSelected && !PS->HasItem(SelectedSkinID);
 
-    if (bIsSkinSelected && !PS->HasItem(SelectedSkinID))
-        RequiredGold += GetPriceByRarity(SelectedSkinData.Rarity);
+    // 1. 필요한 골드 계산
+    if (bNeedHeadBuy) RequiredGold += GetPriceByRarity(SelectedHeadData.Rarity);
+    if (bNeedSkinBuy) RequiredGold += GetPriceByRarity(SelectedSkinData.Rarity);
 
     // 2. 돈 확인
     if (PS->GetCoin() < RequiredGold)
     {
         Txt_Price->SetText(FText::FromString(TEXT("Not Enough Gold!")));
         Txt_Price->SetColorAndOpacity(FLinearColor::Red);
-        return; // 돈 없으면 중단
+        return;
     }
 
-    // =========================================================
-    // ★ [핵심] 머리 처리 (구매 & 장착)
-    // =========================================================
-    if (bIsHeadSelected)
+    // 3. 이미 보유한 아이템은 바로 장착 처리
+    if (bIsHeadSelected && !bNeedHeadBuy) PS->Server_EquipItem(SelectedHeadID, EItemType::HeadGear);
+    if (bIsSkinSelected && !bNeedSkinBuy) PS->Server_EquipItem(SelectedSkinID, EItemType::Skin);
+
+    // 4. 구매 처리 (★ 핵심: 연달아 요청하지 않고 대기열 사용)
+    PendingSkinPurchaseID = NAME_None; // 대기열 초기화
+
+    if (bNeedHeadBuy && bNeedSkinBuy)
     {
-        // 안 가졌으면 -> 구매 요청 (구매 후 자동 장착은 PlayerState에서 처리하거나 여기서 연달아 호출)
-        if (!PS->HasItem(SelectedHeadID))
-        {
-            PS->Server_TryPurchase(SelectedHeadID, GetPriceByRarity(SelectedHeadData.Rarity), EItemType::HeadGear);
-        }
-        else
-        {
-            // 이미 가졌으면 -> 바로 장착 요청
-            PS->Server_EquipItem(SelectedHeadID, EItemType::HeadGear);
-        }
+        // 둘 다 사야 하면 머리부터 요청하고, 스킨 ID는 대기열에 저장
+        PendingSkinPurchaseID = SelectedSkinID;
+        PS->Server_TryPurchase(SelectedHeadID, GetPriceByRarity(SelectedHeadData.Rarity), EItemType::HeadGear);
     }
-
-    // =========================================================
-    // ★ [핵심] 스킨 처리 (구매 & 장착) - if문이 분리되어 있어 둘 다 실행됨!
-    // =========================================================
-    if (bIsSkinSelected)
+    else if (bNeedHeadBuy)
     {
-        if (!PS->HasItem(SelectedSkinID))
-        {
-            // 주의: 머리를 샀다고 가정하고 돈이 깎인 상태여야 하지만, 
-            // Server_TryPurchase는 서버에서 순차 처리되므로 안전합니다.
-            PS->Server_TryPurchase(SelectedSkinID, GetPriceByRarity(SelectedSkinData.Rarity), EItemType::Skin);
-        }
-        else
-        {
-            PS->Server_EquipItem(SelectedSkinID, EItemType::Skin);
-        }
+        PS->Server_TryPurchase(SelectedHeadID, GetPriceByRarity(SelectedHeadData.Rarity), EItemType::HeadGear);
     }
-
-    // 3. UI 갱신 (버튼 텍스트를 "Equip Now"로 바꾸기 위해)
-    // 약간의 딜레이 후 갱신하거나, PurchaseResult 델리게이트에서 호출
-    UpdatePurchaseButtonState();
+    else if (bNeedSkinBuy)
+    {
+        PS->Server_TryPurchase(SelectedSkinID, GetPriceByRarity(SelectedSkinData.Rarity), EItemType::Skin);
+    }
+    else
+    {
+        // 둘 다 이미 있어서 장착만 한 경우
+        UpdatePurchaseButtonState();
+    }
 }
 
 void UShopMainWidget::OnClick_SellButton()
@@ -408,6 +397,19 @@ void UShopMainWidget::HandlePurchaseResult(bool bSuccess)
 {
     if (bSuccess)
     {
+        // ★ 아직 스킨 구매가 남아있다면 바로 이어서 서버에 요청
+        if (PendingSkinPurchaseID != NAME_None)
+        {
+            ABSPlayerState* PS = GetOwningPlayerState<ABSPlayerState>();
+            if (PS)
+            {
+                PS->Server_TryPurchase(PendingSkinPurchaseID, GetPriceByRarity(SelectedSkinData.Rarity), EItemType::Skin);
+            }
+            PendingSkinPurchaseID = NAME_None; // 대기열 비우기
+            return; // 여기서 return 해야 UI가 초기화되지 않습니다!
+        }
+
+        // 모든 구매가 완전히 끝났을 때만 UI 상태 초기화
         FTimerHandle RefreshTimer;
         GetWorld()->GetTimerManager().SetTimer(RefreshTimer, this, &UShopMainWidget::InitShopList, 0.2f, false);
 
@@ -419,6 +421,7 @@ void UShopMainWidget::HandlePurchaseResult(bool bSuccess)
         if (Btn_Sell) Btn_Sell->SetIsEnabled(false);
 
         UpdateTotalPrice();
+        UpdatePurchaseButtonState();
     }
 }
 
@@ -426,10 +429,11 @@ int32 UShopMainWidget::GetPriceByRarity(EItemRarity Rarity)
 {
     switch (Rarity)
     {
-    case EItemRarity::Common:       return 100;
-    case EItemRarity::Rare:         return 300;
-    case EItemRarity::Epic:         return 500;
-    case EItemRarity::Legendary:    return 1000;
+    case EItemRarity::Default:      return 0;
+    case EItemRarity::Common:       return 20;
+    case EItemRarity::Rare:         return 60;
+    case EItemRarity::Epic:         return 100;
+    case EItemRarity::Legendary:    return 200;
     default:                        return 0;
     }
 }

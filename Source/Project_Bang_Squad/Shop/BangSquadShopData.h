@@ -19,6 +19,7 @@ enum class ECharacterJob : uint8
 UENUM(BlueprintType)
 enum class EItemRarity : uint8
 {
+	Default		UMETA(DisplayName = "Default"),
 	Common		UMETA(DisplayName = "Common"),
 	Rare		UMETA(DisplayName = "Rare"),
 	Epic		UMETA(DisplayName = "Epic"),

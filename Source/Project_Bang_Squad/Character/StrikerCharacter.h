@@ -110,6 +110,25 @@ protected:
 	void SpawnRandomSlashFX();
 
 	// =================================================================
+	// 추가
+	// =================================================================
+	UPROPERTY()
+	TArray<ACharacter*> ChainTargets; // 공격할 타겟 목록
+
+	int32 CurrentChainIndex = 0;      // 현재 공격 중인 타겟 인덱스
+	FTimerHandle ChainStrikeTimerHandle;
+
+	// 전방의 지상 적들을 찾는 함수
+	void FindForwardGroundTargets(TArray<ACharacter*>& OutTargets);
+
+	// 서버에 다중 타겟 공격을 요청하는 함수
+	UFUNCTION(Server, Reliable)
+	void Server_StartChainStrike(const TArray<ACharacter*>& Targets);
+
+	// 타이머를 통해 순차적으로 실행될 공격 스텝
+	void ExecuteChainStrikeStep();
+
+	// =================================================================
 	// [네트워크: 스킬 2 (내려찍기)]
 	// =================================================================
 	UFUNCTION(Server, Reliable)
