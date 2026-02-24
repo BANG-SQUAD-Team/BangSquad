@@ -62,7 +62,14 @@ void AStage2Boss::BeginPlay()
     if (HealthComponent)
     {
         // 서버와 클라이언트 모두 각자의 화면에 체력바를 띄움
-        Multicast_ShowBossHP_Implementation(HealthComponent->MaxHealth);
+        if (HasAuthority())
+        {
+            FTimerHandle UI_Timer;
+            GetWorldTimerManager().SetTimer(UI_Timer, [this, MaxHealth = HealthComponent->MaxHealth]()
+            {
+                Multicast_ShowBossHP(MaxHealth);
+            }, 1.0f, false);
+        }
     }
 }
 

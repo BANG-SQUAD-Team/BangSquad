@@ -56,8 +56,6 @@ void AStage1Boss::BeginPlay()
 		if (UHealthComponent* HC = FindComponentByClass<UHealthComponent>())
 		{
 			HC->OnHealthChanged.AddDynamic(this, &AStage1Boss::OnHealthChanged);
-			
-			
 		}
 
 		if (!IsValid(MeleeCollisionBox))
@@ -69,7 +67,14 @@ void AStage1Boss::BeginPlay()
 	if (UHealthComponent* HC = FindComponentByClass<UHealthComponent>())
 	{
 		// 서버와 클라이언트가 각자의 컴퓨터에 보스가 로딩되면 즉시 UI를 띄움
-		Multicast_ShowBossHP_Implementation(HC->MaxHealth);
+		if (HasAuthority())
+		{
+			FTimerHandle UI_Timer;
+			GetWorldTimerManager().SetTimer(UI_Timer, [this, MaxHealth = HC->MaxHealth]()
+			{
+				Multicast_ShowBossHP(MaxHealth);
+			}, 1.0f, false);
+		}
 	}
 }
 
