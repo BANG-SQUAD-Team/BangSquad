@@ -3,6 +3,7 @@
 #include "Project_Bang_Squad/Core/BSGameInstance.h"
 #include "Blueprint/UserWidget.h"
 #include "Project_Bang_Squad/Shop/ShopMainWidget.h" 
+#include "Project_Bang_Squad/Data/DataAsset/BSMapData.h"
 #include "GameFramework/Character.h"
 
 void ABSPlayerController::BeginPlay()
@@ -140,6 +141,26 @@ void ABSPlayerController::ServerSetNickName_Implementation(const FString& NewNam
 	if (ABSPlayerState* PS = GetPlayerState<ABSPlayerState>())
 	{
 		PS->SetPlayerName(NewName);
+	}
+}
+
+void ABSPlayerController::Client_ShowLoadingScreen_Implementation(EStageIndex Stage, EStageSection Section)
+{
+	
+	//내 컴퓨터의 GameInstance 가져오기
+	if (UBSGameInstance* GI = GetGameInstance<UBSGameInstance>())
+	{
+		// 내 컴퓨터에 있는 데이터 에셋에서 넘어갈 맵의 정보 찾기
+		if (GI->MapDataAsset)
+		{
+			const FMapInfo* MapInfo = GI->MapDataAsset->GetMapInfo(Stage, Section);
+            
+			// 이미지가 정상적으로 들어있다면 띄우기
+			if (MapInfo && MapInfo->LoadingImage)
+			{
+				GI->ShowLoadingScreen(MapInfo->LoadingImage);
+			}
+		}
 	}
 }
 

@@ -7,6 +7,7 @@
 #include "OnlineSubsystem.h"
 #include "Project_Bang_Squad/Data/DataAsset/BSJobData.h"
 #include "Project_Bang_Squad/Data/DataAsset/BSMapData.h"
+#include "Project_Bang_Squad/Game/Base/BSPlayerController.h"
 
 const static FName SESSION_NAME = TEXT("GameSession");
 const static FName SESSION_SETTINGS_KEY = TEXT("FREE");
@@ -410,28 +411,33 @@ void UBSGameInstance::MoveToStage(EStageIndex InStage, EStageSection InSection)
 		SetCurrentStage(InStage);
 		ClearMonsterData();
 	}
-	
-	// 맵 데이터 정보 가져오기
+
 	const FMapInfo* MapInfo = MapDataAsset->GetMapInfo(InStage, InSection);
-	
+    
 	if (MapInfo && !MapInfo->Level.IsNull() && GetWorld())
 	{
 		FString Path = MapInfo->Level.GetLongPackageName();
+
+		//  서버가 모든 플레이어에게 '맵 정보(Enum)'만 가볍게 전달
+		for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+		{
+			if (ABSPlayerController* PC = Cast<ABSPlayerController>(It->Get()))
+			{
+				// 변경된 부분: 이미지 포인터 대신 InStage, InSection 전달
+				PC->Client_ShowLoadingScreen(InStage, InSection); 
+			}
+		}
 		
-		// 1. 해당 맵에 세팅된 로딩 이미지를 띄움
-		ShowLoadingScreen(MapInfo->LoadingImage);
-		
-		// 2. 3초 뒤에 레벨 이동
 		FTimerHandle TravelTimer;
 		GetWorld()->GetTimerManager().SetTimer(
-			TravelTimer,
+			TravelTimer, 
 			[this, Path]()
 			{
 				GetWorld()->ServerTravel(Path + "?listen");
-			},
-			2.0f,
+			}, 
+			2.0f, 
 			false
-			);
+		);
 	}
 }
 

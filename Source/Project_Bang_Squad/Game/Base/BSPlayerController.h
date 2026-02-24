@@ -18,6 +18,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	void ToggleShopUI();
 
+	UFUNCTION(Client, Reliable)
+	void Client_ShowLoadingScreen(EStageIndex Stage, EStageSection Section);
+	
 	UFUNCTION()
 	void SetGameInputEnabled(bool bEnabled);
 
