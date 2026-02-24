@@ -785,8 +785,9 @@ void AStage1Boss::Multicast_UpdateBossHP_Implementation(float CurrentHP, float M
 		if (UpdateFunc)
 		{
 			struct { double Current; double Max; } Params;
-			Params.Current = (double)CurrentHP;
-			Params.Max = (double)MaxHP;
+			
+			Params.Current = (double)FMath::RoundToInt(CurrentHP);
+			Params.Max = (double)FMath::RoundToInt(MaxHP);
 			ActiveBossHPWidget->ProcessEvent(UpdateFunc, &Params);
 		}
 	}

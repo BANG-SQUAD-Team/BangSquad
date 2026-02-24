@@ -126,12 +126,38 @@ public:
     void Multicast_JumpMontageSection(FName SectionName);
 
 
+    // ==============================================================================
+    // [UI] 보스 체력바 및 자막 시스템 (Stage 1과 동일)
+    // ==============================================================================
+    UFUNCTION(NetMulticast, Reliable, BlueprintCallable, Category = "BS|UI")
+    void Multicast_ShowBossSubtitle(const FText& Message, float Duration = 3.0f);
 
+    UPROPERTY(EditDefaultsOnly, Category = "BS|UI")
+    TSubclassOf<class UUserWidget> BossSubtitleWidgetClass;
+    
+    UPROPERTY(EditDefaultsOnly, Category = "BS|UI")
+    TSubclassOf<class UUserWidget> BossHPWidgetClass;
+    
+    UPROPERTY()
+    class UUserWidget* ActiveBossHPWidget;
+    
+    UFUNCTION(NetMulticast, Reliable)
+    void Multicast_ShowBossHP(float MaxHP);
+    
+    UFUNCTION(NetMulticast, Reliable)
+    void Multicast_UpdateBossHP(float CurrentHP, float MaxHP);
+    
+    UFUNCTION(NetMulticast, Reliable)
+    void Multicast_HideBossHP();
 
 protected:
     UFUNCTION()
     void CheckMinionsStatus();
-
+    
+    // 체력이 변할 때마다 호출될 델리게이트 바인딩용 함수
+    UFUNCTION()
+    void OnHealthChanged(float CurrentHealth, float MaxHealth);
+    
 protected:
     // --- [Components] ---
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Data")

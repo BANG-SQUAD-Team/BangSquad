@@ -8,6 +8,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/CharacterMovementComponent.h" // 헤더 추가
 #include "DrawDebugHelpers.h"
+#include "Blueprint/UserWidget.h"
 #include "Project_Bang_Squad/Character/StageBoss/AQTE_Trap.h" // (경로가 폴더 안에 있다면 "Project_Bang_Squad/Character/StageBoss/AQTE_Trap.h" 로 맞춰주세요)
 #include "Project_Bang_Squad/Character/Base/BaseCharacter.h"
 #include "Kismet/KismetSystemLibrary.h" // SphereTrace용
@@ -48,6 +49,21 @@ void AStage2Boss::BeginPlay()
     }
     // [테스트용 임시 코드] 70% 페이즈를 이미 본 것처럼 처리해서 스킵!
     //bPhase70Triggered = true;
+    
+    if (HasAuthority())
+    {
+        if (HealthComponent)
+        {
+            // 데미지를 입을 때마다 OnHealthChanged 함수가 자동으로 실행되도록 연결
+            HealthComponent->OnHealthChanged.AddDynamic(this, &AStage2Boss::OnHealthChanged);
+        }
+    }
+
+    if (HealthComponent)
+    {
+        // 서버와 클라이언트 모두 각자의 화면에 체력바를 띄움
+        Multicast_ShowBossHP_Implementation(HealthComponent->MaxHealth);
+    }
 }
 
 void AStage2Boss::Tick(float DeltaTime)
@@ -65,6 +81,21 @@ float AStage2Boss::TakeDamage(float DamageAmount, FDamageEvent const& DamageEven
     CheckHealthPhase();
 
     return ActualDamage;
+}
+
+void AStage2Boss::OnHealthChanged(float CurrentHealth, float MaxHealth)
+{
+    if (HasAuthority())
+    {
+        // 체력이 변할 때마다 서버가 클라이언트들에게 명령을 내림
+        Multicast_UpdateBossHP(CurrentHealth, MaxHealth);
+        
+        // 보스가 죽었을 때 UI를 지우는 로직 (체력이 0 이하가 되면)
+        if (CurrentHealth <= 0.0f)
+        {
+            Multicast_HideBossHP();
+        }
+    }
 }
 
 void AStage2Boss::CheckHealthPhase()
@@ -535,5 +566,107 @@ void AStage2Boss::Multicast_JumpMontageSection_Implementation(FName SectionName)
     if (GetMesh() && GetMesh()->GetAnimInstance() && SummonPhaseMontage)
     {
         GetMesh()->GetAnimInstance()->Montage_JumpToSection(SectionName, SummonPhaseMontage);
+    }
+}
+
+void AStage2Boss::Multicast_ShowBossSubtitle_Implementation(const FText& Message, float Duration)
+{
+    APlayerController* PC = UGameplayStatics::GetPlayerController(GetWorld(), 0);
+    if (!PC || !PC->IsLocalPlayerController() || !BossSubtitleWidgetClass) return;
+    
+    UUserWidget* SubtitleWidget = CreateWidget<UUserWidget>(PC, BossSubtitleWidgetClass);
+    if (SubtitleWidget)
+    {
+       SubtitleWidget->AddToViewport();
+       
+       UFunction* ShowFunc = SubtitleWidget->FindFunction(FName("ShowSubtitle"));
+       if (ShowFunc)
+       {
+          struct { FText TextParams; } Params;
+          Params.TextParams = Message;
+          SubtitleWidget->ProcessEvent(ShowFunc, &Params);
+       }
+       
+       FTimerHandle RemoveTimer;
+       GetWorldTimerManager().SetTimer(RemoveTimer, [SubtitleWidget]()
+       {
+          if (IsValid(SubtitleWidget)) SubtitleWidget->RemoveFromParent();
+       }, Duration, false);
+    }
+}
+
+void AStage2Boss::Multicast_ShowBossHP_Implementation(float MaxHP)
+{
+    if (!BossHPWidgetClass || ActiveBossHPWidget) return;
+
+    APlayerController* LocalPC = nullptr;
+    for (FConstPlayerControllerIterator Iterator = GetWorld()->GetPlayerControllerIterator(); Iterator; ++Iterator)
+    {
+       APlayerController* PC = Iterator->Get();
+       if (PC && PC->IsLocalController())
+       {
+          LocalPC = PC;
+          break;
+       }
+    }
+
+    if (!LocalPC) return;
+    
+    ActiveBossHPWidget = CreateWidget<UUserWidget>(LocalPC, BossHPWidgetClass);
+    if (ActiveBossHPWidget)
+    {
+       ActiveBossHPWidget->AddToViewport(); 
+       
+       if (BossData && BossData->BossIcon)
+       {
+          UFunction* InitFunc = ActiveBossHPWidget->FindFunction(FName("InitBossUI"));
+          if (InitFunc)
+          {
+             struct { UTexture2D* IconParam;} InitParams;
+             InitParams.IconParam = BossData->BossIcon;
+             ActiveBossHPWidget->ProcessEvent(InitFunc, &InitParams);
+          }
+       }
+       
+       UFunction* NameFunc = ActiveBossHPWidget->FindFunction(FName("SetBossName"));
+       if (NameFunc)
+       {
+          struct { FText NameParam; } NameStruct;
+          NameStruct.NameParam = BossData->BossName;
+          ActiveBossHPWidget->ProcessEvent(NameFunc, &NameStruct);
+       }
+       
+       UFunction* UpdateFunc = ActiveBossHPWidget->FindFunction(FName("UpdateHP"));
+       if (UpdateFunc)
+       {
+          struct { double Current; double Max; } Params;
+          Params.Current = (double)MaxHP;
+          Params.Max = (double)MaxHP;
+          ActiveBossHPWidget->ProcessEvent(UpdateFunc, &Params);
+       }
+    }
+}
+
+void AStage2Boss::Multicast_UpdateBossHP_Implementation(float CurrentHP, float MaxHP)
+{
+    if (ActiveBossHPWidget)
+    {
+       UFunction* UpdateFunc = ActiveBossHPWidget->FindFunction(FName("UpdateHP"));
+       if (UpdateFunc)
+       {
+          struct { double Current; double Max; } Params;
+           Params.Current = (double)FMath::RoundToInt(CurrentHP);
+           Params.Max = (double)FMath::RoundToInt(MaxHP);
+          ActiveBossHPWidget->ProcessEvent(UpdateFunc, &Params);
+       }
+    }
+}
+
+void AStage2Boss::Multicast_HideBossHP_Implementation()
+{
+    if (ActiveBossHPWidget)
+    {
+       ActiveBossHPWidget->RemoveFromParent();
+       ActiveBossHPWidget = nullptr;
     }
 }

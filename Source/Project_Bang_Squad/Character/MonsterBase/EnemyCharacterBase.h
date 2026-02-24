@@ -137,6 +137,18 @@ protected:
     UPROPERTY(EditAnywhere, Category = "Combat|Slash")
     float SlashDamage = 30.0f; // <-- 이게 디테일 창에 다시 나타납니다.
 
+    // =================================================================
+    // [UI] 몬스터 머리 위 체력바 위젯
+    // =================================================================
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
+    class UWidgetComponent* HealthWidgetComp;
+
+    // 체력바 위젯을 찾아서 갱신하는 헬퍼 함수
+    void UpdateHealthBar(float CurrentHP, float MaxHP);
+
+    // 모든 클라이언트에게 체력바 UI 갱신을 지시하는 멀티캐스트 함수
+    UFUNCTION(NetMulticast, Unreliable)
+    void Multicast_UpdateHealthBar(float CurrentHP, float InMaxHP);
 public:
     // 노티파이에서 호출할 공통 함수
     UFUNCTION(BlueprintCallable, Category = "Combat")

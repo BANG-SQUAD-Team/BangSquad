@@ -6,7 +6,6 @@
 
 class UAnimMontage;
 class UBoxComponent;
-class UWidgetComponent;
 
 USTRUCT(BlueprintType)
 struct FEnemyAttackData
@@ -38,12 +37,7 @@ protected:
 	virtual void BeginPlay() override;
 	virtual void OnDeathStarted() override;
 	
-	//  부모의 체력 변경 알림을 받아서 UI 갱신
-	virtual void OnHPChanged(float CurrentHP, float MaxHP) override;
 	
-	// 체력바 위젯 컴포넌트
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
-	UWidgetComponent* HealthWidgetComp;
 	
 	// ===== Chase =====
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AI|Chase")
@@ -115,9 +109,5 @@ private:
 		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
 		bool bFromSweep, const FHitResult& SweepResult);
 	
-	// 체력바 업데이트 헬퍼 함수
-	void UpdateHealthBar(float CurrentHP, float MaxHP);
-	
-	UFUNCTION(NetMulticast, Unreliable)
-	void Multicast_UpdateHealthBar(float CurrentHP, float InMaxHP);
+
 };

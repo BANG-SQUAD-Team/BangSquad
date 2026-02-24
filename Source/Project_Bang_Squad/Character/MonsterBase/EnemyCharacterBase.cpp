@@ -4,9 +4,11 @@
 #include "Animation/AnimMontage.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/WidgetComponent.h"
 #include "Project_Bang_Squad/Character/Component/HealthComponent.h"
 #include "Project_Bang_Squad/Core/BSGameInstance.h"
 #include "Project_Bang_Squad/Projectile/SlashProjectile.h"
+#include "Project_Bang_Squad/UI/Enemy/EnemyNormalHPWidget.h"
 #include "Project_Bang_Squad/Character/Damage/DamageTextActor.h"
 
 AEnemyCharacterBase::AEnemyCharacterBase()
@@ -15,6 +17,13 @@ AEnemyCharacterBase::AEnemyCharacterBase()
     bUseControllerRotationYaw = false;
 
     bReplicates = true;
+	
+	HealthWidgetComp = CreateDefaultSubobject<UWidgetComponent>(TEXT("HealthWidgetComp"));
+	HealthWidgetComp->SetupAttachment(GetRootComponent());
+	HealthWidgetComp->SetRelativeLocation(FVector(0.0f, 0.0f, 130.0f)); // 머리 위쪽
+	HealthWidgetComp->SetWidgetSpace(EWidgetSpace::Screen); // 화면에 딱 붙게
+	HealthWidgetComp->SetDrawSize(FVector2D(100.0f, 15.0f));
+	HealthWidgetComp->SetCollisionEnabled(ECollisionEnabled::NoCollision); // 충돌 무시
 }
 
 void AEnemyCharacterBase::BeginPlay()
@@ -54,6 +63,7 @@ void AEnemyCharacterBase::BeginPlay()
 
 		HC->OnHealthChanged.RemoveDynamic(this, &AEnemyCharacterBase::HandleHealthChangedFromHealth);
 		HC->OnHealthChanged.AddDynamic(this, &AEnemyCharacterBase::HandleHealthChangedFromHealth);
+		UpdateHealthBar(HC->MaxHealth, HC->MaxHealth);
 	}
 }
 
@@ -141,7 +151,12 @@ void AEnemyCharacterBase::HandleHealthChangedFromHealth(float NewHealth, float I
 	
 	OnHPChanged(NewHealth, InMaxHealth);
 	
-    if (!HasAuthority()) return;
+    if (HasAuthority())
+    {
+	    Multicast_UpdateHealthBar(NewHealth, InMaxHealth);
+    }
+	
+	if (!HasAuthority()) return;
     if (bIsDead) return;
     if (NewHealth <= 0.f) return;
 
@@ -374,5 +389,25 @@ void AEnemyCharacterBase::Multicast_SpawnDamageText_Implementation(float Damage,
 	if (TextActor)
 	{
 		TextActor->InitializeDamage(Damage);
+	}
+}
+
+void AEnemyCharacterBase::Multicast_UpdateHealthBar_Implementation(float CurrentHP, float InMaxHP)
+{
+	UpdateHealthBar(CurrentHP, InMaxHP);
+}
+
+void AEnemyCharacterBase::UpdateHealthBar(float CurrentHP, float MaxHP)
+{
+	if (HealthWidgetComp)
+	{
+		// 위젯 컴포넌트에서 실제 UUserWidget 객체 가져오기
+		UEnemyNormalHPWidget* HPWidget = Cast<UEnemyNormalHPWidget>(HealthWidgetComp->GetUserWidgetObject());
+        
+		if (HPWidget)
+		{
+			// 위젯 갱신 (블루프린트의 UpdateHP 함수 호출)
+			HPWidget->UpdateHP(CurrentHP, MaxHP);
+		}
 	}
 }
