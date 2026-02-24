@@ -28,6 +28,9 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "VFX")
 	FVector HitImpactScale;
 	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat")
+	float ExplosionRadius = 500.0f;
+	
 	// 터질 때 소환할 장판 클래스 (BP_IcePad)
 	UPROPERTY(EditDefaultsOnly, Category = "Skill")
 	TSubclassOf<AActor> IcePadClass;

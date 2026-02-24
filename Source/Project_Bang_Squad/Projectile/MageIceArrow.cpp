@@ -53,8 +53,29 @@ void AMageIceArrow::OnOverlap(UPrimitiveComponent* OverlappedComponent,
 	{
 		if (OtherActor->IsA(APawn::StaticClass()))
 		{
-			// 1. 데미지 주기
-			UGameplayStatics::ApplyDamage(OtherActor, Damage, GetInstigatorController(), this, UDamageType::StaticClass());
+			// 광역 데미지
+			TArray<AActor*> IgnoreActors;
+			IgnoreActors.Add(this);
+			IgnoreActors.Add(GetOwner()); // 나와 주인의 피해 면역
+
+			TArray<AActor*> AllPlayers;
+			UGameplayStatics::GetAllActorsWithTag(GetWorld(), TEXT("Player"), AllPlayers);
+			IgnoreActors.Append(AllPlayers);
+			
+			// 얼음이 터지는 중심점
+			FVector ExplosionOrigin = OtherActor->GetActorLocation();
+
+			UGameplayStatics::ApplyRadialDamage(
+				GetWorld(),
+				Damage,                // 터질 때 줄 데미지 (가운데든 끝이든 동일하게 들어가게 설정)
+				ExplosionOrigin,       // 폭발 중심점
+				ExplosionRadius,       // 폭발 반경 (기본 300)
+				UDamageType::StaticClass(),
+				IgnoreActors,          // 무시할 액터 목록
+				this,                  // 가해자 (투사체)
+				GetInstigatorController(), // 가해자의 컨트롤러
+				true                   // true = 반경 내 모두 동일한 데미지 (거리에 따른 감소 없음)
+			);
 			
 			Multicast_SpawnIceVFX(OtherActor->GetActorLocation(),
 				FRotator::ZeroRotator);
@@ -100,20 +121,48 @@ void AMageIceArrow::OnOverlap(UPrimitiveComponent* OverlappedComponent,
 }
 
 // 2. 바닥/벽을 맞췄을 때
+// 2. 바닥/벽을 맞췄을 때 (물리 충돌)
 void AMageIceArrow::NotifyHit(UPrimitiveComponent* MyComp, AActor* Other, UPrimitiveComponent* OtherComp, bool bSelfMoved, FVector HitLocation, FVector HitNormal, FVector NormalImpulse, const FHitResult& Hit)
 {
 	if (HasAuthority())
 	{
 		bool bIsAlly = Other && Other->ActorHasTag(TEXT("Player"));
-		
+       
 		if (Other && (Other != this) && (Other != GetOwner()) && !bIsAlly)
 		{
+			// ==============================================================
+			// 바닥이나 벽에 부딪혔을 때도 광역 데미지 발생!
+			// ==============================================================
+			TArray<AActor*> IgnoreActors;
+			IgnoreActors.Add(this);
+			IgnoreActors.Add(GetOwner()); // 나와 주인의 피해 면역
+
+			// 맵에 있는 모든 'Player' 태그를 가진 아군을 찾아서 폭발 면역 처리
+			TArray<AActor*> AllPlayers;
+			UGameplayStatics::GetAllActorsWithTag(GetWorld(), TEXT("Player"), AllPlayers);
+			IgnoreActors.Append(AllPlayers);
+
+			// 부딪힌 지점(HitLocation)을 중심으로 폭발 데미지
+			UGameplayStatics::ApplyRadialDamage(
+				GetWorld(),
+				Damage,                
+				HitLocation,           // 벽/바닥에 부딪힌 위치
+				ExplosionRadius,       // 폭발 반경
+				UDamageType::StaticClass(),
+				IgnoreActors,          
+				this,                  
+				GetInstigatorController(), 
+				true                   
+			);
+			// ==============================================================
+
+			// 이펙트 생성
 			Multicast_SpawnIceVFX(HitLocation, HitNormal.Rotation());
-			
+          
+			// 장판 소환 (벽에서 살짝 띄워서 소환)
 			FRotator WallRot = FRotationMatrix::MakeFromZ(HitNormal).Rotator();
-			// 벽에서 살짝 띄워서(Normal 방향) 소환
 			SpawnIcePad(HitLocation + (HitNormal * 5.0f), WallRot); 
-			
+          
 			SetLifeSpan(0.1f);
 		}
 	}

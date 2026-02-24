@@ -127,9 +127,17 @@ protected:
     
     UPROPERTY()
     UParticleSystemComponent* Skill2CastComp;
+    
+    UFUNCTION(NetMulticast, Unreliable)
+    void Multicast_PlaySkill2VFX();
+
+    UFUNCTION(NetMulticast, Unreliable)
+    void Multicast_StopSkill2VFX();
 
     FTimerHandle RockSpawnTimerHandle;
     void SpawnSkill2Rock(UClass* RockClass, float DamageAmount);
+
+   
     
     // --- 무기 이펙트 (트레일 및 아우라) ---
     UPROPERTY()
