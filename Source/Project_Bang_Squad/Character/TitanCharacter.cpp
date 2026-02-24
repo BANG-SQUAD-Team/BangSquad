@@ -989,20 +989,15 @@ void ATitanCharacter::Multicast_SpawnRockEffects_Implementation(FVector SpawnLoc
     FVector ForwardOffset = GetActorForwardVector() * 150.0f;
     SpawnLocation += ForwardOffset;
 
-    // ====================================================
-    // 1. 바닥 데칼 (여기를 수정했습니다!)
-    // ====================================================
     if (GroundCrackDecal)
     {
-        // ★★★ [수정 1] 데칼 크기 축소 (256 -> 130) ★★★
-        // 바닥에 깔리는 금 크기를 절반 정도로 줄였습니다.
+
         FVector DecalSize = FVector(130.0f, 130.0f, 130.0f);
 
         FRotator DecalRot = FRotator(-90.0f, 0.0f, 0.0f);
         DecalRot.Roll = FMath::RandRange(0.0f, 360.0f);
 
-        // ★★★ [수정 2] 데칼 수명 단축 (5초 -> 2초) ★★★
-        // 금이 생겼다가 2초 만에 샥 사라집니다.
+
         UGameplayStatics::SpawnDecalAtLocation(
             GetWorld(),
             GroundCrackDecal,
@@ -1013,13 +1008,11 @@ void ATitanCharacter::Multicast_SpawnRockEffects_Implementation(FVector SpawnLoc
         );
     }
 
-    if (RockClass)
+    if (DebrisClass) // RockClass 대신 새로 만든 DebrisClass를 사용합니다.
     {
         int32 DebrisCount = FMath::RandRange(3, 5);
-
         for (int32 i = 0; i < DebrisCount; i++)
         {
-            // ... (위치 계산 코드 동일) ...
             FVector RandomOffset = FMath::VRand();
             RandomOffset.Z = FMath::Abs(RandomOffset.Z);
             RandomOffset *= FMath::RandRange(50.0f, 150.0f);
@@ -1028,46 +1021,25 @@ void ATitanCharacter::Multicast_SpawnRockEffects_Implementation(FVector SpawnLoc
 
             FActorSpawnParameters SpawnParams;
             SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-            SpawnParams.Owner = nullptr;
 
-            ATitanRock* Debris = GetWorld()->SpawnActor<ATitanRock>(RockClass, DebrisLoc, DebrisRot, SpawnParams);
+            // 파편 스폰! (설정이 BP에 다 되어 있으니 일반 스폰으로 충분합니다)
+            AActor* Debris = GetWorld()->SpawnActor<AActor>(DebrisClass, DebrisLoc, DebrisRot, SpawnParams);
 
             if (Debris)
             {
-                // [사용자 설정] 크기: 0.01 ~ 0.1
+                // 크기 랜덤 설정
                 float RandomScale = FMath::RandRange(0.01f, 0.1f);
                 Debris->SetActorScale3D(FVector(RandomScale));
 
-                // 컴포넌트 설정 (충돌 무시 등)
-                TArray<UPrimitiveComponent*> AllComps;
-                Debris->GetComponents(AllComps);
-
-                for (UPrimitiveComponent* Comp : AllComps)
-                {
-                    Comp->SetSimulatePhysics(true);
-                    Comp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-                    Comp->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
-                    Comp->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
-                }
-
-                // ★★★ [여기를 조절하세요!] 힘 조절 파트 ★★★
-                if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(Debris->GetRootComponent()))
+                // 블루프린트의 메쉬 컴포넌트를 가져와서 튀어 오르는 힘만 줍니다.
+                if (UStaticMeshComponent* MeshComp = Debris->FindComponentByClass<UStaticMeshComponent>())
                 {
                     float ZForce = FMath::FRandRange(1.0f, 1.5f);
-
                     FVector LaunchDir = FVector(FMath::FRandRange(-1.f, 1.f), FMath::FRandRange(-1.f, 1.f), ZForce).GetSafeNormal();
 
-                    // 2. 미는 힘을 확 줄임 (아까는 600.0f였음)
-                    // 150 ~ 300 정도로 줄여보세요.
-                    float PowerMultiplier = 200.0f;
-
-                    RootComp->AddImpulse(LaunchDir * PowerMultiplier * RootComp->GetMass());
-
-                    // 회전력도 좀 줄임 (너무 팽이처럼 돌지 않게)
-                    RootComp->AddAngularImpulseInDegrees(FMath::VRand() * 1000.0f, NAME_None, true);
+                    MeshComp->AddImpulse(LaunchDir * 200.0f * MeshComp->GetMass());
+                    MeshComp->AddAngularImpulseInDegrees(FMath::VRand() * 1000.0f, NAME_None, true);
                 }
-
-                Debris->SetLifeSpan(2.0f);
             }
         }
     }
@@ -1110,6 +1082,7 @@ void ATitanCharacter::Server_SpawnRock_Implementation()
           if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(HeldRock->GetRootComponent()))
           {
              RootComp->SetSimulatePhysics(false);
+             RootComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
           }
           HeldRock->InitializeRock(CurrentSkillDamage, this);
 
@@ -1135,6 +1108,12 @@ void ATitanCharacter::Server_ThrowRock_Implementation()
     {
        RootComp->SetSimulatePhysics(true);
        RootComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+
+       if (GetCapsuleComponent())
+       {
+           GetCapsuleComponent()->IgnoreComponentWhenMoving(RootComp, true);
+           RootComp->IgnoreComponentWhenMoving(GetCapsuleComponent(), true);
+       }
 
        FRotator ThrowRot = GetControlRotation();
        FVector ThrowDir = ThrowRot.Vector();

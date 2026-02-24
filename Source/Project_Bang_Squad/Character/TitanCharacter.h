@@ -270,6 +270,9 @@ private:
     UPROPERTY(EditDefaultsOnly, Category = "Skill|Rock")
     TSubclassOf<ATitanRock> RockClass;
 
+    UPROPERTY(EditDefaultsOnly, Category = "Skill|Rock")
+    TSubclassOf<AActor> DebrisClass;
+
     UPROPERTY(EditDefaultsOnly, Category = "Skill|FX")
     UMaterialInterface* GroundCrackDecal;
 
