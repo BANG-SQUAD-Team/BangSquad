@@ -60,13 +60,22 @@ void AMageSkill2Rock::BeginPlay()
 	// 0.1초 뒤에 솟아오르는 함수 실행
 	GetWorldTimerManager().SetTimer(EruptTimer, this, &AMageSkill2Rock::Erupt, 0.1f, false);
 	// 2초 뒤에 알아서 사라짐
-	SetLifeSpan(2.0f);
+	SetLifeSpan(5.0f);
 	
 }
 
 void AMageSkill2Rock::Erupt()
 {
 	OnStartEruption();
+	
+	
+	if (RockMesh)
+	{
+		RockMesh->SetVisibility(true);
+		// 아직은 물리적으로 막지 않고 감지만 하도록 설정 (끼임 방지)
+		RockMesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+		RockMesh->SetCollisionProfileName(TEXT("OverlapAllDynamic"));
+	}
 	
 	if (ParticleComp)
 	{
@@ -91,17 +100,10 @@ void AMageSkill2Rock::Erupt()
 			ABaseCharacter* BaseChar = Cast<ABaseCharacter>(TargetChar);
 			if (BaseChar && BaseChar->IsDead()) continue;
 			
-			// 판정 로직
-			bool bIsEnemy = false;
+			//  데미지는 '적'에게만 (플레이어 태그가 없으면 적으로 간주)
+			bool bIsEnemy = !TargetChar->ActorHasTag(TEXT("Player"));
 			// 시전자가 있으면 적군 판별
-			if (CasterPawn)
-			{
-				if (TargetChar != CasterPawn && !TargetChar->ActorHasTag("Player"))
-				{
-					bIsEnemy = true;
-				}
-			}
-		
+			
 			if (bIsEnemy)
 			{
 				UGameplayStatics::ApplyDamage(TargetChar, SkillDamage,
@@ -110,18 +112,40 @@ void AMageSkill2Rock::Erupt()
 					UDamageType::StaticClass());
 			}
 			
-			// AI(몬스터)가 안 뜨는 문제 해결용: 강제 낙하 모드 전환
+			// 에어본은 적/아군/본인 가리지 않고 '모두' 띄움
 			if (UCharacterMovementComponent* CMC = TargetChar->GetCharacterMovement())
 			{
-				CMC->StopMovementImmediately();     // 이동 멈춤
-				CMC->SetMovementMode(MOVE_Falling); // 강제 낙하 모드 (중력 영향 받음)
+				CMC->StopMovementImmediately();
+				CMC->SetMovementMode(MOVE_Falling);
 			}
-		
-			// 에어본 (적, 아군, 본인 모두 띄움)
-			FVector LaunchDir = FVector (0,0,1); // 수직
-			// XY축을 힘을 0으로 덮어쓰고, Z축 힘을 덮어씀
-			TargetChar-> LaunchCharacter(LaunchDir * 800.f, true, true);
+			
+			//  수평 밀쳐내기 계산
+			// 바위 중심에서 캐릭터 방향으로의 벡터를 구합니다.
+			FVector RockLoc = GetActorLocation();
+			FVector TargetLoc = TargetChar->GetActorLocation();
+			FVector LaunchDir = TargetLoc - RockLoc;
+			
+			LaunchDir.Z = 0.0f; // 수평 방향만 남깁니다.
+			LaunchDir.Normalize();
+			
+			// 수평으로 300, 수직으로 800의 힘을 합칩니다.
+			FVector FinalLaunchImpulse = (LaunchDir * 300.f) + FVector(0.f, 0.f, 800.f);
+			
+			// 캐릭터를 밖+위로 튕겨냅니다.
+			TargetChar->LaunchCharacter(FinalLaunchImpulse, true, true);
 	    }
+		
+		//  0.2초 뒤에 바위를 딱딱한 벽(BlockAll)으로 바꿉니다.
+		// 캐릭터들이 LaunchCharacter에 의해 바위 영역 밖으로 충분히 나간 뒤에 벽이 생기게 합니다.
+		FTimerHandle BlockTimerHandle;
+		GetWorldTimerManager().SetTimer(BlockTimerHandle, [this]()
+		{
+			if (IsValid(this) && RockMesh)
+			{
+				RockMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+				RockMesh->SetCollisionProfileName(TEXT("BlockAll"));
+			}
+		}, 0.2f, false);
 	}
 }
 

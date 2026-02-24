@@ -826,14 +826,12 @@ void AMageCharacter::SpawnSkill2Rock(UClass* RockClass, float DamageAmount)
 
     if (!HasAuthority() || !RockClass) return;
     
-    // 바위가 소환될 거리 (전방 6m)
-    float SpawnDistance = 600.0f;
-    FVector ActorLoc = GetActorLocation();
-    FVector ForwardDir = GetActorForwardVector();
+   //  무조건 앞쪽이 아니라, 에임(크로스헤어)이 가리키는 지점을 찾습니다.
+   FVector AimLocation = GetCrosshairTargetLocation();
     
-    // 바닥을 찾기 위해 공중(2m 위)에서 아래(10m 아래)로 레이저를 쏨
-    FVector TraceStart = ActorLoc + (ForwardDir * SpawnDistance) + FVector(0.f, 0.f, 200.f);
-    FVector TraceEnd = TraceStart - FVector(0.f, 0.f, 1000.f);
+   //  에임 지점 근처의 바닥을 정밀하게 찾기 위해 위아래로 레이저를 쏩니다.
+   FVector TraceStart = AimLocation + FVector(0.f, 0.f, 500.f);
+   FVector TraceEnd = AimLocation - FVector(0.f, 0.f, 1000.f);
     
     FHitResult HitResult;
     FCollisionQueryParams Params;
