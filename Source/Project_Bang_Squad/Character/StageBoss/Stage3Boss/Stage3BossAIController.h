@@ -20,6 +20,7 @@ protected:
 	AActor* TargetPlayer;
 	FTimerHandle ActionTimer;
 
+	float CombatStartTime = 0.0f;
 	float LastTime_Laser = -100;
 	float LastTime_Meteor = -100;
 	float LastTime_Break = -100;

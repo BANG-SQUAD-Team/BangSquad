@@ -141,7 +141,8 @@ float AStage3Boss::Execute_BasicAttack()
 
 	if (AttackMontage)
 	{
-		return PlayAnimMontage(AttackMontage);
+		Multicast_PlayBossMontage(AttackMontage);
+		return AttackMontage->GetPlayLength();
 	}
 	return 1.0f;
 }
@@ -155,7 +156,7 @@ float AStage3Boss::Execute_Laser()
 	// 2. 몽타주 재생
 	if (BossData && BossData->LaserMontage)
 	{
-		PlayAnimMontage(BossData->LaserMontage);
+		Multicast_PlayBossMontage(BossData->LaserMontage);
 	}
 
 	// 3. 데미지 타이머 시작 (0.25초 간격)
@@ -213,27 +214,28 @@ float AStage3Boss::Execute_Meteor()
 {
 	if (!PlatformManager || !BossData) return 2.0f;
 
-	// 1. 몽타주 재생 (캐스팅 동작)
+	// 1. 몽타주 재생 (캐스팅 동작) - Multicast 적용
 	float Duration = 0.0f;
 	if (BossData->MeteorMontage)
 	{
-		Duration = PlayAnimMontage(BossData->MeteorMontage, 1.0f, FName("Cast")); // "Cast" 섹션 시작
+		Multicast_PlayBossMontage(BossData->MeteorMontage, FName("Cast"));
+		Duration = BossData->MeteorMontage->GetPlayLength();
 	}
 
-	// 2. 타겟 발판 선정 (기존 로직: 플레이어 위치 + 랜덤)
+	// 2. 타겟 발판 선정
 	TArray<ABossPlatform*> Targets = PlatformManager->GetPlatformsForMeteor();
 
-	// [수정] 0.5초 뒤 경고 표시 (플레이어가 보고 피할 시간 제공)
+	// 3. 0.5초 뒤 경고 표시 (붉은색 장판 켜기)
 	FTimerHandle WarningTimer;
 	GetWorldTimerManager().SetTimer(WarningTimer, [Targets]()
 		{
 			for (ABossPlatform* P : Targets)
 			{
-				if (P) P->SetWarning(true); // 붉은색 장판 표시
+				if (P) P->SetWarning(true);
 			}
 		}, 0.5f, false);
 
-	// [수정] 시전 3초 후: 폭발 이펙트 + 즉시 하강
+	// 4. 시전 3초 후: 폭발 이펙트 + 광역 데미지 + 넉백 + 즉시 하강
 	FTimerHandle ImpactTimer;
 	GetWorldTimerManager().SetTimer(ImpactTimer, [this, Targets]()
 		{
@@ -241,35 +243,59 @@ float AStage3Boss::Execute_Meteor()
 			{
 				if (P)
 				{
-					// 1. 폭발 이펙트 생성
-					if (MeteorExplosionFX)
+					// 폭발 중심점 (발판 살짝 위)
+					FVector ExplosionCenter = P->GetActorLocation() + FVector(0.0f, 0.0f, 50.0f);
+
+					// 비주얼 동기화
+					Multicast_SpawnMeteorFX(ExplosionCenter);
+
+					// 데미지 및 넉백 판정
+					float DamageRadius = 450.0f;
+					float MeteorDamage = 100.0f;
+					float KnockbackForce = 1500.0f;
+
+					TArray<FOverlapResult> OverlapResults;
+					FCollisionQueryParams QueryParams;
+					QueryParams.AddIgnoredActor(this);
+
+					bool bHit = GetWorld()->OverlapMultiByChannel(
+						OverlapResults, ExplosionCenter, FQuat::Identity, ECC_Pawn,
+						FCollisionShape::MakeSphere(DamageRadius), QueryParams
+					);
+
+					if (bHit)
 					{
-						UGameplayStatics::SpawnEmitterAtLocation(
-							GetWorld(),
-							MeteorExplosionFX,
-							P->GetActorLocation() + FVector(0, 0, 50.0f),
-							FRotator::ZeroRotator,
-							FVector(1.0f),
-							true
-						);
+						for (const FOverlapResult& Overlap : OverlapResults)
+						{
+							ACharacter* HitPlayer = Cast<ACharacter>(Overlap.GetActor());
+							if (IsValid(HitPlayer))
+							{
+								// 데미지 적용
+								UGameplayStatics::ApplyDamage(HitPlayer, MeteorDamage, GetController(), this, UDamageType::StaticClass());
+
+								// 넉백 적용
+								FVector KnockbackDir = (HitPlayer->GetActorLocation() - ExplosionCenter).GetSafeNormal();
+								KnockbackDir.Z = 0.8f;
+								KnockbackDir.Normalize();
+
+								HitPlayer->LaunchCharacter(KnockbackDir * KnockbackForce, true, true);
+							}
+						}
 					}
 
-					// 2. 발판 즉시 하강 (경고 끄고 내려감)
+					// 발판 즉시 하강
 					P->MoveDown(false);
-
-					// TODO: 광역 데미지 로직 (여기서 ApplyDamage 호출)
 				}
 			}
-		}, 3.0f, false); // 정확히 3초 뒤 실행
+		}, 3.0f, false);
 
 	// 자막 출력
 	Multicast_ShowBossSubtitle(FText::FromString(TEXT("메테오가 떨어집니다!")), 3.0f);
 
-	//이후 먼 적에게 이동
+	// 5. (복구된 로직) 시전 3초 후 먼 적에게 다이브(Dive) 이동
 	FTimerHandle DiveTimer;
 	GetWorldTimerManager().SetTimer(DiveTimer, [this]()
 		{
-			// 1) 가장 먼 적 찾기
 			AActor* FurthestTarget = nullptr;
 			float MaxDist = -1.0f;
 			TArray<AActor*> Players;
@@ -284,28 +310,25 @@ float AStage3Boss::Execute_Meteor()
 				}
 			}
 
-			// 2) 타겟이 있다면 회전 및 이동
 			if (FurthestTarget)
 			{
-				// [회전] 보스를 타겟 방향으로 돌리기
+				// 회전
 				FVector Direction = (FurthestTarget->GetActorLocation() - GetActorLocation()).GetSafeNormal();
-				Direction.Z = 0.0f; // 높이는 무시
+				Direction.Z = 0.0f;
 				SetActorRotation(Direction.Rotation());
 
-				// [이동] LaunchCharacter로 날리기 (포물선 혹은 직선)
-				// 힘 조절: 거리 * 계수 + 위쪽 힘
+				// 다이브 도약 (서버에서 LaunchCharacter 실행 시 클라이언트도 자동 동기화됨)
 				FVector LaunchVel = Direction * (MaxDist * 1.0f) + FVector(0, 0, 500.0f);
 				LaunchCharacter(LaunchVel, true, true);
 			}
 
-			// 3) [몽타주] 날아가는 모션(Dive)으로 전환
-			// 만약 몽타주가 이어져 있다면 굳이 안 해도 되지만, 확실히 하기 위해 섹션 점프
-			if (GetMesh()->GetAnimInstance() && BossData->MeteorMontage)
+			// [추가 수정] 다이브 애니메이션도 클라이언트들에게 방송(Multicast)
+			if (BossData && BossData->MeteorMontage)
 			{
-				GetMesh()->GetAnimInstance()->Montage_JumpToSection(FName("Dive"), BossData->MeteorMontage);
+				Multicast_PlayBossMontage(BossData->MeteorMontage, FName("Dive"));
 			}
 
-		}, 3.0f, false); // *3.0초는 Cast 동작이 끝나는 타이밍에 맞춰 조절*
+		}, 3.0f, false);
 
 	return (Duration > 0.0f) ? Duration : 5.0f;
 }
@@ -486,5 +509,26 @@ void AStage3Boss::Multicast_HideBossHP_Implementation()
 	{
 		ActiveBossHPWidget->RemoveFromParent();
 		ActiveBossHPWidget = nullptr;
+	}
+}
+
+// ---------------------------------------------------------
+// [추가] Multicast 구현부: 클라이언트 화면에 시각적 요소 렌더링
+// ---------------------------------------------------------
+void AStage3Boss::Multicast_PlayBossMontage_Implementation(UAnimMontage* MontageToPlay, FName SectionName)
+{
+	if (MontageToPlay)
+	{
+		// 서버와 모든 클라이언트에서 몽타주가 실행됩니다.
+		PlayAnimMontage(MontageToPlay, 1.0f, SectionName);
+	}
+}
+
+void AStage3Boss::Multicast_SpawnMeteorFX_Implementation(FVector SpawnLocation)
+{
+	if (MeteorExplosionFX)
+	{
+		// 서버와 모든 클라이언트에서 파티클이 터집니다.
+		UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), MeteorExplosionFX, SpawnLocation, FRotator::ZeroRotator, FVector(1.0f), true);
 	}
 }

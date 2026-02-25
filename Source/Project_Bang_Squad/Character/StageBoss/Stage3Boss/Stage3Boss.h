@@ -70,6 +70,14 @@ public:
     UFUNCTION(NetMulticast, Reliable)
     void Multicast_HideBossHP();
 
+    // [추가] 애니메이션 몽타주 재생을 모든 클라이언트에게 동기화
+    UFUNCTION(NetMulticast, Unreliable)
+    void Multicast_PlayBossMontage(UAnimMontage* MontageToPlay, FName SectionName = NAME_None);
+
+    // [추가] 메테오 이펙트 재생을 모든 클라이언트에게 동기화
+    UFUNCTION(NetMulticast, Unreliable)
+    void Multicast_SpawnMeteorFX(FVector SpawnLocation);
+
 protected:
     // [데이터] 보스 데이터 에셋 (Stage1Boss 처럼 직접 선언)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Data")
