@@ -7,7 +7,7 @@
 #include "Engine/Engine.h"
 #include "Project_Bang_Squad/Character/Component/HealthComponent.h"
 #include "Project_Bang_Squad/Character/Enemy/EnemyNormal.h"
-#include "Project_Bang_Squad/Character/Enemy/EnemyMidBoss.h"
+#include "Project_Bang_Squad/Character/MonsterBase/EnemyCharacterBase.h"
 
 
 AStrikerCharacter::AStrikerCharacter()
@@ -520,10 +520,9 @@ void AStrikerCharacter::FindForwardGroundTargets(TArray<ACharacter*>& OutTargets
         ACharacter* CharActor = Cast<ACharacter>(Actor);
         if (!CharActor) continue;
 
-        bool bIsNormal = Actor->IsA(AEnemyNormal::StaticClass());
-        bool bIsMidBoss = Actor->IsA(AEnemyMidBoss::StaticClass());
+        bool bIsEnemy = Actor->IsA(AEnemyCharacterBase::StaticClass());
 
-        if (!bIsNormal && !bIsMidBoss) continue;
+        if (!bIsEnemy) continue;
 
         // 공중에 있지 않은(지상) 적만 판별
         if (!CharActor->GetCharacterMovement()->IsFalling())
@@ -747,7 +746,6 @@ void AStrikerCharacter::Server_Skill2Impact_Implementation()
     TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;
     ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_Pawn));
 
-    // [변경] 공격 반경: 600.f -> 300.f (지름 6m, 일반적인 광역기 범위)
     float AttackRadius = 300.0f;
 
     UKismetSystemLibrary::SphereOverlapActors(GetWorld(), MyLoc, AttackRadius, ObjectTypes, ACharacter::StaticClass(), { this }, OverlappingActors);
@@ -765,10 +763,10 @@ void AStrikerCharacter::Server_Skill2Impact_Implementation()
         ACharacter* TargetChar = Cast<ACharacter>(Actor);
         if (!TargetChar || TargetChar == this) continue;
 
-        bool bIsNormal = Actor->IsA(AEnemyNormal::StaticClass());
+        bool bIsEnemy = Actor->IsA(AEnemyCharacterBase::StaticClass());
         bool bIsBaseChar = Actor->IsA(ABaseCharacter::StaticClass());
 
-        if (bIsNormal)
+        if (bIsEnemy)
         {
             UGameplayStatics::ApplyDamage(TargetChar, SlamDamage, GetController(), this, UDamageType::StaticClass());
 
@@ -955,10 +953,9 @@ AActor* AStrikerCharacter::FindBestAirborneTarget()
         ACharacter* CharActor = Cast<ACharacter>(Actor);
         if (!CharActor) continue;
 
-        bool bIsNormal = Actor->IsA(AEnemyNormal::StaticClass());
-        bool bIsMidBoss = Actor->IsA(AEnemyMidBoss::StaticClass());
+        bool bIsEnemy = Actor->IsA(AEnemyCharacterBase::StaticClass());
 
-        if (!bIsNormal && !bIsMidBoss) continue;
+        if (!bIsEnemy) continue;
 
         if (CharActor->GetCharacterMovement()->IsFalling())
         {
