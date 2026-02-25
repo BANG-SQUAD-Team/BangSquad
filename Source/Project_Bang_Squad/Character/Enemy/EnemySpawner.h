@@ -28,6 +28,14 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void SetSpawnerActive(bool bActive);
 
+	// 퍼즐 등에 의해 스폰이 막혀있는지의 여부
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawner")
+	bool bIsLockedByPuzzle = false;
+	
+	// 잠금 해제 함수 (CenterStatueManager가 호출할 예정)
+	UFUNCTION(BlueprintCallable, Category = "Spawner")
+	void UnlockSpawner();
+	
 	// 웨이브 클리어 시 방송할 이벤트
 	UPROPERTY(BlueprintAssignable, Category = "Spawner")
 	FOnSpawnerCleared OnSpawnerCleared;

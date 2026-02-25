@@ -136,7 +136,7 @@ void ACenterStatueManager::BeginPlay()
 	{
 		if (!bPuzzleCompleted && BossSpawner)
 		{
-			BossSpawner->SetActorEnableCollision(false);
+			BossSpawner->bIsLockedByPuzzle = true;
 			BossSpawner->OnSpawnerCleared.AddDynamic(this, &ACenterStatueManager::OnBossDefeated);
 		}
 	}
@@ -174,7 +174,17 @@ void ACenterStatueManager::ActivateLeftGoblet() { if (!HasAuthority() || bLeftAc
 void ACenterStatueManager::ActivateRightGoblet() { if (!HasAuthority() || bRightActive) return; bRightActive = true; OnRep_RightActive(); CheckPuzzleCompletion(); }
 void ACenterStatueManager::OnRep_LeftActive() { if (LeftFireMesh) LeftFireMesh->SetHiddenInGame(false); }
 void ACenterStatueManager::OnRep_RightActive() { if (RightFireMesh) RightFireMesh->SetHiddenInGame(false); }
-void ACenterStatueManager::CheckPuzzleCompletion() { if (bLeftActive && bRightActive && !bPuzzleCompleted) { bPuzzleCompleted = true; if (BossSpawner) BossSpawner->SetActorEnableCollision(true); } }
+void ACenterStatueManager::CheckPuzzleCompletion()
+{
+	if (bLeftActive && bRightActive && !bPuzzleCompleted)
+	{
+		bPuzzleCompleted = true;
+		if (BossSpawner)
+		{
+			BossSpawner->UnlockSpawner();
+		}
+	}
+}
 
 
 // --- [보스 처치 및 낙하 로직] ---

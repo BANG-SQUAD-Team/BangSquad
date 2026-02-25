@@ -251,6 +251,9 @@ void AEnemySpawner::OnTriggerOverlap(UPrimitiveComponent* OverlappedComp, AActor
 	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
 	if (!HasAuthority()) return;
+	
+	if (bIsLockedByPuzzle) return; 
+	
 	if (OtherActor && OtherActor->ActorHasTag("Player"))
 	{
 		SetSpawnerActive(true);
@@ -281,6 +284,31 @@ void AEnemySpawner::OnTriggerEndOverlap(UPrimitiveComponent* OverlappedComp, AAc
 		if (!bAnyPlayerLeft)
 		{
 			SetSpawnerActive(false);
+		}
+	}
+}
+
+void AEnemySpawner::UnlockSpawner()
+{
+	if (!HasAuthority()) return;
+	
+	// 1. 잠금 홰제
+	bIsLockedByPuzzle = false;
+	
+	// 2. 잠금이 풀렸을 때, 플레이어가 이미 트리거 안에 서 있는지 검사
+	if (TriggerVolume)
+	{
+		TArray<AActor*> OverlappingActors;
+		TriggerVolume->GetOverlappingActors(OverlappingActors);
+		
+		for (AActor* Actor : OverlappingActors)
+		{
+			if (Actor && Actor->ActorHasTag("Player"))
+			{
+				// 플레이어가 안에 있다면 즉시 스폰
+				SetSpawnerActive(true);
+				break;
+			}
 		}
 	}
 }
