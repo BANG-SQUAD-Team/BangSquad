@@ -305,6 +305,10 @@ private:
     float DefaultGroundFriction;
     float DefaultGravityScale;
 
+    // [추가] 던지기 완료 후 상태 복구를 위한 멀티캐스트 선언
+    UFUNCTION(NetMulticast, Reliable)
+    void Multicast_OnThrowComplete();
+
    protected:
        // =================================================================
        // [안전장치 및 상태 복구]

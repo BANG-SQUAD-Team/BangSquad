@@ -12,12 +12,11 @@
 #include "BrainComponent.h"
 #include "Net/UnrealNetwork.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "Project_Bang_Squad/Character/MonsterBase/EnemyCharacterBase.h"
 #include "Project_Bang_Squad/Character/Enemy/EnemyNormal.h"
 #include "Project_Bang_Squad/Character/Player/Titan/TitanRock.h"
 #include "Project_Bang_Squad/Character/Player/Titan/TitanThrowableActor.h"
 #include "Project_Bang_Squad/Character/MageCharacter.h"
-#include "Enemy/EnemyMidBoss.h"
-#include "StageBoss/StageBossBase.h"
 #include "Engine/StaticMeshActor.h"
 #include "Particles/ParticleSystemComponent.h"
 #include "NiagaraFunctionLibrary.h" 
@@ -96,6 +95,18 @@ void ATitanCharacter::Tick(float DeltaTime)
     // 로컬 플레이어 전용 로직
     if (IsLocallyControlled())
     {
+        FString GrabActorName = GrabbedActor ? *GrabbedActor->GetName() : TEXT("None");
+
+        // 어떤 플래그가 True인지 색상으로 구분하여 표시
+        FString DebugMsg = FString::Printf(TEXT("[TITAN DEBUG]\nAttacking: %s\nGrabbing: %s\nCooldown: %s\nGrabbedTarget: %s"),
+            bIsAttacking ? TEXT("TRUE (RED)") : TEXT("False"),
+            bIsGrabbing ? TEXT("TRUE (RED)") : TEXT("False"),
+            bIsCooldown ? TEXT("TRUE (YELLOW)") : TEXT("False"),
+            *GrabActorName);
+
+        // 화면에 출력 (키: 1, 지속시간: 0.0f(매 프레임 갱신), 색상: Cyan)
+        GEngine->AddOnScreenDebugMessage(1, 0.0f, FColor::Cyan, DebugMsg);
+
         // 1. 카메라 보간
         if (SpringArm)
         {
@@ -121,6 +132,8 @@ void ATitanCharacter::Tick(float DeltaTime)
                 SetHighlight(HoveredActor, false);
                 HoveredActor = nullptr;
             }
+
+            StopAnimMontage();
         }
 
         // B. [공격 복구] 공격 중이라는데 몸이 가만히 있을 때 (몽타주 끊김)
@@ -223,6 +236,23 @@ void ATitanCharacter::OnDeath()
 void ATitanCharacter::Attack()
 {
     if (bIsDead) return;
+
+    if (!CanAttack())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("!!! Attack Blocked !!! -> Attacking:%d, Grabbing:%d, Cooldown:%d"),
+            bIsAttacking, bIsGrabbing, bIsCooldown);
+        return;
+    }
+
+    if (IsLocallyControlled())
+    {
+        UAnimInstance* AnimInstance = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr;
+        if (bIsAttacking && AnimInstance && !AnimInstance->IsAnyMontagePlaying())
+        {
+            bIsAttacking = false;
+        }
+    }
+
     if (!CanAttack()) return;
 
     if (bIsGrabbing && !IsValid(GrabbedActor))
@@ -230,6 +260,8 @@ void ATitanCharacter::Attack()
         bIsGrabbing = false;
         GrabbedActor = nullptr;
         ShowTrajectory(false);
+
+        StopAnimMontage();
     }
 
     FName SkillRowName = bIsNextAttackA ? TEXT("Attack_A") : TEXT("Attack_B");
@@ -299,6 +331,7 @@ void ATitanCharacter::Server_Attack_Implementation(FName SkillName)
 
 void ATitanCharacter::Multicast_Attack_Implementation(FName SkillName)
 {
+    bIsAttacking = true;
     ProcessSkill(SkillName);
 }
 
@@ -470,7 +503,6 @@ void ATitanCharacter::Skill1()
     if (!CanAttack()) return;
     if (bIsDead || bIsSkill1Cooldown) return;
 
-    bIsSkill1Cooldown = true;
     float LocalCooldown = 3.0f;
     if (SkillDataTable)
     {
@@ -485,6 +517,7 @@ void ATitanCharacter::Skill1()
         }
     }
 
+    bIsSkill1Cooldown = true;
     TriggerSkillCooldown(1, LocalCooldown);
     GetWorldTimerManager().SetTimer(Skill1CooldownTimerHandle, this, &ATitanCharacter::ResetSkill1Cooldown, LocalCooldown, false);
     Server_Skill1();
@@ -495,7 +528,6 @@ void ATitanCharacter::Skill2()
     if (!CanAttack()) return;
     if (bIsDead || bIsSkill2Cooldown) return;
 
-    bIsSkill2Cooldown = true;
     float LocalCooldown = 5.0f; 
     if (SkillDataTable)
     {
@@ -510,6 +542,7 @@ void ATitanCharacter::Skill2()
         }
     }
 
+    bIsSkill2Cooldown = true;
     TriggerSkillCooldown(2, LocalCooldown);
     GetWorldTimerManager().SetTimer(Skill2CooldownTimerHandle, this, &ATitanCharacter::ResetSkill2Cooldown, LocalCooldown, false);
     Server_Skill2();
@@ -519,15 +552,14 @@ void ATitanCharacter::ExecuteGrab() { if (GEngine) GEngine->AddOnScreenDebugMess
 
 void ATitanCharacter::Server_TryGrab_Implementation(AActor* TargetToGrab)
 {
+    if (!TargetToGrab || bIsGrabbing) return;
+
     ForceRecoverState();
 
     // 1. 유효성 검사 (기존 코드)
     if (!TargetToGrab || bIsGrabbing) return;
 
-    if (TargetToGrab->IsA(AEnemyMidBoss::StaticClass()) ||
-        TargetToGrab->IsA(AStageBossBase::StaticClass()) ||
-        TargetToGrab->ActorHasTag("Boss") ||
-        TargetToGrab->ActorHasTag("MidBoss"))
+    if (TargetToGrab->IsA(AEnemyCharacterBase::StaticClass()) && !TargetToGrab->IsA(AEnemyNormal::StaticClass()))
     {
         return;
     }
@@ -688,30 +720,36 @@ void ATitanCharacter::PerformRadialImpact(FVector Origin, float Radius, float Da
 
     for (AActor* Victim : OverlappedActors)
     {
-       if (!Victim || !Victim->IsValidLowLevel()) continue;
+        if (!Victim || !Victim->IsValidLowLevel()) continue;
 
-       // 데미지 적용
-       if (!Victim->ActorHasTag("Player"))
-       {
-          UGameplayStatics::ApplyDamage(Victim, Damage, GetController(), this, UDamageType::StaticClass());
-       }
-       
-       // 넉백 적용
-       FVector LaunchDir = (Victim->GetActorLocation() - Origin).GetSafeNormal();
-       LaunchDir.Z = 0.5f; 
-       LaunchDir.Normalize();
+        // 데미지 적용
+        if (!Victim->ActorHasTag("Player"))
+        {
+            UGameplayStatics::ApplyDamage(Victim, Damage, GetController(), this, UDamageType::StaticClass());
+        }
 
-       if (ACharacter* VictimChar = Cast<ACharacter>(Victim))
-       {
-          VictimChar->LaunchCharacter(LaunchDir * RadialForce, true, true);
-       }
-       else if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(Victim->GetRootComponent()))
-       {
-          if (RootComp->IsSimulatingPhysics())
-          {
-             RootComp->AddImpulse(LaunchDir * RadialForce * 100.0f);
-          }
-       }
+        // [핵심 로직] 보스 판별 (상속 구조 활용)
+        bool bIsBoss = Victim->IsA(AEnemyCharacterBase::StaticClass()) && !Victim->IsA(AEnemyNormal::StaticClass());
+
+        // 보스가 아닐 때만 넉백 적용
+        if (!bIsBoss)
+        {
+            FVector LaunchDir = (Victim->GetActorLocation() - Origin).GetSafeNormal();
+            LaunchDir.Z = 0.5f;
+            LaunchDir.Normalize();
+
+            if (ACharacter* VictimChar = Cast<ACharacter>(Victim))
+            {
+                VictimChar->LaunchCharacter(LaunchDir * RadialForce, true, true);
+            }
+            else if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(Victim->GetRootComponent()))
+            {
+                if (RootComp->IsSimulatingPhysics())
+                {
+                    RootComp->AddImpulse(LaunchDir * RadialForce * 100.0f);
+                }
+            }
+        }
     }
 }
 
@@ -827,21 +865,21 @@ void ATitanCharacter::Server_ThrowTarget_Implementation(FVector ThrowStartLocati
 {
     if (!bIsGrabbing || !GrabbedActor) return;
 
-    // 1. 애니메이션 강제 정지 (이래야 '공격 종료' 노티파이가 씹혀도 상태가 리셋됨)
+    ForceRecoverState();
+
     StopAnimMontage();
 
-    // 2. 공격 판정 타이머들 싹 다 취소 (지난번 답변의 MeleeStopTimerHandle도 있다면 포함)
     GetWorldTimerManager().ClearTimer(HitLoopTimerHandle);
     GetWorldTimerManager().ClearTimer(AttackHitTimerHandle);
     GetWorldTimerManager().ClearTimer(MeleeStopTimerHandle); 
 
-    // 3. 공격 판정 데이터 초기화
     SwingDamagedActors.Empty();
 
     GetWorldTimerManager().ClearTimer(GrabTimerHandle);
     Multicast_PlayJobMontage(TEXT("Throw"));
 
-    // 1. 던지는 힘과 방향 계산 (궤적 시스템과 일치)
+    bIsAttacking = false;
+
     FRotator ThrowRotation = GetControlRotation();
     FVector ThrowDir = ThrowRotation.Vector();
     
@@ -928,6 +966,8 @@ void ATitanCharacter::Server_ThrowTarget_Implementation(FVector ThrowStartLocati
        }
     }
 
+    Multicast_OnThrowComplete();
+
     // 상태 초기화
     GrabbedActor = nullptr;
     bIsGrabbing = false;
@@ -937,8 +977,18 @@ void ATitanCharacter::Server_ThrowTarget_Implementation(FVector ThrowStartLocati
 	TriggerSkillCooldown(3, ThrowCooldownTime);
 }
 
+void ATitanCharacter::Multicast_OnThrowComplete_Implementation()
+{
+    bIsGrabbing = false;
+    GrabbedActor = nullptr;
+    bIsAttacking = false; // 던지기 액션 종료 후 공격 가능 상태로 복구
+    ShowTrajectory(false);
+}
+
 void ATitanCharacter::Server_Skill1_Implementation()
 {
+    if (bIsDead || IsValid(HeldRock)) return;
+
     ForceRecoverState();
 
     if (!SkillDataTable) return;
@@ -1056,7 +1106,11 @@ void ATitanCharacter::ExecuteSpawnRock()
 
 void ATitanCharacter::Server_SpawnRock_Implementation()
 {
-    if (HeldRock) return;
+    if (HeldRock)
+    {
+        if (IsValid(HeldRock)) return;
+        else HeldRock = nullptr;
+    }
 
     if (RockClass)
     {
@@ -1102,6 +1156,12 @@ void ATitanCharacter::Server_ThrowRock_Implementation()
 {
     if (!HeldRock) return;
 
+    if (!IsValid(HeldRock))
+    {
+        HeldRock = nullptr;
+        return;
+    }
+
     HeldRock->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
 
     if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(HeldRock->GetRootComponent()))
@@ -1127,6 +1187,8 @@ void ATitanCharacter::Server_ThrowRock_Implementation()
 
 void ATitanCharacter::Server_Skill2_Implementation()
 {
+    if (bIsCharging || bIsDead) return;
+
     ForceRecoverState();
 
     if (!SkillDataTable) return;
@@ -1183,17 +1245,25 @@ void ATitanCharacter::OnChargeOverlap(UPrimitiveComponent* OverlappedComp, AActo
 
     if (ACharacter* VictimChar = Cast<ACharacter>(OtherActor))
     {
-       GetCapsuleComponent()->IgnoreActorWhenMoving(VictimChar, true);
-       VictimChar->GetCapsuleComponent()->IgnoreActorWhenMoving(this, true);
-       HitVictims.Add(VictimChar);
+        GetCapsuleComponent()->IgnoreActorWhenMoving(VictimChar, true);
+        VictimChar->GetCapsuleComponent()->IgnoreActorWhenMoving(this, true);
+        HitVictims.Add(VictimChar);
 
-       if (!VictimChar->ActorHasTag("Player"))
-       {
-          UGameplayStatics::ApplyDamage(OtherActor, CurrentSkillDamage, GetController(), this, UDamageType::StaticClass());
-       }
-       FVector KnockbackDir = GetActorForwardVector();
-       FVector LaunchForce = (KnockbackDir * 500.f) + FVector(0, 0, 1000.f);
-       VictimChar->LaunchCharacter(LaunchForce, true, true);
+        // 데미지 적용
+        if (!VictimChar->ActorHasTag("Player"))
+        {
+            UGameplayStatics::ApplyDamage(OtherActor, CurrentSkillDamage, GetController(), this, UDamageType::StaticClass());
+        }
+
+        // [핵심 로직] 보스 판별 (상속 구조 활용)
+        bool bIsBoss = VictimChar->IsA(AEnemyCharacterBase::StaticClass()) && !VictimChar->IsA(AEnemyNormal::StaticClass());
+
+        if (!bIsBoss)
+        {
+            FVector KnockbackDir = GetActorForwardVector();
+            FVector LaunchForce = (KnockbackDir * 500.f) + FVector(0, 0, 1000.f);
+            VictimChar->LaunchCharacter(LaunchForce, true, true);
+        }
     }
 }
 
@@ -1569,59 +1639,66 @@ void ATitanCharacter::UpdateTrajectory()
 
 void ATitanCharacter::ForceRecoverState()
 {
-    // 1. 공격 판정 강제 종료
+    // 1. 모든 근접 공격 타이머 및 판정 초기화
     StopMeleeTrace();
     GetWorldTimerManager().ClearTimer(AttackHitTimerHandle);
     GetWorldTimerManager().ClearTimer(HitLoopTimerHandle);
     GetWorldTimerManager().ClearTimer(MeleeStopTimerHandle);
     SwingDamagedActors.Empty();
 
-    // 2. 돌진(Charge) 상태였다면 강제 정지
-    if (bIsCharging)
-    {
-        StopCharge(); // 기존 StopCharge 로직 재활용
-    }
+    GetWorldTimerManager().ClearTimer(AttackCooldownTimerHandle);
+    bIsAttackCoolingDown = false;
+    bIsAttacking = false;
 
-    // 3. 이동 관련 수치 복구 (가장 중요: 미끄러짐 방지)
-    if (GetCharacterMovement())
-    {
-        // 걷는 상태가 아니라면(날거나 떨어지는 중) 강제로 걷기로 전환 (공중 스킬 제외)
-        if (GetCharacterMovement()->MovementMode == MOVE_Flying)
-        {
-            GetCharacterMovement()->SetMovementMode(MOVE_Falling);
-        }
-
-        // 마찰력 복구 (돌진하다 끊기면 마찰력 0이라 계속 미끄러짐)
-        GetCharacterMovement()->GroundFriction = 8.0f; // 기본값(설정에 맞게)
-        GetCharacterMovement()->GravityScale = 1.0f;
-    }
-
-    // 4. 잡기 상태인데 잡은 게 없다면? (좀비 상태 방지)
+    // 3. 잡기 상태 복구: 잡고 있는 대상이 유효하지 않으면 상태 초기화
     if (bIsGrabbing && !IsValid(GrabbedActor))
     {
         bIsGrabbing = false;
         GrabbedActor = nullptr;
+        ShowTrajectory(false);
+    }
+
+    // 4. 돌진 스킬 중이었다면 중단
+    if (bIsCharging)
+    {
+        StopCharge();
+    }
+
+    // 5. 무브먼트 상태 정상화
+    if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+    {
+        if (MoveComp->MovementMode == MOVE_Flying)
+        {
+            MoveComp->SetMovementMode(MOVE_Falling);
+        }
+        MoveComp->GroundFriction = 8.0f;
+        MoveComp->GravityScale = 1.0f;
     }
 }
 
 void ATitanCharacter::OnMontageEndedDelegate(UAnimMontage* Montage, bool bInterrupted)
 {
-    // 1. 공격 몽타주가 끝났는데(혹은 캔슬됐는데) 아직 공격 판정이 켜져 있다면?
     if (GetWorldTimerManager().IsTimerActive(HitLoopTimerHandle))
     {
         StopMeleeTrace();
     }
 
-    // 2. 돌진(Skill2) 몽타주가 끝났는데 아직 돌진 상태라면?
-    // (몽타주가 다 재생됐거나, 피격되어서 끊겼을 때 모두 포함)
     if (bIsCharging)
     {
-        // 돌진용 몽타주인지 확인하면 더 좋지만, 
-        // 돌진 상태(bIsCharging)인데 애니메이션이 끝났다면 무조건 끄는 게 안전함
         StopCharge();
     }
 
-    // 3. 만약 잡기(Throw) 몽타주가 끝났는데 
-    // 아직도 '던지기 쿨타임' 설정이 안 되어 있다면? (상태 꼬임 방지)
-    // 필요하다면 여기서 bIsGrabbing 등을 체크할 수도 있습니다.
+    if (bInterrupted && IsValid(HeldRock))
+    {
+        HeldRock->Destroy();
+        HeldRock = nullptr;
+    }
+
+    bIsAttacking = false;
+
+    if (!GrabbedActor || !IsValid(GrabbedActor))
+    {
+        bIsGrabbing = false;
+        ShowTrajectory(false); 
+    }
 }

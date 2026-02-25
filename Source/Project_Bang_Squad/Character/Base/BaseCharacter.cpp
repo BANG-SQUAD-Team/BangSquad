@@ -96,6 +96,10 @@ ABaseCharacter::ABaseCharacter()
 		OverheadMarkerMesh->SetCollisionProfileName(TEXT("NoCollision"));
 
 		ItemAttachParent = GetMesh();
+
+		bIsAttacking = false;           // [추가] 초기값 강제 설정
+		bIsAttackCoolingDown = false;   // [추가] 초기값 강제 설정
+		bIsDead = false;
 }
 
 void ABaseCharacter::EquipShopItem(const FShopItemData& ItemData)

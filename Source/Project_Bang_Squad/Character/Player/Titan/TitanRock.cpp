@@ -1,51 +1,48 @@
-#include "Project_Bang_Squad/Character/Player/Titan/TitanRock.h" // ��ΰ� �´��� Ȯ��!
+#include "Project_Bang_Squad/Character/Player/Titan/TitanRock.h" 
 #include "Components/StaticMeshComponent.h"
 #include "Components/SphereComponent.h"
 #include "Kismet/GameplayStatics.h"
-#include "Kismet/KismetSystemLibrary.h" // SphereOverlapActors��
-#include "GameFramework/Character.h"    // LaunchCharacter��
+#include "Kismet/KismetSystemLibrary.h" 
+#include "GameFramework/Character.h"   
+#include "Project_Bang_Squad/Character/MonsterBase/EnemyCharacterBase.h"
+#include "Project_Bang_Squad/Character/Enemy/EnemyNormal.h"
 
 ATitanRock::ATitanRock()
 {
 	PrimaryActorTick.bCanEverTick = false;
 
-	// 1. �浹ü ����
 	CollisionComp = CreateDefaultSubobject<USphereComponent>(TEXT("SphereComp"));
 	CollisionComp->InitSphereRadius(40.0f);
 	
 	CollisionComp->SetCollisionProfileName(TEXT("BlockAllDynamic"));
-	CollisionComp->SetNotifyRigidBodyCollision(true); // Hit �̺�Ʈ �ʼ�
+	CollisionComp->SetNotifyRigidBodyCollision(true); 
 
 	RootComponent = CollisionComp;
 
-	// 2. ���� �޽� ����
 	RockMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("RockMesh"));
 	RockMesh->SetupAttachment(RootComponent);
 	RockMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
-	// �浹 �̺�Ʈ ���ε�
 	CollisionComp->OnComponentHit.AddDynamic(this, &ATitanRock::OnHit);
 }
 
 void ATitanRock::BeginPlay()
 {
 	Super::BeginPlay();
-	SetLifeSpan(5.0f); // 5�� �� �ڵ� ����
+	SetLifeSpan(5.0f); 
 }
 
 void ATitanRock::InitializeRock(float InDamage, AActor* InOwner)
 {
 	Damage = InDamage;
 	OwnerCharacter = InOwner;
-	SetOwner(InOwner); // ���� ����
+	SetOwner(InOwner); 
 }
 
 void ATitanRock::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
-	// ���� ���� ���ΰ� �ٷ� �ε����� �� ����
 	if (OtherActor == OwnerCharacter) return;
 
-	// �����̵� �ε����� ����
 	Explode();
 }
 
@@ -53,10 +50,6 @@ void ATitanRock::Explode()
 {
 	FVector ExplosionLocation = GetActorLocation();
 
-	// [�α�] ���� Ȯ�ο�
-	// UE_LOG(LogTemp, Warning, TEXT("TitanRock Exploded!"));
-
-	// 1. ���� �� ���� ã��
 	TArray<AActor*> OverlappedActors;
 	TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;
 	ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_Pawn));
@@ -76,15 +69,14 @@ void ATitanRock::Explode()
 		OverlappedActors
 	);
 
-	// 2. ������ �� �˹� ó��
 	for (AActor* Victim : OverlappedActors)
 	{
 		if (!Victim || !Victim->IsValidLowLevel()) continue;
 
-		// �Ʊ� Ȯ�� ("Player" �±�)
+		// 아군 확인 ("Player" 태그)
 		bool bIsAlly = Victim->ActorHasTag("Player");
 
-		// �������Ը� ������
+		// 아군이 아니면 데미지 적용
 		if (!bIsAlly)
 		{
 			UGameplayStatics::ApplyDamage(
@@ -96,24 +88,29 @@ void ATitanRock::Explode()
 			);
 		}
 
-		// �˹� (��� ����)
-		FVector LaunchDir = (Victim->GetActorLocation() - ExplosionLocation).GetSafeNormal();
-		LaunchDir.Z = 0.6f; // ���� ����
-		LaunchDir.Normalize();
+		// [핵심 로직] 에너미 베이스를 상속받았는데, 노말 몹이 아니라고? -> 보스급 몬스터!
+		bool bIsBoss = Victim->IsA(AEnemyCharacterBase::StaticClass()) && !Victim->IsA(AEnemyNormal::StaticClass());
 
-		if (ACharacter* VictimChar = Cast<ACharacter>(Victim))
+		// 넉백 (보스가 아닐 때만 띄워버림!)
+		if (!bIsBoss)
 		{
-			VictimChar->LaunchCharacter(LaunchDir * KnockbackForce, true, true);
-		}
-		else if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(Victim->GetRootComponent()))
-		{
-			if (RootComp->IsSimulatingPhysics())
+			FVector LaunchDir = (Victim->GetActorLocation() - ExplosionLocation).GetSafeNormal();
+			LaunchDir.Z = 0.6f; // 위로 띄움
+			LaunchDir.Normalize();
+
+			if (ACharacter* VictimChar = Cast<ACharacter>(Victim))
 			{
-				RootComp->AddImpulse(LaunchDir * KnockbackForce * 100.0f);
+				VictimChar->LaunchCharacter(LaunchDir * KnockbackForce, true, true);
+			}
+			else if (UPrimitiveComponent* RootComp = Cast<UPrimitiveComponent>(Victim->GetRootComponent()))
+			{
+				if (RootComp->IsSimulatingPhysics())
+				{
+					RootComp->AddImpulse(LaunchDir * KnockbackForce * 100.0f);
+				}
 			}
 		}
 	}
 
-	// 3. �ı�
 	Destroy();
 }
