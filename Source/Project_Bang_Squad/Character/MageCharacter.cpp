@@ -101,6 +101,7 @@ AMageCharacter::AMageCharacter()
        HeadSkeletalComp->SetRelativeLocation(FVector::ZeroVector);
        HeadSkeletalComp->SetRelativeRotation(FRotator::ZeroRotator);
     }
+   
 }
 
 void AMageCharacter::BeginPlay()
@@ -276,6 +277,7 @@ void AMageCharacter::Tick(float DeltaTime)
        LockOnPillar(DeltaTime);
     }
 }
+
 
 // ====================================================================================
 //  섹션 3: 조작 및 상호작용
@@ -619,49 +621,57 @@ void AMageCharacter::ProcessSkill(FName SkillRowName, FVector TargetLocation)
 
 void AMageCharacter::SpawnDelayedProjectile(UClass* ProjectileClass, float DamageAmount, FVector TargetLocation)
 {
-    // 서버가 아니거나 생성할 클래스가 없으면 취소
-    if (!HasAuthority() || !ProjectileClass) return;
+   if (!HasAuthority() || !ProjectileClass) return;
     
-    // 투사체를 쏘는 시점이므로 지팡이 잔상 끄기
-    Multicast_SetTrailActive(false);
+   Multicast_SetTrailActive(false);
 
-    // 투사체가 생성될 초기 위치 (지팡이 끝부분)
-    FVector SpawnLoc;
-    FName SocketName = TEXT("Weapon_Root_R");
-    if (GetMesh() && GetMesh()->DoesSocketExist(SocketName))
-       SpawnLoc = GetMesh()->GetSocketLocation(SocketName);
-    else
-       SpawnLoc = GetActorLocation() + (GetActorForwardVector() * 100.f);
+   
+   // 1. 카메라의 현재 위치와 방향을 가져옵니다. (가장 정확한 십자선 기준점)
+   FVector CameraLoc;
+   FRotator CameraRot;
+   if (APlayerController* PC = Cast<APlayerController>(GetController()))
+   {
+      PC->GetPlayerViewPoint(CameraLoc, CameraRot);
+   }
+   else
+   {
+      CameraLoc = GetActorLocation();
+      CameraRot = GetBaseAimRotation();
+   }
+   
+   // ====================================================================
+   // TPS 스폰 위치 계산법 (동적 거리 측정)
+   // ====================================================================
+   
+   // 1. 카메라와 캐릭터 본체 사이의 '실제 거리'를 실시간으로 잽니다!
+   // (벽을 등져서 카메라가 줌인되면 거리가 짧아지고, 넓은 곳이면 거리가 길어집니다)
+   float DistToChar = FVector::Distance(CameraLoc, GetActorLocation());
 
-    // 클라이언트가 전송한 조준점(TargetLocation)을 최종 목표로 설정
-    FVector FinalTargetLoc = TargetLocation;
-
-    // 만약 에러나 외부 요인으로 좌표값이 0이라면 캐릭터 앞쪽 허공을 쏘게 보정
-    if (FinalTargetLoc.IsZero()) 
-    {
-        FinalTargetLoc = SpawnLoc + (GetActorForwardVector() * 2000.0f);
-    }
-
-    // 지팡이 끝점에서 목표 지점을 바라보는 회전각 계산
-    FRotator SpawnRot = UKismetMathLibrary::FindLookAtRotation(SpawnLoc, FinalTargetLoc);
+   // 2. 카메라 시선 방향으로 딱 '캐릭터가 있는 거리 + 50cm(내 몸통 두께)' 만큼만 앞으로 밉니다.
+   // 이렇게 하면 무조건 캐릭터의 바로 앞 허공에서 마법이 생성됩니다! (뒤통수 맞을 일 없음)
+   FVector SpawnLoc = CameraLoc + (CameraRot.Vector() * (DistToChar + ProjectileForwardOffset)); 
+   
+   // 3. 높이를 살짝만 내려서 캐릭터 어깨~가슴 높이에 맞춥니다.
+   SpawnLoc.Z -= ProjectileDownwardOffset;;
     
-    // 포물선 궤적을 위해 약간 위쪽으로 각도(Pitch) 보정
-    SpawnRot.Pitch += ProjectilePitchOffset; 
-    
-    // 액터 생성(Spawn) 처리
-    FActorSpawnParameters SpawnParams;
-    SpawnParams.Owner = this;
-    SpawnParams.Instigator = GetInstigator();
-    SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+   // 4. 방향은 십자선 정중앙을 향하도록 각도를 부드럽게 꺾어줍니다.
+   FVector CrosshairTarget = CameraLoc + (CameraRot.Vector() * AimTraceDistance); 
+   FRotator SpawnRot = UKismetMathLibrary::FindLookAtRotation(SpawnLoc, CrosshairTarget);
 
-    AActor* SpawnedActor = GetWorld()->SpawnActor<AActor>(ProjectileClass, SpawnLoc, SpawnRot, SpawnParams);
+   FActorSpawnParameters SpawnParams;
+   SpawnParams.Owner = this;
+   SpawnParams.Instigator = GetInstigator();
+   SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
-    // 생성된 투사체에 데미지와 주인(마법사) 설정
-    if (AMageProjectile* MyProjectile = Cast<AMageProjectile>(SpawnedActor))
-    {
-       MyProjectile->Damage = DamageAmount;
-       MyProjectile->SetOwner(this); 
-    }
+   // 투사체 생성
+   AActor* SpawnedActor = GetWorld()->SpawnActor<AActor>(ProjectileClass, SpawnLoc, SpawnRot, SpawnParams);
+
+   // 데미지와 주인 설정
+   if (AMageProjectile* MyProjectile = Cast<AMageProjectile>(SpawnedActor))
+   {
+      MyProjectile->Damage = DamageAmount;
+      MyProjectile->SetOwner(this); 
+   }
 }
 
 // ====================================================================================
@@ -1013,8 +1023,10 @@ FVector AMageCharacter::GetCrosshairTargetLocation()
     Params.AddIgnoredActor(this); // 나 자신은 통과되게 무시
 
     // 화면 가운데 뭐가 있는지 레이캐스트 검사
-    bool bHit = GetWorld()->LineTraceSingleByChannel(HitResult, TraceStart, TraceEnd, ECC_Visibility, Params);
-
+   FCollisionShape Sphere = FCollisionShape::MakeSphere(30.0f);
+    bool bHit = GetWorld()->SweepSingleByChannel(HitResult, TraceStart, TraceEnd,
+       FQuat::Identity, ECC_Visibility, Sphere, Params);
+   
     // 뭔가 맞았으면 그 부딪힌 좌표점 반환, 100m동안 아무것도 없었으면 100m 앞 허공 좌표 반환
     return bHit ? HitResult.ImpactPoint : TraceEnd;
 }

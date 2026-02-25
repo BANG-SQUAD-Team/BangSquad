@@ -62,8 +62,26 @@ public:
     // 보트 탑승/하차 상태 동기화
     UFUNCTION(Server, Reliable)
     void Server_SetBoatRideState(AMagicBoat* Boat, bool bRiding);
+    
+
 
 protected:
+    // ====================================================================================
+    // 에임 및 투사체 스폰 설정 (블루프린트에서 조절 가능)
+    // ====================================================================================
+    
+    // 캐릭터 몸통에서 앞으로 얼마나 띄워서 스폰할지
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat|Aiming")
+    float ProjectileForwardOffset = 50.0f;
+    
+    // 카메라 높이에서 얼마나 아래로 깎아내릴지
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat|Aiming")
+    float ProjectileDownwardOffset = 60.0f;
+    
+    // 크로스헤어 레이저가 도달하는 최대거리
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat|Aiming")
+    float AimTraceDistance = 5000.0f;
+    
     // ====================================================================================
     //  섹션 3: 라이프사이클 이벤트
     // ====================================================================================
@@ -224,4 +242,6 @@ private:
 
     float DefaultArmLength;
     FVector DefaultSocketOffset;
+    
+    
 };
