@@ -24,91 +24,85 @@
 #include "Player/Mage/MovePillar.h"
 
 // ====================================================================================
-//  섹션 1: 생성자 및 초기화
+// [Section 1] 초기화 (Initialization)
 // ====================================================================================
 
 AMageCharacter::AMageCharacter()
 {
-    // 매 프레임마다 Tick 함수가 호출되도록 허용
     PrimaryActorTick.bCanEverTick = true;
 
-    // 마우스로 시점을 돌릴 때 캐릭터 몸통이 즉각적으로 같이 돌지 않도록 설정
+    // 시점 설정 (카메라 회전에 캐릭터가 즉각 동기화되지 않음)
     bUseControllerRotationYaw = true;
     bUseControllerRotationPitch = false;
     bUseControllerRotationRoll = false;
 
-    // 이동 관련 세팅 (이동 속도 및 캐릭터 회전 속도)
     if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
     {
        MoveComp->MaxWalkSpeed = 550.f;
-       MoveComp->bOrientRotationToMovement = false; // 시점 기준 이동이므로 꺼둠
+       MoveComp->bOrientRotationToMovement = false; 
        MoveComp->RotationRate = FRotator(0.0f, 720.0f, 0.0f);
     }
 
     // 기본 스탯 초기화
     AttackCooldownTime = 1.f;
     UnlockedStageLevel = 1;
-
-    // 상호작용 타겟 포인터 초기화
     FocusedPillar = nullptr;
     CurrentTargetPillar = nullptr;
 
-    // [기둥 조작용] 카메라가 부드럽게 줌인/줌아웃 되도록 돕는 타임라인 컴포넌트 생성
+    // --- 컴포넌트 생성 ---
+    
+    // 1. 기믹 조작용 카메라 타임라인
     CameraTimelineComp = CreateDefaultSubobject<UTimelineComponent>(TEXT("CameraTimelineComp"));
 
-    // [보트 탑승용] 위에서 아래로 내려다보는 탑다운 시점의 스프링암 생성
+    // 2. 보트 탑승용 탑다운 카메라 시스템
     TopDownSpringArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("TopDownSpringArm"));
     TopDownSpringArm->SetupAttachment(GetRootComponent());
-    TopDownSpringArm->SetRelativeRotation(FRotator(-90.0f, 0.0f, 0.0f)); // 카메라가 수직 아래를 보게 설정
-    TopDownSpringArm->TargetArmLength = 1200.0f; // 카메라 높이
-    TopDownSpringArm->bDoCollisionTest = false; // 벽에 부딪혀도 카메라가 줌인되지 않게 함
+    TopDownSpringArm->SetRelativeRotation(FRotator(-90.0f, 0.0f, 0.0f)); 
+    TopDownSpringArm->TargetArmLength = 1200.0f; 
+    TopDownSpringArm->bDoCollisionTest = false; 
 
-    // [보트 탑승용] 탑다운 카메라 본체 생성
     TopDownCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("TopDownCamera"));
     TopDownCamera->SetupAttachment(TopDownSpringArm, USpringArmComponent::SocketName);
-    TopDownCamera->SetAutoActivate(false); // 평소에는 꺼둠
+    TopDownCamera->SetAutoActivate(false);
 
-    // [기본 시점] 부모 클래스에서 물려받은 기본 스프링암 설정
+    // 3. 기본 카메라 조정
     if (SpringArm)
     {
-       SpringArm->TargetOffset = FVector(0.0f, 0.0f, 150.0f); // 캐릭터 어깨 위쪽을 바라보도록 오프셋 지정
+       SpringArm->TargetOffset = FVector(0.0f, 0.0f, 150.0f); 
        SpringArm->ProbeSize = 12.0f;
-       SpringArm->bUsePawnControlRotation = true; // 마우스 이동에 따라 카메라 회전
+       SpringArm->bUsePawnControlRotation = true; 
     }
 
-    // [직업 아우라] 캐릭터 주변에 맴도는 이펙트 컴포넌트 생성
+    // 4. VFX 컴포넌트
     JobAuraComp = CreateDefaultSubobject<UNiagaraComponent>(TEXT("JobAuraComp"));
-    JobAuraComp->SetupAttachment(GetMesh(), TEXT("Bip001-Pelvis")); // 골반 위치에 부착
-    JobAuraComp->bAutoActivate = false; // 스킬 사용 시에만 켜지도록 기본은 꺼둠
+    JobAuraComp->SetupAttachment(GetMesh(), TEXT("Bip001-Pelvis")); 
+    JobAuraComp->bAutoActivate = false; 
 
-    // [무기 장착] 지팡이 등 무기가 붙을 루트 컴포넌트 생성
+    // 5. 무기 소켓 및 악세서리 부착점 설정
     WeaponRootComp = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Weapon_Root_R"));
-    WeaponRootComp->SetupAttachment(GetMesh(), TEXT("Weapon_Root_R")); // 스켈레탈 메쉬의 소켓에 부착
-    ItemAttachParent = WeaponRootComp; // 상점에서 산 아이템이 이곳에 붙도록 지정
+    WeaponRootComp->SetupAttachment(GetMesh(), TEXT("Weapon_Root_R")); 
+    ItemAttachParent = WeaponRootComp; 
     AccessorySocketName = FName("Acc_Socket");
 
-    // 부모 클래스의 악세서리들을 메이지 전용 무기 위치로 재조정
     if (HeadAccessoryComponent)
     {
        HeadAccessoryComponent->SetupAttachment(WeaponRootComp);
        HeadAccessoryComponent->SetRelativeLocation(FVector::ZeroVector);
        HeadAccessoryComponent->SetRelativeRotation(FRotator::ZeroRotator);
     }
-
     if (HeadSkeletalComp)
     {
        HeadSkeletalComp->SetupAttachment(WeaponRootComp);
        HeadSkeletalComp->SetRelativeLocation(FVector::ZeroVector);
        HeadSkeletalComp->SetRelativeRotation(FRotator::ZeroRotator);
     }
-   
 }
 
 void AMageCharacter::BeginPlay()
 {
     Super::BeginPlay();
 
-    // 블루프린트 설정 오류를 막기 위해 기본 시점 설정을 코드로 강력하게 고정
+    // 카메라 기본 설정 고정
     if (SpringArm)
     {
        SpringArm->bUsePawnControlRotation = true;
@@ -116,42 +110,35 @@ void AMageCharacter::BeginPlay()
        SpringArm->bInheritYaw = true;
        SpringArm->bInheritRoll = false;
 
-       // 기둥 줌인을 위해 원래의 카메라 거리와 오프셋을 기억해둠
        DefaultArmLength = SpringArm->TargetArmLength;
        DefaultSocketOffset = SpringArm->SocketOffset;
     }
 
-    // 평상시엔 탑다운 카메라를 비활성화
     if (TopDownCamera) TopDownCamera->SetActive(false);
 
-    // [카메라 줌인 타임라인 세팅] 
+    // --- 기둥 줌인 타임라인 바인딩 ---
     FOnTimelineFloat TimelineProgress;
     TimelineProgress.BindDynamic(this, &AMageCharacter::CameraTimelineProgress);
-
-    // 에디터에서 넣은 커브 데이터가 있으면 타임라인에 연결
     if (CameraCurve)
     {
        CameraTimelineComp->AddInterpFloat(CameraCurve, TimelineProgress);
     }
     else
     {
-       // 커브가 없어도 에러가 나지 않도록 1초짜리 기본 타임라인으로 설정
        CameraTimelineComp->AddInterpFloat(nullptr, TimelineProgress);
        CameraTimelineComp->SetTimelineLength(1.0f);
     }
 
-    // 타임라인 재생이 끝났을 때 호출될 이벤트 연결
     FOnTimelineEvent TimelineFinishedEvent;
     TimelineFinishedEvent.BindDynamic(this, &AMageCharacter::OnCameraTimelineFinished);
     CameraTimelineComp->SetTimelineFinishedFunc(TimelineFinishedEvent);
     CameraTimelineComp->SetLooping(false);
 
-    // 무기 부착용 소켓 찾기 (마법 발사 위치를 찾기 위함)
+    // --- 무기 메쉬 캐싱 및 VFX 설정 ---
     TArray<UStaticMeshComponent*> StaticComps;
     GetComponents<UStaticMeshComponent>(StaticComps);
     for (UStaticMeshComponent* Comp : StaticComps)
     {
-       // 지팡이 소켓이나 끝부분 소켓이 있는 컴포넌트를 무기로 간주하여 캐싱
        if (Comp && (Comp->DoesSocketExist(TEXT("Weapon_Root_R")) || Comp->DoesSocketExist(TEXT("TipSocket")))) 
        { 
           CachedWeaponMesh = Comp; 
@@ -159,35 +146,20 @@ void AMageCharacter::BeginPlay()
        }
     }
 
-    // 마법 지팡이 움직임 궤적(트레일) 이펙트 부착
     if (CachedWeaponMesh && StaffTrailVFX)
     {
-       StaffTrailComp = UNiagaraFunctionLibrary::SpawnSystemAttached(
-          StaffTrailVFX,
-          CachedWeaponMesh,
-          NAME_None, 
-          FVector::ZeroVector,
-          FRotator::ZeroRotator,
-          EAttachLocation::SnapToTarget,
-          false
-       );
-
-       // 평타 칠 때만 켜야 하므로 평소엔 꺼둠
-       if (StaffTrailComp)
-       {
-          StaffTrailComp->Deactivate(); 
-       }
+       StaffTrailComp = UNiagaraFunctionLibrary::SpawnSystemAttached(StaffTrailVFX, CachedWeaponMesh, NAME_None, FVector::ZeroVector, FRotator::ZeroRotator, EAttachLocation::SnapToTarget, false);
+       if (StaffTrailComp) StaffTrailComp->Deactivate(); 
     }
     
-    // 직업 아우라 이펙트 초기 셋업
     if (JobAuraComp && JobAuraVFX)
     {
        JobAuraComp->SetAsset(JobAuraVFX);
-       JobAuraComp->SetRelativeScale3D(JobAuraScale); // 크기 조절
-       JobAuraComp->Deactivate(); // 평소엔 꺼둠
+       JobAuraComp->SetRelativeScale3D(JobAuraScale); 
+       JobAuraComp->Deactivate(); 
     }
     
-    // [성능 최적화] 스킬 사용 시마다 데이터를 찾지 않도록 게임 시작 시 미리 캐싱해둠
+    // --- 스킬 데이터 캐싱 ---
     if (SkillDataTable)
     {
        TArray<FName> RowNames = SkillDataTable->GetRowNames();
@@ -195,14 +167,11 @@ void AMageCharacter::BeginPlay()
        {
           static const FString ContextString(TEXT("MageSkillCacheContext"));
           FSkillData* Data = SkillDataTable->FindRow<FSkillData>(RowName, ContextString);
-          if (Data)
-          {
-             SkillDataCache.Add(RowName, Data);
-          }
+          if (Data) SkillDataCache.Add(RowName, Data);
        }
     }
 
-    // [상호작용 탐지] 내 화면(로컬)에서만 0.1초마다 앞쪽의 상호작용 객체를 찾는 타이머 시작
+    // 로컬 클라이언트에서만 상호작용 감지 타이머 실행
     if (IsLocallyControlled())
     {
        GetWorldTimerManager().SetTimer(InteractionTimerHandle, this, &AMageCharacter::CheckInteractableTarget, 0.1f, true);
@@ -213,37 +182,29 @@ void AMageCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 {
     Super::SetupPlayerInputComponent(PlayerInputComponent);
 
-    // 키보드/마우스 입력 바인딩
     if (UEnhancedInputComponent* EIC = Cast<UEnhancedInputComponent>(PlayerInputComponent))
     {
-       // 직업 능력 (염력, 보트 등) 키 바인딩
        if (JobAbilityAction)
        {
-          EIC->BindAction(JobAbilityAction, ETriggerEvent::Started, this, &AMageCharacter::JobAbility); // 누를 때
-          EIC->BindAction(JobAbilityAction, ETriggerEvent::Completed, this, &AMageCharacter::EndJobAbility); // 뗄 때
-          EIC->BindAction(JobAbilityAction, ETriggerEvent::Canceled, this, &AMageCharacter::EndJobAbility); // 취소될 때
+          EIC->BindAction(JobAbilityAction, ETriggerEvent::Started, this, &AMageCharacter::JobAbility); 
+          EIC->BindAction(JobAbilityAction, ETriggerEvent::Completed, this, &AMageCharacter::EndJobAbility); 
+          EIC->BindAction(JobAbilityAction, ETriggerEvent::Canceled, this, &AMageCharacter::EndJobAbility); 
        }
     }
 }
 
 // ====================================================================================
-//  섹션 2: 상태 관리 및 틱
+// [Section 2] 상태 관리 및 틱 (State & Tick)
 // ====================================================================================
 
 void AMageCharacter::OnDeath()
 {
     if (bIsDead) return;
     
-    // 죽으면 모든 아우라와 이펙트 끄기
     Server_SetAuraActive(false);
 
-    // 염력으로 무언가 조종 중이었다면 강제로 손을 놓게 함
-    if (bIsPillarMode || bIsBoatMode)
-    {
-       EndJobAbility();
-    }
+    if (bIsPillarMode || bIsBoatMode) EndJobAbility();
 
-    // 돌고 있던 스킬 타이머들 전부 취소
     GetWorldTimerManager().ClearTimer(ComboResetTimer);
     GetWorldTimerManager().ClearTimer(ProjectileTimerHandle);
     StopAnimMontage();
@@ -255,13 +216,12 @@ void AMageCharacter::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
 
-    // 기둥 줌인 카메라 연출을 매 프레임 업데이트
     if (CameraTimelineComp)
     {
        CameraTimelineComp->TickComponent(DeltaTime, ELevelTick::LEVELTICK_TimeOnly, nullptr);
     }
 
-    // 기둥을 조종 중이었는데 기둥이 무너지거나 사라지면 자동으로 조종 모드 해제
+    // 기둥이 무너지면 조종 상태 해제
     if (bIsPillarMode)
     {
        if (!IsValid(CurrentTargetPillar) || CurrentTargetPillar->bIsFallen)
@@ -271,31 +231,28 @@ void AMageCharacter::Tick(float DeltaTime)
        }
     }
 
-    // 기둥 조종 중일 때 시선(카메라)을 기둥에 부드럽게 고정시킴
+    // 조종 중인 기둥으로 시점 부드럽게 고정
     if (bIsPillarMode && IsValid(CurrentTargetPillar) && !CurrentTargetPillar->bIsFallen)
     {
        LockOnPillar(DeltaTime);
     }
 }
 
-
 // ====================================================================================
-//  섹션 3: 조작 및 상호작용
+// [Section 3] 조작 및 상호작용 (Input & Interaction)
 // ====================================================================================
 
 void AMageCharacter::CheckInteractableTarget()
 {
-    // 나 자신이 조종하는 화면이 아니면 굳이 탐지할 필요 없으므로 타이머 파기
     if (!IsLocallyControlled())
     {
        GetWorldTimerManager().ClearTimer(InteractionTimerHandle);
        return;
     }
 
-    // 이미 무언가를 조종하고 있다면 다른 대상을 찾지 않음
     if (bIsPillarMode || bIsBoatMode) return;
 
-    // 플레이어가 기둥이나 다른 곳에 매달려있을 때는 마법 상호작용 하이라이트 해제
+    // 구조물에 매달려 있을 때는 하이라이트 비활성화
     if (GetAttachParentActor() != nullptr)
     {
        if (FocusedPillar)
@@ -307,34 +264,30 @@ void AMageCharacter::CheckInteractableTarget()
        if (HoveredActor)
        {
           if (IMagicInteractableInterface* Interface = Cast<IMagicInteractableInterface>(HoveredActor))
-          {
              Interface->SetMageHighlight(false);
-          }
           HoveredActor = nullptr;
        }
        return; 
     }
 
-    // 카메라 전방을 향해 안보이는 레이저를 쏴서 물체 탐색
+    // 전방으로 레이저를 발사하여 상호작용 객체 탐색
     FHitResult HitResult;
     FVector Start = Camera->GetComponentLocation();
     FVector End = Start + (Camera->GetForwardVector() * TraceDistance);
     FCollisionQueryParams Params;
-    Params.AddIgnoredActor(this); // 나는 무시
+    Params.AddIgnoredActor(this); 
 
     bool bHit = GetWorld()->LineTraceSingleByChannel(HitResult, Start, End, ECC_Visibility, Params);
     AActor* HitActor = HitResult.GetActor();
 
-    // 맞은 물체가 기둥인지, 아니면 보트 같은 마법 상호작용 객체인지 파악
     APillar* HitPillar = Cast<APillar>(HitActor);
     bool bIsInterface = (HitActor && HitActor->Implements<UMagicInteractableInterface>());
 
-    // 타겟 감지: 쓰러지지 않은 기둥일 경우
+    // [케이스 1] 쓰러지지 않은 기둥 발견
     if (HitPillar && !HitPillar->bIsFallen)
     {
        if (FocusedPillar != HitPillar)
        {
-          // 예전에 바라보던 기둥이나 보트의 외곽선(하이라이트)을 끔
           if (HoveredActor)
           {
              if (IMagicInteractableInterface* Interface = Cast<IMagicInteractableInterface>(HoveredActor))
@@ -343,18 +296,16 @@ void AMageCharacter::CheckInteractableTarget()
           }
           if (FocusedPillar) FocusedPillar->PillarMesh->SetRenderCustomDepth(false);
 
-          // 새로 쳐다본 기둥에 외곽선 켜기 (CustomDepth 활용)
           HitPillar->PillarMesh->SetRenderCustomDepth(true);
           HitPillar->PillarMesh->SetCustomDepthStencilValue(255);
           FocusedPillar = HitPillar;
        }
     }
-    // 타겟 감지: 보트 등 인터페이스 적용 객체일 경우
+    // [케이스 2] 마법 인터페이스 객체(보트 등) 발견
     else if (bIsInterface)
     {
        if (HoveredActor != HitActor)
        {
-          // 예전 타겟 외곽선 끄기
           if (FocusedPillar)
           {
              FocusedPillar->PillarMesh->SetRenderCustomDepth(false);
@@ -365,7 +316,6 @@ void AMageCharacter::CheckInteractableTarget()
              if (IMagicInteractableInterface* Iface = Cast<IMagicInteractableInterface>(HoveredActor))
                 Iface->SetMageHighlight(false);
           }
-          // 새 타겟 외곽선 켜기
           if (IMagicInteractableInterface* Interface = Cast<IMagicInteractableInterface>(HitActor))
           {
              Interface->SetMageHighlight(true);
@@ -373,7 +323,7 @@ void AMageCharacter::CheckInteractableTarget()
           HoveredActor = HitActor;
        }
     }
-    // 아무것도 안 쳐다볼 경우: 켜져있던 외곽선 전부 끄기
+    // [케이스 3] 허공
     else
     {
        if (FocusedPillar)
@@ -392,69 +342,65 @@ void AMageCharacter::CheckInteractableTarget()
 
 void AMageCharacter::Look(const FInputActionValue& Value)
 {
-    // 마우스 이동 값을 받아옴
     FVector2D LookInput = Value.Get<FVector2D>();
 
-    // [조작 분기 1] 보트나 회전 기둥을 조종 중일 때
+    // 1. 보트 또는 회전 기둥 조종 모드
     if (bIsBoatMode && CurrentControlledActor)
     {
        FVector MoveDir = FVector::ZeroVector;
 
-       // 타겟이 보트일 경우: 카메라가 바라보는 방향을 기준으로 상하좌우 이동 계산
        if (Cast<AMagicBoat>(CurrentControlledActor))
        {
           if (TopDownCamera)
           {
              FVector ScreenUp = TopDownCamera->GetUpVector();
              FVector ScreenRight = TopDownCamera->GetRightVector();
-             ScreenUp.Z = 0; // Z축(높이)은 무시하고 평면 이동만 처리
+             ScreenUp.Z = 0; 
              ScreenRight.Z = 0;
              ScreenUp.Normalize();
              ScreenRight.Normalize();
 
-             // 마우스 방향에 맞춰 방향 벡터 생성
              MoveDir = (ScreenUp * LookInput.Y) + (ScreenRight * LookInput.X);
           }
        }
-       // 타겟이 회전 기둥일 경우: 마우스 위/아래 이동만 감지해서 회전 신호로 전달
        else
        {
-          if (FMath::Abs(LookInput.Y) > 0.1f) // 미세한 손떨림 방지
+          if (FMath::Abs(LookInput.Y) > 0.1f) 
           {
              MoveDir = FVector(0.f, LookInput.Y, 0.f);
           }
        }
 
-       // 방향이 정해졌으면 서버로 해당 액터를 조종하라는 명령 전송
        if (!MoveDir.IsNearlyZero())
        {
           Server_InteractActor(CurrentControlledActor, MoveDir);
        }
     }
-    // [조작 분기 2] 무너뜨릴 기둥을 붙잡고 있을 때
+    // 2. 파괴형 기둥 조종 모드
     else if (bIsPillarMode)
     {
        if (IsValid(CurrentTargetPillar) && !CurrentTargetPillar->bIsFallen)
        {
-          // 기둥이 요구하는 마우스 꺾기 방향(좌/우)으로 마우스를 세게 움직였는지 확인
           if (FMath::Abs(LookInput.X) > 0.5f && FMath::Sign(LookInput.X) == CurrentTargetPillar->RequiredMouseDirection)
           {
-             // 맞게 꺾었다면 서버에 기둥 파괴를 명령하고 조종 모드 해제
              Server_TriggerPillarFall(CurrentTargetPillar);
              EndJobAbility();
           }
        }
     }
-    // [조작 분기 3] 평상시 마우스 화면 회전
+    // 3. 일반 시점 조작
     else
     {
        Super::Look(Value);
     }
 }
 
+// ====================================================================================
+// [Section 4] 시점 유틸리티 (Camera Utilities)
+// ====================================================================================
+
 void AMageCharacter::CameraTimelineProgress(float Alpha)
 {
-    // 타임라인 진행도(Alpha)에 따라 카메라 거리를 부드럽게 줌인/줌아웃
     if (!SpringArm) return;
     float NewArmLength = FMath::Lerp(DefaultArmLength, 1200.f, Alpha);
     SpringArm->TargetArmLength = NewArmLength;
@@ -465,7 +411,6 @@ void AMageCharacter::CameraTimelineProgress(float Alpha)
 
 void AMageCharacter::OnCameraTimelineFinished()
 {
-    // 줌인 연출이 끝났을 때 커서나 불필요한 입력을 차단하여 온전히 기둥 조작에 집중하게 함
     if (CameraTimelineComp && CameraTimelineComp->GetPlaybackPosition() <= 0.01f)
     {
        if (APlayerController* PC = Cast<APlayerController>(GetController()))
@@ -481,7 +426,6 @@ void AMageCharacter::OnCameraTimelineFinished()
 
 void AMageCharacter::LockOnPillar(float DeltaTime)
 {
-    // 기둥 조종 시 카메라가 자동으로 기둥의 중심(상단)을 향해 부드럽게 돌아가도록 락온 연출
     APlayerController* PC = Cast<APlayerController>(GetController());
     if (PC && CurrentTargetPillar && !CurrentTargetPillar->bIsFallen)
     {
@@ -493,15 +437,35 @@ void AMageCharacter::LockOnPillar(float DeltaTime)
     }
 }
 
+FVector AMageCharacter::GetCrosshairTargetLocation()
+{
+    if (!Camera) return GetActorLocation() + GetActorForwardVector() * 1000.f;
+
+    FVector CamLoc = Camera->GetComponentLocation();
+    FVector CamForward = Camera->GetForwardVector();
+
+    FVector TraceStart = CamLoc;
+    FVector TraceEnd = CamLoc + (CamForward * 10000.0f); 
+
+    FHitResult HitResult;
+    FCollisionQueryParams Params;
+    Params.AddIgnoredActor(this); 
+
+    // 에임 보정을 위해 두꺼운 구체(Sphere) 레이캐스트 적용
+    FCollisionShape Sphere = FCollisionShape::MakeSphere(30.0f);
+    bool bHit = GetWorld()->SweepSingleByChannel(HitResult, TraceStart, TraceEnd, FQuat::Identity, ECC_Visibility, Sphere, Params);
+   
+    return bHit ? HitResult.ImpactPoint : TraceEnd;
+}
+
 // ====================================================================================
-//  섹션 4: 전투 및 스킬 시스템
+// [Section 5] 전투 및 스킬 시스템 (Combat System)
 // ====================================================================================
 
 void AMageCharacter::Attack()
 {
     if (!CanAttack()) return;
 
-    // 평타 1타, 2타 모션 교차 사용 (콤보)
     FName SkillName = (CurrentComboIndex == 0) ? TEXT("Attack_A") : TEXT("Attack_B");
     ProcessSkill(SkillName);
     StartAttackCooldown();
@@ -509,7 +473,6 @@ void AMageCharacter::Attack()
     CurrentComboIndex++;
     if (CurrentComboIndex > 1) CurrentComboIndex = 0;
 
-    // 일정 시간 공격 안하면 콤보 초기화
     GetWorldTimerManager().ClearTimer(ComboResetTimer);
     GetWorldTimerManager().SetTimer(ComboResetTimer, this, &AMageCharacter::ResetCombo, 1.2f, false);
 }
@@ -522,43 +485,33 @@ void AMageCharacter::ProcessSkill(FName SkillRowName, FVector TargetLocation)
 {
     if (!CanAttack()) return;
 
-    // 내가 직접 조종하는 화면이면 무조건 화면 중앙(크로스헤어) 좌표를 쏴야 할 타겟으로 계산
+    // 로컬 컨트롤러인 경우 크로스헤어가 가리키는 지점을 타겟으로 설정
     if (TargetLocation.IsZero() && IsLocallyControlled())
     {
         TargetLocation = GetCrosshairTargetLocation();
     }
 
-    // 데이터 테이블에서 스킬 데미지, 몽타주, 쿨타임 정보 조회
     FSkillData** FoundData = SkillDataCache.Find(SkillRowName);
     FSkillData* Data = (FoundData) ? *FoundData : nullptr;
 
-    // 아직 쿨타임 중이면 스킬 발동 무시
-    if (SkillTimers.Contains(SkillRowName))
-    {
-       if (GetWorldTimerManager().IsTimerActive(SkillTimers[SkillRowName])) return;
-    }
+    if (SkillTimers.Contains(SkillRowName) && GetWorldTimerManager().IsTimerActive(SkillTimers[SkillRowName])) return;
 
     if (Data)
     {
-       // 캐릭터 해금 레벨보다 스킬 레벨이 높으면 사용 불가
        if (!IsSkillUnlocked(Data->RequiredStage)) return;
 
-       // 애니메이션 재생 (본인 화면 즉시 재생으로 반응속도 올림)
        if (Data->SkillMontage) PlayActionMontage(Data->SkillMontage);
 
-       // 방장(서버)일 경우 로직 처리
        if (HasAuthority())
        {
-          // 다른 사람 화면에서도 내 애니메이션 재생하라고 지시
           if (Data->SkillMontage) Server_PlayMontage(Data->SkillMontage);
 
-          // 평타일 경우 지팡이 끝에 잔상(트레일) 이펙트 켜기
           if (SkillRowName == TEXT("Attack_A") || SkillRowName == TEXT("Attack_B"))
           {
              Multicast_SetTrailActive(true);
           }
           
-          // [스킬 2 - 바위 소환 로직]
+          // [스킬 2 - 바위 소환]
           if (SkillRowName == TEXT("Skill2")) 
           {
              Multicast_PlaySkill2VFX();
@@ -569,25 +522,21 @@ void AMageCharacter::ProcessSkill(FName SkillRowName, FVector TargetLocation)
                 FTimerDelegate TimerDel;
                 TimerDel.BindUObject(this, &AMageCharacter::SpawnSkill2Rock, Data->ProjectileClass.Get(), Dmg);
                 
-                // 마법 캐스팅 시간(ActionDelay)이 설정되어 있으면 딜레이 후 소환
                 if (Data->ActionDelay > 0.0f)
                    GetWorldTimerManager().SetTimer(RockSpawnTimerHandle, TimerDel, Data->ActionDelay, false);
                 else
                    SpawnSkill2Rock(Data->ProjectileClass, Dmg);
              }
           }
-          // [스킬 1 & 평타 - 투사체 발사 로직]
+          // [기본 공격 & 스킬 1 - 투사체 발사]
           else
           {
-             // 스킬 1 발사 이펙트
              if (SkillRowName == TEXT("Skill1")) Multicast_PlaySkill1VFX();
 
              if (Data->ProjectileClass)
              {
                 float Dmg = Data->GetRandomizedDamage();
                 FTimerDelegate TimerDel;
-                
-                // 완벽하게 동기화된 클라이언트의 에임 지점(TargetLocation)을 넘겨서 투사체 생성
                 TimerDel.BindUObject(this, &AMageCharacter::SpawnDelayedProjectile, Data->ProjectileClass.Get(), Dmg, TargetLocation);
 
                 if (Data->ActionDelay > 0.0f)
@@ -597,14 +546,13 @@ void AMageCharacter::ProcessSkill(FName SkillRowName, FVector TargetLocation)
              }
           }
        }
-       // 팀원(클라이언트)일 경우
        else
        {
-          // 내가 바라보는 에임 좌표를 서버로 쏴서 그쪽으로 투사체를 쏴달라고 요청
+          // 클라이언트는 서버로 스킬 실행 및 에임 타겟 요청
           Server_ProcessSkill(SkillRowName, TargetLocation);
        }
 
-       // 쿨타임 타이머 및 UI 동기화 처리
+       // 쿨타임 등록
        if (Data->Cooldown > 0.0f)
        {
           FTimerHandle& Handle = SkillTimers.FindOrAdd(SkillRowName);
@@ -625,8 +573,7 @@ void AMageCharacter::SpawnDelayedProjectile(UClass* ProjectileClass, float Damag
     
    Multicast_SetTrailActive(false);
 
-   
-   // 1. 카메라의 현재 위치와 방향을 가져옵니다. (가장 정확한 십자선 기준점)
+   // 1. 카메라의 현재 위치와 회전값 획득 (에임 정확도 확보)
    FVector CameraLoc;
    FRotator CameraRot;
    if (APlayerController* PC = Cast<APlayerController>(GetController()))
@@ -639,43 +586,83 @@ void AMageCharacter::SpawnDelayedProjectile(UClass* ProjectileClass, float Damag
       CameraRot = GetBaseAimRotation();
    }
    
-   // ====================================================================
-   // TPS 스폰 위치 계산법 (동적 거리 측정)
-   // ====================================================================
-   
-   // 1. 카메라와 캐릭터 본체 사이의 '실제 거리'를 실시간으로 잽니다!
-   // (벽을 등져서 카메라가 줌인되면 거리가 짧아지고, 넓은 곳이면 거리가 길어집니다)
+   // 2. 동적 스폰 위치 계산 (TPS 뷰 시차 극복)
    float DistToChar = FVector::Distance(CameraLoc, GetActorLocation());
-
-   // 2. 카메라 시선 방향으로 딱 '캐릭터가 있는 거리 + 50cm(내 몸통 두께)' 만큼만 앞으로 밉니다.
-   // 이렇게 하면 무조건 캐릭터의 바로 앞 허공에서 마법이 생성됩니다! (뒤통수 맞을 일 없음)
    FVector SpawnLoc = CameraLoc + (CameraRot.Vector() * (DistToChar + ProjectileForwardOffset)); 
-   
-   // 3. 높이를 살짝만 내려서 캐릭터 어깨~가슴 높이에 맞춥니다.
-   SpawnLoc.Z -= ProjectileDownwardOffset;;
+   SpawnLoc.Z -= ProjectileDownwardOffset;
     
-   // 4. 방향은 십자선 정중앙을 향하도록 각도를 부드럽게 꺾어줍니다.
+   // 3. 크로스헤어 방향으로 최종 각도 도출
    FVector CrosshairTarget = CameraLoc + (CameraRot.Vector() * AimTraceDistance); 
    FRotator SpawnRot = UKismetMathLibrary::FindLookAtRotation(SpawnLoc, CrosshairTarget);
 
-   FActorSpawnParameters SpawnParams;
-   SpawnParams.Owner = this;
-   SpawnParams.Instigator = GetInstigator();
-   SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+   // ====================================================================
+   //  4. 지연 생성 (Deferred Spawning) 적용 - 겹침 버그 완벽 해결
+   // ====================================================================
+   
+   // 스폰 위치와 회전값을 하나의 Transform(변환) 정보로 묶습니다.
+   FTransform SpawnTransform(SpawnRot, SpawnLoc);
 
-   // 투사체 생성
-   AActor* SpawnedActor = GetWorld()->SpawnActor<AActor>(ProjectileClass, SpawnLoc, SpawnRot, SpawnParams);
+   // 투사체를 세상에 '절반'만 꺼냅니다. (메모리에는 있지만 충돌 판정은 아직 안 함)
+   AMageProjectile* MyProjectile = GetWorld()->SpawnActorDeferred<AMageProjectile>(
+      ProjectileClass, 
+      SpawnTransform, 
+      this,             // Owner
+      GetInstigator(),  // Instigator
+      ESpawnActorCollisionHandlingMethod::AlwaysSpawn
+   );
 
-   // 데미지와 주인 설정
-   if (AMageProjectile* MyProjectile = Cast<AMageProjectile>(SpawnedActor))
+   if (MyProjectile)
    {
+      // 충돌이 일어나기 전(안전한 상태)에 데이터 테이블의 진짜 데미지를 주입합니다!
       MyProjectile->Damage = DamageAmount;
-      MyProjectile->SetOwner(this); 
+      
+      // 데미지 세팅이 끝났으니, 이제 세상에 완전하게 등장시키고 충돌 판정을 시작합니다!
+      UGameplayStatics::FinishSpawningActor(MyProjectile, SpawnTransform);
    }
 }
 
+void AMageCharacter::SpawnSkill2Rock(UClass* RockClass, float DamageAmount)
+{
+    Multicast_StopSkill2VFX();
+
+    if (!HasAuthority() || !RockClass) return;
+    
+    // 에임 지점 근처의 바닥을 정밀하게 탐색
+    FVector AimLocation = GetCrosshairTargetLocation();
+    FVector TraceStart = AimLocation + FVector(0.f, 0.f, 500.f);
+    FVector TraceEnd = AimLocation - FVector(0.f, 0.f, 1000.f);
+    
+    FHitResult HitResult;
+    FCollisionQueryParams Params;
+    Params.AddIgnoredActor(this);
+    
+    FVector FinalSpawnLoc = TraceStart;
+    
+    if (GetWorld()->LineTraceSingleByChannel(HitResult, TraceStart, TraceEnd, ECC_Visibility, Params))
+    {
+       FinalSpawnLoc = HitResult.ImpactPoint; 
+    }
+    else
+    {
+       if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, TEXT("Skill Failed: No Ground Found!"));
+       return;
+    }
+    
+    FRotator SpawnRot = FRotator::ZeroRotator;
+    FActorSpawnParameters SpawnParams;
+    SpawnParams.Owner = this;
+    SpawnParams.Instigator = this;
+    
+    AActor* SpawnedActor = GetWorld()->SpawnActor<AActor>(RockClass, FinalSpawnLoc, SpawnRot, SpawnParams);
+    
+    if (AMageSkill2Rock* Rock = Cast<AMageSkill2Rock>(SpawnedActor))
+    {
+       Rock->InitializeRock(DamageAmount, this);
+    }
+}
+
 // ====================================================================================
-//  섹션 5: 직업 능력 (염력 조종)
+// [Section 6] 직업 능력 (Job Ability)
 // ====================================================================================
 
 void AMageCharacter::JobAbility()
@@ -685,7 +672,6 @@ void AMageCharacter::JobAbility()
     if (bIsDead) return;
 
     UAnimMontage* TargetMontage = nullptr;
-
     FSkillData** FoundData = SkillDataCache.Find(FName("JobAbility"));
     FSkillData* Data = (FoundData) ? *FoundData : nullptr;
 
@@ -693,7 +679,7 @@ void AMageCharacter::JobAbility()
     
     bool bSuccess = false;
     
-    // [염력 모드 1] 기둥을 붙잡았을 때
+    // [염력 모드 1] 기둥 조작
     if (FocusedPillar)
     {
        if (TargetMontage)
@@ -705,7 +691,6 @@ void AMageCharacter::JobAbility()
        bIsPillarMode = true;
        CurrentTargetPillar = FocusedPillar;
 
-       // 카메라 시점을 기둥에 맞추기 위해 락온 설정
        if (SpringArm)
        {
           SpringArm->bUsePawnControlRotation = true;
@@ -713,11 +698,11 @@ void AMageCharacter::JobAbility()
           SpringArm->bInheritYaw = true;
           SpringArm->bInheritRoll = true;
        }
-       if (CameraTimelineComp) CameraTimelineComp->Play(); // 줌인 재생
+       if (CameraTimelineComp) CameraTimelineComp->Play(); 
        
        bSuccess = true;
     }
-    // [염력 모드 2] 마법 보트나 회전 기둥을 붙잡았을 때
+    // [염력 모드 2] 보트 / 회전 기둥 조작
     else if (HoveredActor)
     {
        AMagicBoat* TargetBoat = Cast<AMagicBoat>(HoveredActor);
@@ -728,24 +713,23 @@ void AMageCharacter::JobAbility()
           Server_PlayMontage(TargetMontage);
        }
 
-       // 보트일 경우, 내가 현재 그 보트 위에 타고 있는지(MovementBase) 검사
+       // 보트 탑승 여부 검증
        if (TargetBoat)
        {
           UPrimitiveComponent* BaseComponent = GetMovementBase();
           bool bIsRiding = (BaseComponent && BaseComponent->GetOwner() == TargetBoat);
-          if (!bIsRiding) return; // 타고있지 않으면 조종 불가
+          if (!bIsRiding) return; 
        }
 
        bIsBoatMode = true;
        CurrentControlledActor = HoveredActor;
 
-       // 타겟이 회전 기둥(MovePillar)이면 즉시 회전 신호를 한번 보냄
        if (Cast<AMovePillar>(HoveredActor))
        {
           Server_InteractActor(CurrentControlledActor, FVector(1.0f, 0.0f, 0.0f));
        }
 
-       // 타겟이 보트면 탑승 상태를 알리고 카메라를 탑다운 시점으로 전환
+       // 보트 조작 시 탑다운 카메라 전환
        if (TargetBoat)
        {
           Server_SetBoatRideState(TargetBoat, true);
@@ -760,33 +744,25 @@ void AMageCharacter::JobAbility()
        bSuccess = true;
     }
     
-    // 성공적으로 능력을 썼으면 멋지게 아우라 발동
-    if (bSuccess)
-    {
-       Server_SetAuraActive(true);
-    }
+    if (bSuccess) Server_SetAuraActive(true);
 }
 
 void AMageCharacter::EndJobAbility()
 {
     UAnimMontage* TargetMontage = nullptr;
-
     FSkillData** FoundData = SkillDataCache.Find(FName("JobAbility"));
     FSkillData* Data = (FoundData) ? *FoundData : nullptr;
 
     if (Data) TargetMontage = Data->SkillMontage;
 
-    // 조종을 그만두므로 재생하던 애니메이션 강제 정지
     if (TargetMontage)
     {
        StopAnimMontage(TargetMontage);
        Server_StopMontage(TargetMontage);
     }
 
-    // 아우라 끄기
     Server_SetAuraActive(false);
     
-    // 기둥 모드였으면 카메라 줌아웃(Reverse) 복구
     if (bIsPillarMode)
     {
        bIsPillarMode = false;
@@ -794,7 +770,6 @@ void AMageCharacter::EndJobAbility()
        if (CameraTimelineComp) CameraTimelineComp->Reverse();
     }
 
-    // 보트 모드였으면 카메라 원래 시점 복구 및 물리 충돌 롤백
     if (bIsBoatMode)
     {
        AMagicBoat* Boat = Cast<AMagicBoat>(CurrentControlledActor);
@@ -810,7 +785,6 @@ void AMageCharacter::EndJobAbility()
           }
        }
 
-       // 객체 이동 중지 명령 전송
        if (CurrentControlledActor)
        {
           Server_InteractActor(CurrentControlledActor, FVector::ZeroVector);
@@ -820,7 +794,6 @@ void AMageCharacter::EndJobAbility()
        CurrentControlledActor = nullptr;
     }
 
-    // 카메라 회전 제어 복구
     if (SpringArm)
     {
        SpringArm->bUsePawnControlRotation = true;
@@ -830,120 +803,54 @@ void AMageCharacter::EndJobAbility()
     }
 }
 
-void AMageCharacter::SpawnSkill2Rock(UClass* RockClass, float DamageAmount)
-{
-   Multicast_StopSkill2VFX();
-
-    if (!HasAuthority() || !RockClass) return;
-    
-   //  무조건 앞쪽이 아니라, 에임(크로스헤어)이 가리키는 지점을 찾습니다.
-   FVector AimLocation = GetCrosshairTargetLocation();
-    
-   //  에임 지점 근처의 바닥을 정밀하게 찾기 위해 위아래로 레이저를 쏩니다.
-   FVector TraceStart = AimLocation + FVector(0.f, 0.f, 500.f);
-   FVector TraceEnd = AimLocation - FVector(0.f, 0.f, 1000.f);
-    
-    FHitResult HitResult;
-    FCollisionQueryParams Params;
-    Params.AddIgnoredActor(this);
-    
-    FVector FinalSpawnLoc = TraceStart;
-    
-    // 바닥에 부딪힌 지점이 있으면 그곳에서 튀어나오게 설정
-    if (GetWorld()->LineTraceSingleByChannel(HitResult, TraceStart, TraceEnd, ECC_Visibility, Params))
-    {
-       FinalSpawnLoc = HitResult.ImpactPoint; 
-    }
-    else
-    {
-       // 바닥이 없으면 허공이므로 스킬 실패 처리 (낭떠러지 등)
-       if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, TEXT("Skill Failed: No Ground Found!"));
-       return;
-    }
-    
-    FRotator SpawnRot = FRotator::ZeroRotator;
-    FActorSpawnParameters SpawnParams;
-    SpawnParams.Owner = this;
-    SpawnParams.Instigator = this;
-    
-    // 계산된 바닥 위치에 거대한 바위 생성
-    AActor* SpawnedActor = GetWorld()->SpawnActor<AActor>(RockClass, FinalSpawnLoc, SpawnRot, SpawnParams);
-    
-    // 생성된 바위에 데미지 값과 주인 정보 세팅
-    if (AMageSkill2Rock* Rock = Cast<AMageSkill2Rock>(SpawnedActor))
-    {
-       Rock->InitializeRock(DamageAmount, this);
-    }
-}
-
 // ====================================================================================
-//  섹션 6: 네트워크 및 기타 유틸리티 처리 (RPC)
+// [Section 7] 네트워크 RPC 및 이펙트 (RPC & VFX)
 // ====================================================================================
 
-// 클라이언트가 서버에게 스킬 사용을 명령
 void AMageCharacter::Server_ProcessSkill_Implementation(FName SkillRowName, FVector TargetLocation)
 {
     ProcessSkill(SkillRowName, TargetLocation);
 }
 
-// 서버가 모든 클라이언트 화면에 몽타주를 틀라고 명령 (경유지)
 void AMageCharacter::Server_PlayMontage_Implementation(UAnimMontage* MontageToPlay)
 {
     Multicast_PlayMontage(MontageToPlay);
 }
 
-// 실제 모든 클라이언트 화면에서 몽타주 재생
 void AMageCharacter::Multicast_PlayMontage_Implementation(UAnimMontage* MontageToPlay)
 {
-    // 내가 누른 스킬 애니메이션을 또 재생하면 모션이 끊기므로 로컬(나) 빼고 재생
-    if (MontageToPlay && !IsLocallyControlled())
-    {
-       PlayAnimMontage(MontageToPlay);
-    }
+    if (MontageToPlay && !IsLocallyControlled()) PlayAnimMontage(MontageToPlay);
 }
 
-// 서버가 모든 클라이언트 화면의 몽타주를 중지하라고 명령
 void AMageCharacter::Server_StopMontage_Implementation(UAnimMontage* MontageToStop)
 {
     Multicast_StopMontage(MontageToStop);
 }
 
-// 실제 모든 클라이언트 화면에서 몽타주 중지
 void AMageCharacter::Multicast_StopMontage_Implementation(UAnimMontage* MontageToStop)
 {
-    if (MontageToStop && !IsLocallyControlled())
-    {
-       StopAnimMontage(MontageToStop);
-    }
+    if (MontageToStop && !IsLocallyControlled()) StopAnimMontage(MontageToStop);
 }
 
-// 서버에게 염력(보트, 기둥 등) 방향키 입력을 전달
 void AMageCharacter::Server_InteractActor_Implementation(AActor* TargetActor, FVector Direction)
 {
     if (TargetActor)
     {
-       // 인터페이스를 통해 대상 객체의 스크립트 실행
-       IMagicInteractableInterface* Interface = Cast<IMagicInteractableInterface>(TargetActor);
-       if (Interface)
-       {
+       if (IMagicInteractableInterface* Interface = Cast<IMagicInteractableInterface>(TargetActor))
           Interface->ProcessMageInput(Direction);
-       }
     }
 }
 
-// 서버에게 기둥을 쓰러뜨리라고 명령
 void AMageCharacter::Server_TriggerPillarFall_Implementation(APillar* TargetPillar)
 {
     if (TargetPillar) TargetPillar->TriggerFall();
 }
 
-// 서버에게 보트 탑승 상태를 알림
 void AMageCharacter::Server_SetBoatRideState_Implementation(AMagicBoat* Boat, bool bRiding)
 {
     if (Boat) Boat->SetRideState(bRiding);
 }
 
-// 모든 클라이언트 화면에서 마법 지팡이 트레일(잔상) 이펙트 켜고 끄기
 void AMageCharacter::Multicast_SetTrailActive_Implementation(bool bActive)
 {
     if (StaffTrailComp)
@@ -953,13 +860,11 @@ void AMageCharacter::Multicast_SetTrailActive_Implementation(bool bActive)
     }
 }
 
-// 서버에게 직업 고유 아우라 이펙트를 켜달라고 요청
 void AMageCharacter::Server_SetAuraActive_Implementation(bool bActive)
 {
     Multicast_SetAuraActive(bActive);
 }
 
-// 모든 클라이언트 화면에서 직업 아우라 켜고 끄기
 void AMageCharacter::Multicast_SetAuraActive_Implementation(bool bActive)
 {
     if (JobAuraComp)
@@ -969,12 +874,10 @@ void AMageCharacter::Multicast_SetAuraActive_Implementation(bool bActive)
     }
 }
 
-// 마법 발사 시 손끝(지팡이)에서 터지는 이펙트
 void AMageCharacter::Multicast_PlaySkill1VFX_Implementation()
 {
     if (Skill1CastEffect)
     {
-       // 지팡이를 들고 있으면 지팡이에서, 맨손이면 캐릭터 몸에서 터짐
        USceneComponent* AttachTarget = CachedWeaponMesh ? CachedWeaponMesh : Cast<USceneComponent>(GetMesh());
        FName SocketName = TEXT("Weapon_Root_R"); 
 
@@ -985,53 +888,11 @@ void AMageCharacter::Multicast_PlaySkill1VFX_Implementation()
           FVector::ZeroVector,
           FRotator::ZeroRotator,
           EAttachLocation::SnapToTarget,
-          true // 한번 터지고 자동 메모리 삭제
+          true 
        );
     }
 }
 
-// 피해량 처리 함수 오버라이드 (맞았을 때의 처리)
-float AMageCharacter::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
-{
-    // 부모 클래스의 기본 피격 체력 감소 로직 실행
-    float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
-
-    // 기둥이나 보트를 조종하다가 적에게 맞으면 즉시 캔슬되게 만듦
-    if (ActualDamage > 0.0f && (bIsPillarMode || bIsBoatMode))
-    {
-       EndJobAbility();
-    }
-
-    return ActualDamage;
-}
-
-// 크로스헤어(화면 정중앙)가 가리키는 실제 3D 좌표를 레이저로 쏴서 알아내는 함수
-FVector AMageCharacter::GetCrosshairTargetLocation()
-{
-    // 카메라가 없으면 어쩔 수 없이 내 몸 앞 10m 허공 반환
-    if (!Camera) return GetActorLocation() + GetActorForwardVector() * 1000.f;
-
-    // 카메라 위치에서 시작해서 카메라가 보는 방향(앞)으로 100m짜리 레이저 발사
-    FVector CamLoc = Camera->GetComponentLocation();
-    FVector CamForward = Camera->GetForwardVector();
-
-    FVector TraceStart = CamLoc;
-    FVector TraceEnd = CamLoc + (CamForward * 10000.0f); 
-
-    FHitResult HitResult;
-    FCollisionQueryParams Params;
-    Params.AddIgnoredActor(this); // 나 자신은 통과되게 무시
-
-    // 화면 가운데 뭐가 있는지 레이캐스트 검사
-   FCollisionShape Sphere = FCollisionShape::MakeSphere(30.0f);
-    bool bHit = GetWorld()->SweepSingleByChannel(HitResult, TraceStart, TraceEnd,
-       FQuat::Identity, ECC_Visibility, Sphere, Params);
-   
-    // 뭔가 맞았으면 그 부딪힌 좌표점 반환, 100m동안 아무것도 없었으면 100m 앞 허공 좌표 반환
-    return bHit ? HitResult.ImpactPoint : TraceEnd;
-}
-
-// 모든 클라이언트에서 스킬 2 캐스팅 이펙트 켜기
 void AMageCharacter::Multicast_PlaySkill2VFX_Implementation()
 {
    if (Skill2CastEffect)
@@ -1051,7 +912,6 @@ void AMageCharacter::Multicast_PlaySkill2VFX_Implementation()
    }
 }
 
-// 모든 클라이언트에서 스킬 2 캐스팅 이펙트 끄기
 void AMageCharacter::Multicast_StopSkill2VFX_Implementation()
 {
    if (IsValid(Skill2CastComp))
@@ -1059,4 +919,16 @@ void AMageCharacter::Multicast_StopSkill2VFX_Implementation()
       Skill2CastComp->DeactivateSystem(); 
       Skill2CastComp = nullptr;
    }
+}
+
+float AMageCharacter::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
+{
+    float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
+
+    if (ActualDamage > 0.0f && (bIsPillarMode || bIsBoatMode))
+    {
+       EndJobAbility();
+    }
+
+    return ActualDamage;
 }
