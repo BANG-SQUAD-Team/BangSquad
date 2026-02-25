@@ -209,7 +209,8 @@ void APaladinSkill2Hammer::Explode()
 		// ==================================
 		if (VictimChar)
 		{
-			FVector LaunchForce = FVector::UpVector * 1800.0f;
+			// 띄우는 수치 계산
+			FVector LaunchForce = FVector::UpVector * 1200.0f;
 			
 			// 확실히 띄우기
 			if (VictimChar->GetCharacterMovement())

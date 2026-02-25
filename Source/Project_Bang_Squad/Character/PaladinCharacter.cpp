@@ -167,6 +167,12 @@ void APaladinCharacter::OnDeath()
     SetShieldActive(false);
     bIsGuarding = false;
     StopAnimMontage();
+    
+    // 진행 중이던 평타 판정 및 콤보를 죽으면 완벽하게 정지
+    GetWorldTimerManager().ClearTimer(AttackHitTimerHandle);
+    GetWorldTimerManager().ClearTimer(HitLoopTimerHandle);
+    GetWorldTimerManager().ClearTimer(ComboResetTimer);
+    StopMeleeTrace();
 
     Super::OnDeath();
 }
@@ -357,7 +363,27 @@ void APaladinCharacter::ProcessSkill(FName SkillRowName)
             if (SkillIdx > 0) TriggerSkillCooldown(SkillIdx, Data->Cooldown);
         }
 
-        // [Server Logic] 실제 데미지 및 물리 처리
+        // ==================================================================================================
+        // 서버와 클라이언트가 동시에 점프하도록 권한 체크 밖으로 빼두었음.
+        if (SkillRowName == FName("Skill1"))
+        {
+            // 1. 도약 물리 계산
+            float JumpDuration = (CurrentActionDelay > 0.f) ? CurrentActionDelay : 1.0f;
+            float Gravity = 980.0f;
+            if (UCharacterMovementComponent* CharMove = GetCharacterMovement())
+            {
+                Gravity *= CharMove->GravityScale;
+                CharMove->SetMovementMode(MOVE_Falling);
+            }
+            float RequiredLaunchZ = (JumpDuration * Gravity) / 2.0f;
+
+            // 2. 캐릭터 발사
+            FVector LaunchDir = (GetActorForwardVector() * 800.0f) + (FVector::UpVector * RequiredLaunchZ);
+            LaunchCharacter(LaunchDir, true, true);
+        }
+        // ==================================================================================================
+        
+        // [Server Logic] 데미지 판정, 이펙트 전파 등은 오직 서버만 처리
         if (HasAuthority())
         {
             if (Data->SkillMontage) Server_PlayMontage(Data->SkillMontage);
@@ -375,20 +401,6 @@ void APaladinCharacter::ProcessSkill(FName SkillRowName)
                 StopMeleeTrace();
 
                 Multicast_SetTrailActive(true);
-
-                // 1. 도약 물리 계산
-                float JumpDuration = (CurrentActionDelay > 0.f) ? CurrentActionDelay : 1.0f;
-                float Gravity = 980.0f;
-                if (UCharacterMovementComponent* CharMove = GetCharacterMovement())
-                {
-                    Gravity *= CharMove->GravityScale;
-                    CharMove->SetMovementMode(MOVE_Falling);
-                }
-                float RequiredLaunchZ = (JumpDuration * Gravity) / 2.0f;
-
-                // 2. 캐릭터 발사
-                FVector LaunchDir = (GetActorForwardVector() * 800.0f) + (FVector::UpVector * RequiredLaunchZ);
-                LaunchCharacter(LaunchDir, true, true);
 
                 // 3. 착지 시 데미지 타이머 설정
                 float FinalDamage = Data->GetRandomizedDamage();
@@ -543,6 +555,10 @@ void APaladinCharacter::Skill2()
 
         if (Data && IsSkillUnlocked(Data->RequiredStage))
         {
+            float Cooldown = (Data->Cooldown > 0.0f) ? Data->Cooldown : 10.0f;
+            Skill2ReadyTime = GetWorld()->GetTimeSeconds() + Cooldown;
+            TriggerSkillCooldown(2, Cooldown);
+            
             if (Data->SkillMontage) PlayActionMontage(Data->SkillMontage);
 
             if (Skill2CastVFX)
@@ -562,6 +578,11 @@ void APaladinCharacter::Skill2()
 
 void APaladinCharacter::Server_Skill2_Implementation()
 {
+    if (!IsLocallyControlled())
+    {
+        if (GetWorld()->GetTimeSeconds() < Skill2ReadyTime) return;
+    }
+    
     float FinalCooldown = 10.0f;
     float FinalDamage = 70.0f;
     float DelayTime = 0.0f;
@@ -585,7 +606,7 @@ void APaladinCharacter::Server_Skill2_Implementation()
 
     // 쿨타임 및 VFX 처리
     Skill2ReadyTime = GetWorld()->GetTimeSeconds() + FinalCooldown;
-    TriggerSkillCooldown(2, FinalCooldown);
+    
     Multicast_PlaySkill2CastVFX();
 
     // 딜레이 후 망치 소환
