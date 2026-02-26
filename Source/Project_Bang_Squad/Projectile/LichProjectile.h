@@ -1,57 +1,35 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/Actor.h"
+#include "SlashProjectile.h" // âœ… 1. ë¶€ëª¨ í—¤ë” í¬í•¨
 #include "LichProjectile.generated.h"
 
-class USphereComponent;
-class UProjectileMovementComponent;
 class UNiagaraSystem;
 class UNiagaraComponent;
 
-/**
- * [Lich Projectile]
- * - ¸®Ä¡(Stage 2 º¸½º)°¡ ¹ß»çÇÏ´Â ¸¶¹ı ±¸Ã¼
- * - ÇÃ·¹ÀÌ¾î(Pawn)¿¡ ´êÀ¸¸é µ¥¹ÌÁö¸¦ ÁÖ°í Æø¹ß
- * - º®¿¡ ´êÀ¸¸é ±×³É Æø¹ß
- */
 UCLASS()
-class PROJECT_BANG_SQUAD_API ALichProjectile : public AActor
+class PROJECT_BANG_SQUAD_API ALichProjectile : public ASlashProjectile // âœ… 2. ìƒì† ë³€ê²½
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
 public:
-    ALichProjectile();
+	ALichProjectile();
 
 protected:
-    virtual void BeginPlay() override;
+	virtual void BeginPlay() override;
 
-    // Ä³¸¯ÅÍ(ÇÃ·¹ÀÌ¾î)¿Í °ãÃÆÀ» ¶§ Ã³¸®
-    UFUNCTION()
-    void OnOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
-        UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
-        bool bFromSweep, const FHitResult& SweepResult);
-
-    // º®/¹Ù´Ú¿¡ ºÎµúÇûÀ» ¶§ Ã³¸®
-    virtual void NotifyHit(UPrimitiveComponent* MyComp, AActor* Other, UPrimitiveComponent* OtherComp,
-        bool bSelfMoved, FVector HitLocation, FVector HitNormal,
-        FVector NormalImpulse, const FHitResult& Hit) override;
+	// âœ… 3. ë¶€ëª¨(Slash)ê°€ ë°ë¯¸ì§€ì™€ íŒŒê´´ë¥¼ ì•Œì•„ì„œ í•˜ë¯€ë¡œ, ì—¬ê¸°ì„  ì´í™íŠ¸ë§Œ í„°ëœ¨ë¦´ í•¨ìˆ˜ ì¶”ê°€
+	UFUNCTION()
+	void OnLichOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
 
 public:
-    // --- [Components] ---
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-    TObjectPtr<USphereComponent> SphereComp;
+	// (ì¶©ëŒì²´, ì´ë™ ì»´í¬ë„ŒíŠ¸, ë°ë¯¸ì§€ëŠ” ë¶€ëª¨ ê²ƒì„ ê·¸ëŒ€ë¡œ ì”ë‹ˆë‹¤! ì„ ì–¸ ì•ˆ í•´ë„ ë¨)
 
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-    TObjectPtr<UProjectileMovementComponent> MovementComp;
+	// ë¦¬ì¹˜ ì „ìš© ë‚˜ì´ì•„ê°€ë¼
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<UNiagaraComponent> NiagaraComp; 
 
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-    TObjectPtr<UNiagaraComponent> NiagaraComp; // ±¸Ã¼ ÀÌÆåÆ®
-
-    // --- [Settings] ---
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
-    float Damage = 10.0f;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "VFX")
-    TObjectPtr<UNiagaraSystem> HitVFX; // Å¸°İ/Æø¹ß ÀÌÆåÆ®
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "VFX")
+	TObjectPtr<UNiagaraSystem> HitVFX; 
 };
