@@ -45,12 +45,14 @@ public:
 
 private:
 	FTimerHandle DamageTimerHandle;
-	FTimerHandle ExtinguishTimerHandle;
 
 	// 원래 수치 복구용 변수들
 	float OriginalGroundFriction;
 	float OriginalBrakingDeceleration;
 
+	// 캐릭터별 화상 종료 타이머를 기억할 맵
+	TMap<ABaseCharacter*, FTimerHandle> BurnOutTimers;
+	
 	//UPROPERTY()
 	//ABaseCharacter* TargetCharacter; // [변경] ABaseCharacter로 저장
 
@@ -58,7 +60,11 @@ private:
 	TSet<ABaseCharacter*> TargetCharacters;
 	TMap<ABaseCharacter*, float> OriginalGroundFrictions;
 	TMap<ABaseCharacter*, float> OriginalBrakingDecelerations;
-
+	
+	// 3초 뒤에 해당 캐릭터만 화상 명단에서 빼줄 함수
+	UFUNCTION()
+	void RemoveCharacterFromBurn(ABaseCharacter* Character);
+	
 	UFUNCTION()
 	void OnOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
 		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
