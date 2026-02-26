@@ -7,6 +7,7 @@
 class UStaticMeshComponent;
 // [변경] ACharacter -> ABaseCharacter (님의 프로젝트 베이스 캐릭터)
 class ABaseCharacter;
+class UMaterialInterface;
 
 UCLASS()
 class PROJECT_BANG_SQUAD_API ALavaPad : public AActor
@@ -38,6 +39,9 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lava Settings")
 	float BurnDurationAfterExit = 3.0f;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lava Settings|VFX")
+	UMaterialInterface* LavaOverlayMaterial;
 
 private:
 	FTimerHandle DamageTimerHandle;

@@ -4,6 +4,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "TimerManager.h"
+#include "Components/SkeletalMeshComponent.h"
 
 ALavaPad::ALavaPad()
 {
@@ -39,6 +40,8 @@ void ALavaPad::OnOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* Other
 		
 		Character->ApplySlowDebuff(true, SpeedMultiplier);
 
+		
+		
 		OriginalGroundFrictions.Add(Character, Character->GetCharacterMovement()->GroundFriction);
 		OriginalBrakingDecelerations.Add(Character, Character->GetCharacterMovement()->BrakingDecelerationWalking);
 		//OriginalGroundFriction = Character->GetCharacterMovement()->GroundFriction;
@@ -66,6 +69,8 @@ void ALavaPad::OnOverlapEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherAc
 	// 1. [속도 복구] Debuff 해제 (false)
 	Character->ApplySlowDebuff(false, 1.0f);
 	
+	
+	
 	// 2. [물리 복구] 원래 값으로 되돌림
 	if (float* Friction = OriginalGroundFrictions.Find(Character))
 		Character->GetCharacterMovement()->GroundFriction = *Friction;
@@ -89,18 +94,38 @@ void ALavaPad::ApplyBurnDamage()
 		StopBurn();
 		return;
 	}
-	// ABaseCharacter니까 IsValid 체크
+    
 	for (ABaseCharacter* Character : TargetCharacters)
 	{
 		if (IsValid(Character))
 		{
-			UGameplayStatics::ApplyDamage(
-						Character,
-						DamageAmount,
-						nullptr,
-						this,
-						UDamageType::StaticClass()
-					);		}
+			// 1. 데미지 적용
+			UGameplayStatics::ApplyDamage(Character, DamageAmount, nullptr, this, UDamageType::StaticClass());    
+          
+			// =================================================================
+			// 데미지가 들어가는 순간 몸을 빨갛게 만듦!
+			// =================================================================
+			if (LavaOverlayMaterial && Character->GetMesh())
+			{
+				// 빨간색 씌우기
+				Character->GetMesh()->SetOverlayMaterial(LavaOverlayMaterial);
+              
+				// 0.2초 뒤에 다시 원래 색깔로 되돌리기 (깜빡!)
+				FTimerHandle BlinkTimerHandle;
+				Character->GetWorldTimerManager().SetTimer(
+					BlinkTimerHandle, 
+					FTimerDelegate::CreateWeakLambda(Character, [Character]()
+					{
+						if (IsValid(Character) && Character->GetMesh())
+						{
+							Character->GetMesh()->SetOverlayMaterial(nullptr);
+						}
+					}), 
+					0.2f, // 0.2초 뒤에 실행 (이 숫자를 조절해서 깜빡이는 길이를 조절하세요)
+					false // 반복 안 함
+				);
+			}
+		}
 	}
 }
 
