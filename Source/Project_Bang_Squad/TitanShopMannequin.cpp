@@ -1,9 +1,12 @@
-#include "MageShopMannequin.h"
+#include "TitanShopMannequin.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 
-AMageShopMannequin::AMageShopMannequin()
+ATitanShopMannequin::ATitanShopMannequin()
 {
+    // ATitanCharacter의 생성자가 먼저 호출되므로, 
+    // CharacterSpecificAccessoryOffset(-20) 설정 로직은 이미 처리되어 있습니다.
 
     // 1. 마네킹 전용 최적화: 기능 끄기
     PrimaryActorTick.bCanEverTick = false;

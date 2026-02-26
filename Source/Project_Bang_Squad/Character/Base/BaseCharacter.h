@@ -191,6 +191,9 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Shop Data")
 	class UDataTable* SkinDataTable;
 
+	UPROPERTY(EditDefaultsOnly, Category = "Shop")
+	FVector CharacterSpecificAccessoryOffset = FVector::ZeroVector;
+
 	// 데이터 테이블
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Data")
 	class UDataTable* SkillDataTable;

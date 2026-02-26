@@ -68,6 +68,8 @@ ATitanCharacter::ATitanCharacter()
     }
 
     DashPSC->bAutoActivate = false;
+
+    CharacterSpecificAccessoryOffset = FVector(0.0f, 30.0f, 0.0f);
 }
 
 void ATitanCharacter::BeginPlay()

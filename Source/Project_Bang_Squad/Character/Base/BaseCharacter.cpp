@@ -129,22 +129,22 @@ void ABaseCharacter::EquipShopItem(const FShopItemData& ItemData)
 	{
 		HeadSkeletalComp->SetSkeletalMesh(ItemData.SkeletalMesh);
 
-		// [STEP 1] 먼저 부모 소켓에 'Snap'으로 딱 붙입니다. (이때 위치/회전이 0,0,0으로 초기화됨)
 		HeadSkeletalComp->AttachToComponent(
 			TargetParent,
 			FAttachmentTransformRules::SnapToTargetIncludingScale,
 			AccessorySocketName
 		);
 
-		// [STEP 2] 붙은 상태에서 데이터 테이블의 보정값(AdjustTransform)을 적용합니다.
-		// 이제 데이터 테이블에 적은 값(40, 0, 0 등)이 먹힙니다.
 		HeadSkeletalComp->SetRelativeTransform(ItemData.AdjustTransform);
 
-		// [STEP 3] ★ 지팡이(Weapon)에 붙인 경우라면, 강제로 회전을 추가합니다.
-		// (메이지 캐릭터처럼 TargetParent가 Mesh가 아닌 경우에만 실행됨)
 		if (TargetParent != GetMesh())
 		{
 			HeadSkeletalComp->AddLocalOffset(FVector(0.0f, 0.0f, 18.0f));
+		}
+
+		if (!CharacterSpecificAccessoryOffset.IsNearlyZero())
+		{
+			HeadSkeletalComp->AddLocalOffset(CharacterSpecificAccessoryOffset);
 		}
 
 		HeadSkeletalComp->SetVisibility(true);
@@ -168,7 +168,6 @@ void ABaseCharacter::EquipShopItem(const FShopItemData& ItemData)
 	{
 		HeadAccessoryComponent->SetStaticMesh(ItemData.StaticMesh);
 
-		// [STEP 1] 먼저 붙이기
 		HeadAccessoryComponent->AttachToComponent(
 			TargetParent,
 			FAttachmentTransformRules::SnapToTargetIncludingScale,
@@ -180,6 +179,11 @@ void ABaseCharacter::EquipShopItem(const FShopItemData& ItemData)
 		if (TargetParent != GetMesh())
 		{
 			HeadAccessoryComponent->AddLocalOffset(FVector(0.0f, 0.0f, 18.0f));
+		}
+
+		if (!CharacterSpecificAccessoryOffset.IsNearlyZero())
+		{
+			HeadAccessoryComponent->AddLocalOffset(CharacterSpecificAccessoryOffset);
 		}
 
 		HeadAccessoryComponent->SetVisibility(true);
