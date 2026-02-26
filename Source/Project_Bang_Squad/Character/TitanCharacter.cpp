@@ -20,6 +20,7 @@
 #include "Engine/StaticMeshActor.h"
 #include "Particles/ParticleSystemComponent.h"
 #include "NiagaraFunctionLibrary.h" 
+#include "Project_Bang_Squad/Game/MiniGame/ArenaGameState.h"
 #include "NiagaraComponent.h"
 
 ATitanCharacter::ATitanCharacter()
@@ -238,6 +239,12 @@ void ATitanCharacter::OnDeath()
 void ATitanCharacter::Attack()
 {
     if (bIsDead) return;
+    
+    if (GetWorld()->GetGameState<AArenaGameState>())
+    {
+        Super::Attack(); 
+        return; 
+    }
 
     if (!CanAttack())
     {
@@ -462,6 +469,7 @@ void ATitanCharacter::Multicast_FixMesh_Implementation(ACharacter* Victim)
 
 void ATitanCharacter::JobAbility()
 {
+    if (GetWorld()->GetGameState<AArenaGameState>()) return;
     if (!IsSkillUnlocked(1)) return;
     if (bIsDead || bIsCooldown) return;
 
@@ -502,6 +510,7 @@ void ATitanCharacter::JobAbility()
 
 void ATitanCharacter::Skill1()
 {
+    if (GetWorld()->GetGameState<AArenaGameState>()) return;
     if (!CanAttack()) return;
     if (bIsDead || bIsSkill1Cooldown) return;
 
@@ -527,6 +536,7 @@ void ATitanCharacter::Skill1()
 
 void ATitanCharacter::Skill2()
 {
+    if (GetWorld()->GetGameState<AArenaGameState>()) return;
     if (!CanAttack()) return;
     if (bIsDead || bIsSkill2Cooldown) return;
 

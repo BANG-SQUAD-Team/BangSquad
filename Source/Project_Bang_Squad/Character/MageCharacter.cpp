@@ -22,6 +22,7 @@
 #include "Player/Mage/MageSkill2Rock.h"
 #include "Player/Mage/MagicBoat.h"
 #include "Player/Mage/MovePillar.h"
+#include "Project_Bang_Squad/Game/MiniGame/ArenaGameState.h"
 
 // ====================================================================================
 // [Section 1] 초기화 (Initialization)
@@ -464,6 +465,11 @@ FVector AMageCharacter::GetCrosshairTargetLocation()
 
 void AMageCharacter::Attack()
 {
+   if (GetWorld()->GetGameState<AArenaGameState>())
+   {
+      Super::Attack(); 
+      return; 
+   }
     if (!CanAttack()) return;
 
     FName SkillName = (CurrentComboIndex == 0) ? TEXT("Attack_A") : TEXT("Attack_B");
@@ -478,8 +484,21 @@ void AMageCharacter::Attack()
 }
 
 void AMageCharacter::ResetCombo() { CurrentComboIndex = 0; }
-void AMageCharacter::Skill1() { if (!bIsDead) ProcessSkill(TEXT("Skill1")); }
-void AMageCharacter::Skill2() { if (!bIsDead) ProcessSkill(TEXT("Skill2")); }
+void AMageCharacter::Skill1()
+{
+   if (GetWorld()->GetGameState<AArenaGameState>()) return;
+   if (!bIsDead)
+   {
+      ProcessSkill(TEXT("Skill1"));
+   }
+   
+}
+void AMageCharacter::Skill2()
+{
+   if (GetWorld()->GetGameState<AArenaGameState>()) return;
+   
+   if (!bIsDead) ProcessSkill(TEXT("Skill2"));
+}
 
 void AMageCharacter::ProcessSkill(FName SkillRowName, FVector TargetLocation)
 {
@@ -667,6 +686,7 @@ void AMageCharacter::SpawnSkill2Rock(UClass* RockClass, float DamageAmount)
 
 void AMageCharacter::JobAbility()
 {
+   if (GetWorld()->GetGameState<AArenaGameState>()) return;
     if (!CanAttack()) return;
     if (!IsSkillUnlocked(1)) return;
     if (bIsDead) return;

@@ -16,6 +16,7 @@
 #include "Components/WidgetComponent.h"
 #include "Project_Bang_Squad/Game/Base/BSPlayerState.h"
 #include "Project_Bang_Squad/Game/MiniGame/ArenaMiniGameMode.h"
+#include "Project_Bang_Squad/Game/MiniGame/ArenaGameState.h"
 #include "Project_Bang_Squad/UI/Enemy/EnemyNormalHPWidget.h"
 
 ABaseCharacter::ABaseCharacter()
@@ -484,7 +485,7 @@ void ABaseCharacter::OnDeath()
 			BossGM->OnPlayerDied(GetController());
 		}
 
-		if (AArenaMiniGameMode* ArenaGM = Cast<AArenaMiniGameMode>(GM))
+		else if (AArenaMiniGameMode* ArenaGM = Cast<AArenaMiniGameMode>(GM))
 		{
 			ArenaGM->OnPlayerDied(GetController());
 		}
@@ -771,6 +772,12 @@ void ABaseCharacter::Zoom(const FInputActionValue& Value)
 
 bool ABaseCharacter::IsSkillUnlocked(int32 RequiredStage)
 {
+	// 아레나 모드라면 무조건 스킬 UI 잠금
+	if (GetWorld() && GetWorld()->GetGameState<AArenaGameState>())
+	{
+		return false;
+	}
+	
 	if (bIsMiniGameMode)
 	{
 		return false;
@@ -1053,4 +1060,90 @@ bool ABaseCharacter::IsSkillUnlockedByRowName(FName RowName)
 	}
 
 	return false; // 데이터가 없으면 잠긴 것으로 간주
+}
+
+// ==============================================================================
+// 아레나 모드 스킬 제어 및 투척 시스템
+// ==============================================================================
+
+void ABaseCharacter::Attack()
+{
+	// 아레나 모드라면 기존 평타 대신 투척!
+	if (GetWorld()->GetGameState<AArenaGameState>())
+	{
+		ArenaThrowAction();
+		return;
+	}
+}
+
+void ABaseCharacter::Skill1()
+{
+	if (GetWorld()->GetGameState<AArenaGameState>()) return;
+}
+
+void ABaseCharacter::Skill2()
+{
+	if (GetWorld()->GetGameState<AArenaGameState>()) return;
+}
+
+void ABaseCharacter::JobAbility()
+{
+	if (GetWorld()->GetGameState<AArenaGameState>()) return;
+}
+
+void ABaseCharacter::ArenaThrowAction()
+{
+	// 죽었거나 쿨타임 중이면 무시
+	if (bIsDead || !bCanArenaThrow) return;
+	
+	// 쿨타임 시작
+	bCanArenaThrow = false;
+	GetWorldTimerManager().SetTimer(ArenaThrowCooldownTimer, this, &ABaseCharacter::ResetArenaThrow, 1.5f, false);
+	
+	// 모션 재생
+	if (ArenaThrowMontage)
+	{
+		PlayActionMontage(ArenaThrowMontage);
+	}
+	
+	// 투사체 생성은 서버에서만 처리
+	if (HasAuthority())
+	{
+		if (ArenaProjectileClass)
+		{
+			// =====================================================================
+			// ✅ [수정] 스폰 위치를 "캐릭터의 몸 앞쪽 + 가슴 높이"로 정확하게 이동!
+			// =====================================================================
+			FVector CharLoc = GetActorLocation();               // 캐릭터 중심 위치
+			FVector ForwardDir = GetActorForwardVector();       // 캐릭터가 바라보는 앞쪽 방향
+            
+			// 앞으로 100cm, 위로 50cm (손이나 가슴 높이) 밀어서 스폰합니다.
+			FVector SpawnLoc = CharLoc + (ForwardDir * 100.0f) + FVector(0.0f, 0.0f, 50.0f);
+            
+			// 날아가는 각도는 카메라(에임)가 바라보는 방향으로 설정
+			FRotator SpawnRot = Camera ? Camera->GetComponentRotation() : GetActorRotation();
+            
+			FActorSpawnParameters SpawnParams;
+			SpawnParams.Owner = this;
+			SpawnParams.Instigator = GetInstigator();
+			SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+			GetWorld()->SpawnActor<AActor>(ArenaProjectileClass, SpawnLoc, SpawnRot, SpawnParams);
+		}
+	}
+	else
+	{
+		// 클라이언트라면 서버에 쏴달라고 부탁
+		Server_ArenaThrowAction();
+	}
+}
+
+void ABaseCharacter::Server_ArenaThrowAction_Implementation()
+{
+	ArenaThrowAction();
+}
+
+void ABaseCharacter::ResetArenaThrow()
+{
+	bCanArenaThrow = true;
 }

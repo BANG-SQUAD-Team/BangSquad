@@ -1,7 +1,7 @@
 #include "Project_Bang_Squad/Character/PaladinCharacter.h"
 #include "Project_Bang_Squad/Character/Base/BaseCharacter.h"
 #include "Project_Bang_Squad/Character/Player/Paladin/PaladinSkill2Hammer.h"
-
+#include "Project_Bang_Squad/Game/MiniGame/ArenaGameState.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Components/WidgetComponent.h"
@@ -195,6 +195,12 @@ void APaladinCharacter::Landed(const FHitResult& Hit)
 
 void APaladinCharacter::Attack()
 {
+    // 아레나 모드면 투척 액션
+    if (GetWorld()->GetGameState<AArenaGameState>())
+    {
+        Super::Attack(); 
+        return; 
+    }
     if (!CanAttack()) return;
     if (bIsGuarding) return; // 방어 중 공격 불가
 
@@ -455,6 +461,7 @@ void APaladinCharacter::Server_ProcessSkill_Implementation(FName SkillRowName)
 
 void APaladinCharacter::Skill1()
 {
+    if (GetWorld()->GetGameState<AArenaGameState>()) return;
     if (bIsDead || bIsGuarding) return;
     ProcessSkill(FName("Skill1"));
 }
@@ -541,6 +548,7 @@ void APaladinCharacter::Multicast_PlaySmashVFX_Implementation(FVector Location)
 
 void APaladinCharacter::Skill2()
 {
+    if (GetWorld()->GetGameState<AArenaGameState>()) return;
     if (!CanAttack()) return;
     if (bIsDead || bIsGuarding) return;
 
@@ -680,6 +688,7 @@ void APaladinCharacter::Multicast_PlaySkill2CastVFX_Implementation()
 
 void APaladinCharacter::JobAbility()
 {
+    if (GetWorld()->GetGameState<AArenaGameState>()) return;
     if (!CanAttack()) return;
     if (!IsSkillUnlocked(1)) return;
     if (bIsShieldBroken || CurrentShieldHP <= 0.0f) return;

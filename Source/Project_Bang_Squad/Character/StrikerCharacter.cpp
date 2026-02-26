@@ -7,6 +7,7 @@
 #include "Engine/Engine.h"
 #include "Project_Bang_Squad/Character/Component/HealthComponent.h"
 #include "Project_Bang_Squad/Character/Enemy/EnemyNormal.h"
+#include "Project_Bang_Squad/Game/MiniGame/ArenaGameState.h"
 #include "Project_Bang_Squad/Character/MonsterBase/EnemyCharacterBase.h"
 
 
@@ -79,6 +80,11 @@ void AStrikerCharacter::OnDeath()
 
 void AStrikerCharacter::Attack()
 {
+	if (GetWorld()->GetGameState<AArenaGameState>())
+	{
+		Super::Attack(); 
+		return; 
+	}
     if (!CanAttack()) return;
 
     FName SkillRowName = bIsNextAttackA ? TEXT("Attack_A") : TEXT("Attack_B");
@@ -343,6 +349,7 @@ void AStrikerCharacter::Server_ApplyAttackForwardForce_Implementation()
 // 스킬 1
 void AStrikerCharacter::Skill1()
 {
+	if (GetWorld()->GetGameState<AArenaGameState>()) return;
     if (!CanAttack()) return;
     float CurrentTime = GetWorld()->GetTimeSeconds();
     if (CurrentTime < Skill1ReadyTime) return;
@@ -641,6 +648,7 @@ void AStrikerCharacter::Multicast_EndSkill1_Implementation()
 // ============================================================================
 void AStrikerCharacter::Skill2()
 {
+	if (GetWorld()->GetGameState<AArenaGameState>()) return;
 	if (!CanAttack()) return;
     float CurrentTime = GetWorld()->GetTimeSeconds();
     if (CurrentTime < Skill2ReadyTime) return;
@@ -858,6 +866,7 @@ void AStrikerCharacter::Multicast_Skill2_Implementation()
 // ============================================================================
 void AStrikerCharacter::JobAbility()
 {
+	if (GetWorld()->GetGameState<AArenaGameState>()) return;
 	if (!IsSkillUnlocked(1)) return;
 	if (!CanAttack()) return;
     float CurrentTime = GetWorld()->GetTimeSeconds();

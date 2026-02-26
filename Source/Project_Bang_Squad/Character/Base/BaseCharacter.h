@@ -230,10 +230,28 @@ protected:
 	void Move(const FInputActionValue& Value);
 	virtual void Look(const FInputActionValue& Value);
 	virtual void Jump() override;
-	virtual void Attack() {}
-	virtual void Skill1() {}
-	virtual void Skill2() {}
-	virtual void JobAbility() {}
+	virtual void Attack();
+	virtual void Skill1();
+	virtual void Skill2();
+	virtual void JobAbility();
+	
+	void ArenaThrowAction();
+	
+	UFUNCTION(Server, Reliable)
+	void Server_ArenaThrowAction();
+	
+	// 아레나 투척 모션 (에디터에서 할당)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Arena")
+	UAnimMontage* ArenaThrowMontage;
+	
+	// 아레나 공용 투사체 클래스
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Arena")
+	TSubclassOf<class AActor> ArenaProjectileClass;
+	
+	// 아레나 투척 쿨타임 관리
+	bool bCanArenaThrow = true;
+	FTimerHandle ArenaThrowCooldownTimer;
+	void ResetArenaThrow();
 
 	bool IsSkillUnlocked(int32 RequiredStage);
 
