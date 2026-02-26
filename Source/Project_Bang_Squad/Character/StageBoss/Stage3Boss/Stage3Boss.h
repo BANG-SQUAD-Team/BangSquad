@@ -39,6 +39,9 @@ public:
     UFUNCTION(BlueprintCallable) float Execute_Laser();
     UFUNCTION(BlueprintCallable) float Execute_Meteor();
     UFUNCTION(BlueprintCallable) float Execute_PlatformBreak();
+    UFUNCTION(BlueprintCallable, Category = "Boss|Combat")
+    void DoMeleeHitCheck();
+
 
     // 레이저 타겟팅 헬퍼
     UFUNCTION(BlueprintCallable) void FindNearestPlayer();

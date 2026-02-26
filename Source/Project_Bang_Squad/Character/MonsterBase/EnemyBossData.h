@@ -6,10 +6,31 @@
 #include "Project_Bang_Squad/Projectile/MageProjectile.h" 
 #include "EnemyBossData.generated.h"
 
+// =============================================================
+// [추가] Stage 3 Boss 스킬 열거형 및 세부 설정 구조체
+// UCLASS보다 무조건 위에 있어야 에러가 나지 않습니다.
+// =============================================================
+UENUM(BlueprintType)
+enum class EBoss3Skill : uint8
+{
+    Basic, Laser, Meteor, Break, Chase
+};
+
+USTRUCT(BlueprintType)
+struct FBoss3SkillDetails
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
+    float Cooldown = 10.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
+    float Weight = 50.0f;
+};
+
 /**
  * [Boss Class]
- * ���� ���� ������ ����
- * ����: AttackRange, AttackDamage, MaxHealth ���� �θ�(UEnemyBaseData)�� �����Ƿ� ���⼭ ���� ����!
+ * 보스 공통 데이터 관리
  */
 UCLASS(BlueprintType)
 class PROJECT_BANG_SQUAD_API UEnemyBossData : public UEnemyBaseData
@@ -18,22 +39,17 @@ class PROJECT_BANG_SQUAD_API UEnemyBossData : public UEnemyBaseData
 
 public:
     // =============================================================
-    // [1] ���� ������ (Common)
+    // [1] 공통 데이터 (Common)
     // =============================================================
-
-    // ��� �ߵ� ü�� ����
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Common", meta = (ClampMin = "0.0", ClampMax = "1.0"))
     float GimmickThresholdRatio = 0.5f;
 
-    // 보스 체력바에 표시될 얼굴 이미지
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|UI")
     UTexture2D* BossIcon;
-    
-    // 보스 체력바 위에 표시될 보스 이름
+
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|UI")
     FText BossName;
-    
-    // ��׷� / �ǰ� / ��� ��Ÿ��
+
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Common")
     TObjectPtr<UAnimMontage> AggroMontage;
 
@@ -53,9 +69,8 @@ public:
     TObjectPtr<UAnimMontage> DeathWallSummonMontage;
 
     // =============================================================
-    // [2] Stage 1 ���� (Knight)
+    // [2] Stage 1 보스 (Knight)
     // =============================================================
-
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Stage1_Knight")
     TSubclassOf<ASlashProjectile> SlashProjectileClass;
 
@@ -66,81 +81,67 @@ public:
     TObjectPtr<UAnimMontage> SpellMontage;
 
     // =============================================================
-    // [3] Stage 2 ���� (Mage)
+    // [3] Stage 2 보스 (Mage)
     // =============================================================
-
-// 1. ���Ÿ� ����
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Mage")
-    TSubclassOf<AActor> MagicProjectileClass; // ����ü Ŭ����
+    TSubclassOf<AActor> MagicProjectileClass;
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Mage")
-    TObjectPtr<UAnimMontage> MagicAttackMontage; // �߻� ���
-
-    // 2. �ڷ���Ʈ
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Mage")
-    TObjectPtr<UAnimMontage> TeleportMontage; // ������� ��Ÿ���� ���
+    TObjectPtr<UAnimMontage> MagicAttackMontage;
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Mage")
-    TObjectPtr<UParticleSystem> TeleportVFX; // �ڷ���Ʈ ����Ʈ
-
-    // 3. ���� ���� (Sphere Trace)
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Mage")
-    TObjectPtr<UAnimMontage> MeleeAttackMontage; // �ֵθ��� ���
+    TObjectPtr<UAnimMontage> TeleportMontage;
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Mage")
-    float MeleeAttackRadius = 150.0f; // ���� ���� (������)
+    TObjectPtr<UParticleSystem> TeleportVFX;
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Mage")
-    float MeleeAttackDamage = 30.0f; // ���� ������
+    TObjectPtr<UAnimMontage> MeleeAttackMontage;
 
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Mage")
+    float MeleeAttackRadius = 150.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Mage")
+    float MeleeAttackDamage = 30.0f;
 
     // =============================================================
-    // [4] Stage 2 ���� (Spider - ���⸦ �߰��ؾ� ������ �ذ�˴ϴ�!)
+    // [4] Stage 2 보스 (Spider)
     // =============================================================
-
-    // �Ź��� ����ü Ŭ���� (BP_WebProjectile �Ҵ��)
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Stage2_Spider")
     TSubclassOf<AActor> WebProjectileClass;
 
-    // �Ź��� �߻� ��Ÿ��
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Stage2_Spider")
     TObjectPtr<UAnimMontage> WebShotMontage;
 
-    // ��� ���(QTE) ���� ��Ÿ��
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Stage2_Spider")
     TObjectPtr<UAnimMontage> QTEAttackMontage;
 
-    // ����� ��ȿ ��Ÿ��
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Stage2_Spider")
     TObjectPtr<UAnimMontage> WipePatternMontage;
 
     // =============================================================
-    // [5] Stage 3 미드보스 (기본 평타 + 원거리 공격)
+    // [5] Stage 3 미드보스
     // =============================================================
-
-    // 원거리 공격용 투사체 클래스
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Stage3_MidBoss")
     TSubclassOf<AActor> Stage3RangedProjectileClass;
 
-    // 원거리 공격 발동 몽타주
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Stage3_MidBoss")
     TObjectPtr<UAnimMontage> Stage3RangedAttackMontage;
-
-
-
 
     // =============================================================
     // [6] Stage 3 보스
     // =============================================================
 
-    // 1. 투사체 클래스
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Stage3")
-    TSubclassOf<AActor> MeteorProjectileClass; // 메테오
+    // [추가] 컨트롤러에서 사용할 스킬 설정 맵
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Stage3|AI")
+    TMap<EBoss3Skill, FBoss3SkillDetails> Stage3SkillConfigs;
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Stage3")
-    TSubclassOf<AActor> WindOrbClass; // 바람 구슬 아이템
+    TSubclassOf<AActor> MeteorProjectileClass;
 
-    // 2. 애니메이션 몽타주
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Stage3")
+    TSubclassOf<AActor> WindOrbClass;
+
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Stage3")
     TObjectPtr<UAnimMontage> WingAttackL_Montage;
 
@@ -148,12 +149,11 @@ public:
     TObjectPtr<UAnimMontage> WingAttackR_Montage;
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Stage3")
-    TObjectPtr<UAnimMontage> LaserMontage; // Spell_In -> Loop -> End
+    TObjectPtr<UAnimMontage> LaserMontage;
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Stage3")
-    TObjectPtr<UAnimMontage> MeteorMontage; // Fly_In -> Cast -> Fly_Out
+    TObjectPtr<UAnimMontage> MeteorMontage;
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Stage3")
-    TObjectPtr<UAnimMontage> JumpAttackMontage; // Jump -> Landing
-
+    TObjectPtr<UAnimMontage> JumpAttackMontage;
 };
