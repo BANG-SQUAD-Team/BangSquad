@@ -82,7 +82,7 @@ void AStage3Boss::Tick(float DeltaTime)
 			FRotator TargetRot = Dir.Rotation();
 
 			// 부드럽게 회전 (InterpSpeed 3.0)
-			SetActorRotation(FMath::RInterpTo(GetActorRotation(), TargetRot, DeltaTime, 3.0f));
+			SetActorRotation(FMath::RInterpTo(GetActorRotation(), TargetRot, DeltaTime, 2.2f));
 		}
 	}
 }
@@ -160,7 +160,7 @@ float AStage3Boss::Execute_Laser()
 	}
 
 	// 3. 데미지 타이머 시작 (0.25초 간격)
-	GetWorldTimerManager().SetTimer(LaserDamageTimer, this, &AStage3Boss::ApplyLaserDamage, 0.25f, true);
+	GetWorldTimerManager().SetTimer(LaserDamageTimer, this, &AStage3Boss::ApplyLaserDamage, 1.0f, true, 1.66f);
 
 	// 4. 3초 후 종료 처리
 	FTimerHandle EndHandle;
