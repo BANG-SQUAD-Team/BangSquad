@@ -252,6 +252,15 @@ protected:
 	bool bCanArenaThrow = true;
 	FTimerHandle ArenaThrowCooldownTimer;
 	void ResetArenaThrow();
+	
+	// 타이머로 지연 발사할 스폰 함수
+	UFUNCTION()
+	void Execute_ArenaThrowProjectile();
+	
+	FTimerHandle ThrowDelayTimerHandle;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Arena")
+	float ArenaThrowDelay = 0.5f;
 
 	bool IsSkillUnlocked(int32 RequiredStage);
 

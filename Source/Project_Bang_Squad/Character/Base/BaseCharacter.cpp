@@ -1091,6 +1091,29 @@ void ABaseCharacter::JobAbility()
 	if (GetWorld()->GetGameState<AArenaGameState>()) return;
 }
 
+void ABaseCharacter::Execute_ArenaThrowProjectile()
+{
+	if (!HasAuthority() || !ArenaProjectileClass) return;
+	
+	// 캐릭터 중심 위치와 앞쪽 방향
+	FVector CharLoc = GetActorLocation();
+	FVector ForwardDir = GetActorForwardVector();
+	
+	// 앞으로 100, 위로 50 밀어서 스폰
+	FVector SpawnLoc = CharLoc + (ForwardDir * 100.f) + FVector(0.0f,0.0f,50.0f);
+	
+	// 날아가는 각도는 카메라(에임)가 바라보는 방향으로 설정
+	FRotator SpawnRot = Camera ? Camera->GetComponentRotation() : GetActorRotation();
+	
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.Owner = this;
+	SpawnParams.Instigator = GetInstigator();
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	GetWorld()->SpawnActor<AActor>(ArenaProjectileClass, SpawnLoc, SpawnRot, SpawnParams);
+
+}
+
 void ABaseCharacter::ArenaThrowAction()
 {
 	// 죽었거나 쿨타임 중이면 무시
@@ -1109,27 +1132,14 @@ void ABaseCharacter::ArenaThrowAction()
 	// 투사체 생성은 서버에서만 처리
 	if (HasAuthority())
 	{
-		if (ArenaProjectileClass)
-		{
-			// =====================================================================
-			// ✅ [수정] 스폰 위치를 "캐릭터의 몸 앞쪽 + 가슴 높이"로 정확하게 이동!
-			// =====================================================================
-			FVector CharLoc = GetActorLocation();               // 캐릭터 중심 위치
-			FVector ForwardDir = GetActorForwardVector();       // 캐릭터가 바라보는 앞쪽 방향
-            
-			// 앞으로 100cm, 위로 50cm (손이나 가슴 높이) 밀어서 스폰합니다.
-			FVector SpawnLoc = CharLoc + (ForwardDir * 100.0f) + FVector(0.0f, 0.0f, 50.0f);
-            
-			// 날아가는 각도는 카메라(에임)가 바라보는 방향으로 설정
-			FRotator SpawnRot = Camera ? Camera->GetComponentRotation() : GetActorRotation();
-            
-			FActorSpawnParameters SpawnParams;
-			SpawnParams.Owner = this;
-			SpawnParams.Instigator = GetInstigator();
-			SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-			GetWorld()->SpawnActor<AActor>(ArenaProjectileClass, SpawnLoc, SpawnRot, SpawnParams);
-		}
+		// 즉시 쏘지 않고 ArenaThrowDelay 뒤에 쏘도록
+		GetWorldTimerManager().SetTimer(
+			ThrowDelayTimerHandle,
+			this,
+			&ABaseCharacter::Execute_ArenaThrowProjectile,
+			ArenaThrowDelay,
+			false
+			);
 	}
 	else
 	{
