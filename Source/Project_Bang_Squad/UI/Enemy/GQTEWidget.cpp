@@ -9,7 +9,11 @@ void UGQTEWidget::NativeConstruct()
 {
     Super::NativeConstruct();
 
-    // 0.15초마다 이미지를 교체해서 반짝이는 효과 부여
+    if (MashText)
+    {
+        MashText->SetText(FText::FromString(TEXT("G키를 연타하세요!!")));
+    }
+
     GetWorld()->GetTimerManager().SetTimer(FlashTimerHandle, this, &UGQTEWidget::ToggleImage, 0.15f, true);
 }
 

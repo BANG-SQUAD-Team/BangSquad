@@ -159,6 +159,15 @@ void ATitanCharacter::Tick(float DeltaTime)
                 bIsAttackCoolingDown = false;
             }
         }
+
+        // D. [추가] 직업능력 쿨타임 복구 (던지기 타이머가 끊겼을 때 방어)
+        if (bIsCooldown)
+        {
+            if (!GetWorldTimerManager().IsTimerActive(CooldownTimerHandle))
+            {
+                bIsCooldown = false;
+            }
+        }
         // =================================================================
 
         // 3. 궤적 및 하이라이트 표시
@@ -477,6 +486,8 @@ void ATitanCharacter::JobAbility()
     {
         bIsGrabbing = false;
         GrabbedActor = nullptr;
+        ShowTrajectory(false);
+        StopAnimMontage(); // 혹시 모를 몽타주 재생을 확실히 중지
     }
 
     if (bIsGrabbing)
@@ -501,8 +512,7 @@ void ATitanCharacter::JobAbility()
     }
     else
     {
-       // 잡기 시도
-       if (!CanAttack()) return;
+       if (bIsAttacking) return;
        if (bIsCooldown) return;
        if (HoveredActor) Server_TryGrab(HoveredActor);
     }
