@@ -9,6 +9,7 @@
 #include "Project_Bang_Squad/UI/Stage/Boss/RespawnCountWidget.h"
 #include "Project_Bang_Squad/UI/Stage/Boss/QTEWidget.h" // [복구] 기존 위젯 헤더
 #include "Project_Bang_Squad/UI/Enemy/ADQTEWidget.h"
+#include "Project_Bang_Squad/UI/Enemy/GQTEWidget.h"
 
 AStageBossPlayerController::AStageBossPlayerController()
 {
@@ -178,5 +179,28 @@ void AStageBossPlayerController::Server_SubmitIndividualQTEInput_Implementation(
 	if (CurrentQTETrap)
 	{
 		CurrentQTETrap->AddQTEProgress();
+	}
+}
+
+void AStageBossPlayerController::Client_ToggleGroupQTEUI_Implementation(bool bShow)
+{
+	if (bShow)
+	{
+		if (GQTEWidgetClass && !GQTEWidgetInstance)
+		{
+			GQTEWidgetInstance = CreateWidget<UGQTEWidget>(this, GQTEWidgetClass);
+			if (GQTEWidgetInstance)
+			{
+				GQTEWidgetInstance->AddToViewport(100); // 다른 UI보다 앞에 나오게 함
+			}
+		}
+	}
+	else
+	{
+		if (GQTEWidgetInstance)
+		{
+			GQTEWidgetInstance->RemoveFromParent();
+			GQTEWidgetInstance = nullptr;
+		}
 	}
 }

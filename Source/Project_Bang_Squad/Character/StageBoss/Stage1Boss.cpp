@@ -26,6 +26,7 @@
 #include "Blueprint/UserWidget.h"
 #include "Net/UnrealNetwork.h"
 #include "Project_Bang_Squad/Game/Stage/MapPortal.h"
+#include "Project_Bang_Squad/Character/StageBoss/StageBossPlayerController.h"
 
 AStage1Boss::AStage1Boss()
 {
@@ -201,6 +202,14 @@ float AStage1Boss::TakeDamage(float DamageAmount, FDamageEvent const& DamageEven
 				GM->TriggerSpearQTE(this);
 				UE_LOG(LogTemp, Warning, TEXT("[BOSS] HP 1 Reached! Finale QTE Triggered!"));
 				
+				for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+				{
+					if (AStageBossPlayerController* PC = Cast<AStageBossPlayerController>(It->Get()))
+					{
+						PC->Client_ToggleGroupQTEUI(true);
+					}
+				}
+
 				Multicast_ShowBossSubtitle(FText::FromString(TEXT(" 보스가 최후의 발악을 합니다! G키를 연타하세요!!")), 5.0f);
 			}
 
@@ -258,6 +267,14 @@ void AStage1Boss::HandleQTEResult(bool bSuccess)
 	}
 	
 	Multicast_FreezeAnimation(false);
+
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		if (AStageBossPlayerController* PC = Cast<AStageBossPlayerController>(It->Get()))
+		{
+			PC->Client_ToggleGroupQTEUI(false);
+		}
+	}
 
 	if (bSuccess)
 	{

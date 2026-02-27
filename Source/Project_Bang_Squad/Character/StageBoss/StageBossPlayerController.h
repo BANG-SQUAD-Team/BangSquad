@@ -12,6 +12,7 @@ class UInputMappingContext;
 class UInputAction;
 class AQTE_Trap;
 class UADQTEWidget;
+class UGQTEWidget;
 
 UCLASS()
 class PROJECT_BANG_SQUAD_API AStageBossPlayerController : public AStagePlayerController
@@ -28,6 +29,9 @@ public:
 	// --- [�������� 2 ���� QTE ���� (Ŭ���̾�Ʈ UI)] ---
 	UFUNCTION(Client, Reliable)
 	void Client_UpdateIndividualQTEUI(int32 CurrentCount, int32 MaxCount);
+
+	UFUNCTION(Client, Reliable)
+	void Client_ToggleGroupQTEUI(bool bShow);
 
 protected:
 	virtual void BeginPlay() override;
@@ -92,4 +96,9 @@ protected:
 	UFUNCTION()
 	void UpdateUI_RespawnCount(int32 CurrentLives);
 	
+	UPROPERTY(EditDefaultsOnly, Category = "UI|GroupQTE")
+	TSubclassOf<UGQTEWidget> GQTEWidgetClass;
+
+	UPROPERTY()
+	TObjectPtr<UGQTEWidget> GQTEWidgetInstance;
 };
