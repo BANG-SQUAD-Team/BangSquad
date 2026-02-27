@@ -8,7 +8,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "Engine/DamageEvents.h"
-
+#include "DrawDebugHelpers.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Blueprint/UserWidget.h"
 #include "Project_Bang_Squad/Core/TrueDamageType.h"
@@ -179,23 +179,47 @@ float AStage3Boss::Execute_Laser()
 
 void AStage3Boss::ApplyLaserDamage()
 {
-	// 레이저 판정 (Box Trace)
-	FVector Start = GetActorLocation();
-	FVector End = Start + (GetActorForwardVector() * 2000.0f); // 사거리 2000
+	// 1. 🚨 소켓 이름 유저님이 원래 쓰시던 걸로 다시 바꿔주세요!! (제가 멋대로 쓴 Spine_02 지우세요)
+	FName Ray = FName("Ray");
+	FVector Start = GetMesh()->GetSocketLocation(Ray);
+
+	FVector ForwardDir = GetActorForwardVector();
+
+	float LaserRange = 5000.0f;
+	FVector End = Start + (ForwardDir * LaserRange);
 
 	TArray<FHitResult> Hits;
 	FCollisionQueryParams Params;
 	Params.AddIgnoredActor(this);
+	Params.bTraceComplex = false;
 
-	bool bHit = GetWorld()->SweepMultiByChannel(
+	FQuat BoxRotation = GetActorRotation().Quaternion();
+	FVector BoxExtent = FVector(50.0f, 50.0f, 300.0f);
+
+	// =====================================================================
+	// 🚨 [바닥 관통 & BoxExtent 적용] 여기서부터 덮어씌우시면 됩니다.
+	// =====================================================================
+	FCollisionObjectQueryParams ObjectParams;
+	ObjectParams.AddObjectTypesToQuery(ECC_Pawn); // 오직 플레이어(Pawn)만 감지해서 바닥 긁힘 방지
+
+	// ByChannel이 아니라 ByObjectType 입니다!
+	bool bHit = GetWorld()->SweepMultiByObjectType(
 		Hits,
 		Start,
 		End,
-		FQuat::Identity,
-		ECC_Pawn,
-		FCollisionShape::MakeBox(FVector(50, 50, 50)), // 두께
+		BoxRotation,
+		ObjectParams,
+		FCollisionShape::MakeBox(BoxExtent), //  50,50,50 지우고 드디어 BoxExtent가 들어갑니다!
 		Params
 	);
+	// =====================================================================
+
+	DrawDebugLine(GetWorld(), Start, End, FColor::Red, false, 0.25f, 0, 3.0f);
+
+	if (bHit && Hits.Num() > 0)
+	{
+		DrawDebugBox(GetWorld(), Hits[0].Location, BoxExtent, BoxRotation, FColor::Green, false, 0.25f);
+	}
 
 	if (bHit)
 	{
@@ -203,7 +227,6 @@ void AStage3Boss::ApplyLaserDamage()
 		{
 			if (Hit.GetActor() && Hit.GetActor()->IsA(ACharacter::StaticClass()))
 			{
-				// 데미지 25 적용
 				UGameplayStatics::ApplyDamage(Hit.GetActor(), 25.0f, GetController(), this, UDamageType::StaticClass());
 			}
 		}
@@ -232,20 +255,33 @@ float AStage3Boss::Execute_Meteor()
 	FTimerHandle SpawnTimer;
 	GetWorldTimerManager().SetTimer(SpawnTimer, [this, Targets]()
 		{
-			for (ABossPlatform* P : Targets)
+			// 인덱스(i)를 활용하기 위해 range-based for 대신 일반 for문 사용
+			for (int32 i = 0; i < Targets.Num(); ++i)
 			{
-				if (P && BossData->MeteorProjectileClass)
+				ABossPlatform* P = Targets[i];
+				if (P && BossData && BossData->MeteorProjectileClass)
 				{
-					// 발판 상공 1500 유닛 높이에서 생성
-					FVector SpawnLoc = P->GetActorLocation() + FVector(0.0f, 0.0f, 5000.0f);
-					FRotator SpawnRot = FRotator(-45.0f, 0.0f, 0.0f); // 수직 하강 방향
+					// 각 메테오마다 i * 0.2초의 차이를 둡니다. (0초, 0.2초, 0.4초...)
+					float IndividualDelay = i * 0.2f;
 
-					FActorSpawnParameters Params;
-					Params.Instigator = this;
-					Params.Owner = this;
+					FTimerHandle EachMeteorTimer;
+					GetWorldTimerManager().SetTimer(EachMeteorTimer, [this, P]()
+						{
+							if (!P || !BossData) return;
 
-					// 서버에서 스폰 (Projectile의 bReplicates=true가 설정되어 있어야 클라이언트에서도 보입니다)
-					GetWorld()->SpawnActor<AActor>(BossData->MeteorProjectileClass, SpawnLoc, SpawnRot, Params);
+							// 1. 스폰 위치 계산 (높이 상향 및 사선 궤적 적용)
+							FVector TargetLoc = P->GetActorLocation();
+							FVector SpawnLoc = TargetLoc + FVector(0, 0, 5000.0f) + (GetActorForwardVector() * -1500.0f);
+							FRotator SpawnRot = (TargetLoc - SpawnLoc).Rotation();
+
+							FActorSpawnParameters Params;
+							Params.Instigator = this;
+							Params.Owner = this;
+
+							// 2. 메테오 스폰
+							GetWorld()->SpawnActor<AActor>(BossData->MeteorProjectileClass, SpawnLoc, SpawnRot, Params);
+
+						}, IndividualDelay, false);
 				}
 			}
 		}, 1.0f, false);
