@@ -31,18 +31,7 @@ public:
 
     // 방패 메쉬 접근자
     FORCEINLINE class UStaticMeshComponent* GetShieldMesh() const { return ShieldMeshComp; }
-
-    // ====================================================================================
-    //  [Section 3] 네트워크 RPC (Network Utilities)
-    // ====================================================================================
-    UFUNCTION(Server, Reliable)
-    void Server_PlayMontage(UAnimMontage* MontageToPlay);
-
-    UFUNCTION(NetMulticast, Reliable)
-    void Multicast_PlayMontage(UAnimMontage* MontageToPlay);
-
-    UFUNCTION(NetMulticast, Reliable)
-    void Multicast_StopMontage(float BlendOutTime = 0.25f);
+    
 
     // ====================================================================================
     //  [Section 4] 방패 상태 변수 (Replicated Properties)

@@ -845,6 +845,38 @@ void ABaseCharacter::PlayActionMontage(UAnimMontage* MontageToPlay)
 	}
 }
 
+void ABaseCharacter::Server_PlayActionMontage_Implementation(UAnimMontage* MontageToPlay)
+{
+	Multicast_PlayActionMontage(MontageToPlay);
+}
+
+void ABaseCharacter::Multicast_PlayActionMontage_Implementation(UAnimMontage* MontageToPlay)
+{
+	if (MontageToPlay && !IsLocallyControlled())
+	{
+		PlayActionMontage(MontageToPlay);
+	}
+}
+
+void ABaseCharacter::Server_StopActionMontage_Implementation(UAnimMontage* MontageToStop, float BlendOutTime)
+{
+	Multicast_StopActionMontage(MontageToStop);
+}
+
+void ABaseCharacter::Multicast_StopActionMontage_Implementation(UAnimMontage* MontageToStop, float BlendOutTime)
+{
+	
+	if (!IsLocallyControlled()) 
+	{
+		UAnimInstance* AnimInstance = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr;
+		if (AnimInstance && AnimInstance->GetCurrentActiveMontage() != DeathMontage)
+		{
+			AnimInstance->Montage_Stop(BlendOutTime, MontageToStop);
+		}
+	}
+}
+
+
 void ABaseCharacter::OnAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
 	// 몽타주가 끝나거나 취소되면 다시 행동 가능 상태로 복구

@@ -392,7 +392,7 @@ void APaladinCharacter::ProcessSkill(FName SkillRowName)
         // [Server Logic] 데미지 판정, 이펙트 전파 등은 오직 서버만 처리
         if (HasAuthority())
         {
-            if (Data->SkillMontage) Server_PlayMontage(Data->SkillMontage);
+            if (Data->SkillMontage) Server_PlayActionMontage(Data->SkillMontage);
 
             // ----------------------------------------------------
             // [Case A] Skill1: 분쇄 (Smash - Jump Attack)
@@ -608,7 +608,7 @@ void APaladinCharacter::Server_Skill2_Implementation()
             DelayTime = Data->ActionDelay;
 
             // 타 클라이언트 동기화
-            if (Data->SkillMontage) Multicast_PlayMontage(Data->SkillMontage);
+            if (Data->SkillMontage) Multicast_PlayActionMontage(Data->SkillMontage);
         }
     }
 
@@ -708,7 +708,7 @@ void APaladinCharacter::JobAbility()
     if (MontageToPlay)
     {
         PlayActionMontage(MontageToPlay);
-        Server_PlayMontage(MontageToPlay);
+        Server_PlayActionMontage(MontageToPlay);
     }
 
     // 2. 방패 활성화 (딜레이 적용)
@@ -724,13 +724,28 @@ void APaladinCharacter::JobAbility()
 
 void APaladinCharacter::EndJobAbility()
 {
-    // 버튼 뗄 때 방어 해제
     GetWorldTimerManager().ClearTimer(ShieldActivationTimer);
+
+    // 내 화면에서는 즉시 방패 숨기고 모션 끔!
+    if (IsLocallyControlled())
+    {
+        bIsGuarding = false;
+        OnRep_IsGuarding(); 
+    }
+    
     Server_SetGuard(false);
 }
 
 void APaladinCharacter::ActivateGuard()
 {
+    // [방어막 켜기 로컬 예측] 내 화면에서는 서버 허락 기다리지 않고 즉시 켬!
+    if (IsLocallyControlled() && !bIsShieldBroken)
+    {
+        bIsGuarding = true;
+        OnRep_IsGuarding(); // 방패 메쉬 즉시 보이기
+    }
+
+    // 서버에도 방패 들었다고 알림
     Server_SetGuard(true);
 }
 
@@ -748,7 +763,7 @@ void APaladinCharacter::Server_SetGuard_Implementation(bool bNewGuarding)
     else
     {
         // 방어 해제: 몽타주 종료 및 회복 시작
-        Multicast_StopMontage(0.25f);
+        Multicast_StopActionMontage(nullptr, 0.25f);
 
         if (!GetWorldTimerManager().IsTimerActive(ShieldRegenTimer))
         {
@@ -761,6 +776,15 @@ void APaladinCharacter::Server_SetGuard_Implementation(bool bNewGuarding)
 void APaladinCharacter::OnRep_IsGuarding()
 {
     SetShieldActive(bIsGuarding);
+    
+    if (!bIsGuarding && IsLocallyControlled())
+    {
+        UAnimInstance* AnimInstance = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr;
+        if (AnimInstance)
+        {
+            AnimInstance->Montage_Stop(0.25f);
+        }
+    }
 }
 
 void APaladinCharacter::SetShieldActive(bool bActive)
@@ -898,30 +922,6 @@ void APaladinCharacter::ConsumeShield(float Amount)
     }
 }
 
-void APaladinCharacter::Server_PlayMontage_Implementation(UAnimMontage* MontageToPlay)
-{
-    Multicast_PlayMontage(MontageToPlay);
-}
-
-void APaladinCharacter::Multicast_PlayMontage_Implementation(UAnimMontage* MontageToPlay)
-{
-    if (MontageToPlay && !IsLocallyControlled())
-    {
-        PlayAnimMontage(MontageToPlay);
-    }
-}
-
-void APaladinCharacter::Multicast_StopMontage_Implementation(float BlendOutTime)
-{
-    if (IsDead()) return;
-
-    UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
-    if (AnimInstance && AnimInstance->GetCurrentActiveMontage())
-    {
-        if (AnimInstance->GetCurrentActiveMontage() == DeathMontage) return;
-        AnimInstance->Montage_Stop(BlendOutTime);
-    }
-}
 
 void APaladinCharacter::Multicast_SetTrailActive_Implementation(bool bActive)
 {

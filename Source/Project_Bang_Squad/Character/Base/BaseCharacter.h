@@ -281,7 +281,20 @@ protected:
 	bool bIsAttacking;
 	UFUNCTION()
 	void OnAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted);
+	
 	void PlayActionMontage(UAnimMontage* MontageToPlay);
+	
+	UFUNCTION(Server, Reliable)
+	void Server_PlayActionMontage(UAnimMontage* MontageToPlay);
+	
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_PlayActionMontage(UAnimMontage* MontageToPlay);
+
+	UFUNCTION(Server, Reliable)
+	void Server_StopActionMontage(UAnimMontage* MontageToStop = nullptr, float BlendOutTime = 0.25f);
+
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_StopActionMontage(UAnimMontage* MontageToStop = nullptr, float BlendOutTime = 0.25f);
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement")
 	float JumpCooldownTimer = 1.2f;

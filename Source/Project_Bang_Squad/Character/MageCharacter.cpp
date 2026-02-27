@@ -523,7 +523,7 @@ void AMageCharacter::ProcessSkill(FName SkillRowName, FVector TargetLocation)
 
        if (HasAuthority())
        {
-          if (Data->SkillMontage) Server_PlayMontage(Data->SkillMontage);
+          if (Data->SkillMontage) Server_PlayActionMontage(Data->SkillMontage);
 
           if (SkillRowName == TEXT("Attack_A") || SkillRowName == TEXT("Attack_B"))
           {
@@ -702,23 +702,26 @@ void AMageCharacter::JobAbility()
     // [염력 모드 1] 기둥 조작
     if (FocusedPillar)
     {
-       if (TargetMontage)
+       if (TargetMontage && IsLocallyControlled())
        {
           PlayActionMontage(TargetMontage);
-          Server_PlayMontage(TargetMontage);
        }
+       if (TargetMontage) Server_PlayActionMontage(TargetMontage);
 
        bIsPillarMode = true;
        CurrentTargetPillar = FocusedPillar;
 
-       if (SpringArm)
+       if (IsLocallyControlled())
        {
-          SpringArm->bUsePawnControlRotation = true;
-          SpringArm->bInheritPitch = true;
-          SpringArm->bInheritYaw = true;
-          SpringArm->bInheritRoll = true;
+          if (SpringArm)
+          {
+             SpringArm->bUsePawnControlRotation = true;
+             SpringArm->bInheritPitch = true;
+             SpringArm->bInheritYaw = true;
+             SpringArm->bInheritRoll = true;
+          }
+          if (CameraTimelineComp) CameraTimelineComp->Play(); 
        }
-       if (CameraTimelineComp) CameraTimelineComp->Play(); 
        
        bSuccess = true;
     }
@@ -726,12 +729,7 @@ void AMageCharacter::JobAbility()
     else if (HoveredActor)
     {
        AMagicBoat* TargetBoat = Cast<AMagicBoat>(HoveredActor);
-
-       if (TargetMontage)
-       {
-          PlayActionMontage(TargetMontage);
-          Server_PlayMontage(TargetMontage);
-       }
+       
 
        // 보트 탑승 여부 검증
        if (TargetBoat)
@@ -740,6 +738,12 @@ void AMageCharacter::JobAbility()
           bool bIsRiding = (BaseComponent && BaseComponent->GetOwner() == TargetBoat);
           if (!bIsRiding) return; 
        }
+       
+       if (TargetMontage && IsLocallyControlled())
+       {
+          PlayActionMontage(TargetMontage);
+       }
+       if (TargetMontage) Server_PlayActionMontage(TargetMontage);
 
        bIsBoatMode = true;
        CurrentControlledActor = HoveredActor;
@@ -775,11 +779,17 @@ void AMageCharacter::EndJobAbility()
 
     if (Data) TargetMontage = Data->SkillMontage;
 
-    if (TargetMontage)
-    {
-       StopAnimMontage(TargetMontage);
-       Server_StopMontage(TargetMontage);
-    }
+   if (TargetMontage && IsLocallyControlled())
+   {
+      // AnimInstance를 통해 부드럽게 끄기 (StopAnimMontage 대신 사용)
+      UAnimInstance* AnimInstance = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr;
+      if (AnimInstance) AnimInstance->Montage_Stop(0.25f, TargetMontage);
+   }
+   
+   if (TargetMontage)
+   {
+      Server_StopActionMontage(TargetMontage, 0.25f); 
+   }
 
     Server_SetAuraActive(false);
     
@@ -787,7 +797,11 @@ void AMageCharacter::EndJobAbility()
     {
        bIsPillarMode = false;
        CurrentTargetPillar = nullptr;
-       if (CameraTimelineComp) CameraTimelineComp->Reverse();
+       
+       if (IsLocallyControlled() && CameraTimelineComp) 
+       {
+          CameraTimelineComp->Reverse();
+       }
     }
 
     if (bIsBoatMode)
@@ -814,13 +828,13 @@ void AMageCharacter::EndJobAbility()
        CurrentControlledActor = nullptr;
     }
 
-    if (SpringArm)
-    {
-       SpringArm->bUsePawnControlRotation = true;
-       SpringArm->bInheritPitch = true;
-       SpringArm->bInheritYaw = true;
-       SpringArm->bInheritRoll = true;
-    }
+   if (IsLocallyControlled() && SpringArm)
+   {
+      SpringArm->bUsePawnControlRotation = true;
+      SpringArm->bInheritPitch = true;
+      SpringArm->bInheritYaw = true;
+      SpringArm->bInheritRoll = true;
+   }
 }
 
 // ====================================================================================
@@ -830,26 +844,6 @@ void AMageCharacter::EndJobAbility()
 void AMageCharacter::Server_ProcessSkill_Implementation(FName SkillRowName, FVector TargetLocation)
 {
     ProcessSkill(SkillRowName, TargetLocation);
-}
-
-void AMageCharacter::Server_PlayMontage_Implementation(UAnimMontage* MontageToPlay)
-{
-    Multicast_PlayMontage(MontageToPlay);
-}
-
-void AMageCharacter::Multicast_PlayMontage_Implementation(UAnimMontage* MontageToPlay)
-{
-    if (MontageToPlay && !IsLocallyControlled()) PlayAnimMontage(MontageToPlay);
-}
-
-void AMageCharacter::Server_StopMontage_Implementation(UAnimMontage* MontageToStop)
-{
-    Multicast_StopMontage(MontageToStop);
-}
-
-void AMageCharacter::Multicast_StopMontage_Implementation(UAnimMontage* MontageToStop)
-{
-    if (MontageToStop && !IsLocallyControlled()) StopAnimMontage(MontageToStop);
 }
 
 void AMageCharacter::Server_InteractActor_Implementation(AActor* TargetActor, FVector Direction)
@@ -945,10 +939,10 @@ float AMageCharacter::TakeDamage(float DamageAmount, FDamageEvent const& DamageE
 {
     float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
 
-    if (ActualDamage > 0.0f && (bIsPillarMode || bIsBoatMode))
-    {
-       EndJobAbility();
-    }
+   if (HasAuthority() && ActualDamage > 0.0f && (bIsPillarMode || bIsBoatMode))
+   {
+      EndJobAbility();
+   }
 
     return ActualDamage;
 }

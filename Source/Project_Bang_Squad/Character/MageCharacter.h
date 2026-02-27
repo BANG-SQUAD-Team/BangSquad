@@ -53,11 +53,8 @@ public:
     // ====================================================================================
     // [Section 3] 네트워크 RPC (Network RPCs)
     // ====================================================================================
-    UFUNCTION(Server, Reliable) void Server_ProcessSkill(FName SkillRowName, FVector TargetLocation);
-    UFUNCTION(Server, Reliable) void Server_PlayMontage(UAnimMontage* MontageToPlay);
-    UFUNCTION(NetMulticast, Reliable) void Multicast_PlayMontage(UAnimMontage* MontageToPlay);
-    UFUNCTION(Server, Reliable) void Server_StopMontage(UAnimMontage* MontageToStop);
-    UFUNCTION(NetMulticast, Reliable) void Multicast_StopMontage(UAnimMontage* MontageToStop);
+    UFUNCTION(Server, Reliable) void Server_ProcessSkill(FName SkillRowName, FVector TargetLocation = FVector::ZeroVector);
+    
 
     // 범용 상호작용 및 기믹 제어
     UFUNCTION(Server, Reliable) void Server_InteractActor(AActor* TargetActor, FVector Direction);
