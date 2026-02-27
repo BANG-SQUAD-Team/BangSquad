@@ -172,11 +172,7 @@ void AMageCharacter::BeginPlay()
        }
     }
 
-    // 로컬 클라이언트에서만 상호작용 감지 타이머 실행
-    if (IsLocallyControlled())
-    {
-       GetWorldTimerManager().SetTimer(InteractionTimerHandle, this, &AMageCharacter::CheckInteractableTarget, 0.1f, true);
-    }
+   GetWorldTimerManager().SetTimer(InteractionTimerHandle, this, &AMageCharacter::CheckInteractableTarget, 0.1f, true);
 }
 
 void AMageCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -245,99 +241,92 @@ void AMageCharacter::Tick(float DeltaTime)
 
 void AMageCharacter::CheckInteractableTarget()
 {
-    if (!IsLocallyControlled())
-    {
-       GetWorldTimerManager().ClearTimer(InteractionTimerHandle);
-       return;
-    }
+    // 1. 컨트롤러 확인 (패키징 빌드 안정성 최우선)
+    APlayerController* PC = Cast<APlayerController>(GetController());
+    if (!PC || !IsLocallyControlled()) return;
 
     if (bIsPillarMode || bIsBoatMode) return;
 
-    // 구조물에 매달려 있을 때는 하이라이트 비활성화
-    if (GetAttachParentActor() != nullptr)
-    {
-       if (FocusedPillar)
-       {
-          if (FocusedPillar->PillarMesh) FocusedPillar->PillarMesh->SetRenderCustomDepth(false);
-          FocusedPillar = nullptr;
-       }
+    // 구조물에 매달려 있을 때는 리턴
+    if (GetAttachParentActor() != nullptr) return;
 
-       if (HoveredActor)
-       {
-          if (IMagicInteractableInterface* Interface = Cast<IMagicInteractableInterface>(HoveredActor))
-             Interface->SetMageHighlight(false);
-          HoveredActor = nullptr;
-       }
-       return; 
-    }
+    // 2. [핵심 수정] 카메라 컴포넌트의 위치(0,0,0 버그)를 쓰지 않습니다.
+    // 플레이어의 실제 렌더링 시야(ViewPoint)를 엔진에 직접 물어봅니다.
+    FVector Start;
+    FRotator Rotation;
+    PC->GetPlayerViewPoint(Start, Rotation); // 👈 패키징 버그를 뚫는 가장 확실한 방법
 
-    // 전방으로 레이저를 발사하여 상호작용 객체 탐색
+    FVector End = Start + (Rotation.Vector() * TraceDistance);
+
+    // 3. 레이저 발사 (LineTrace)
     FHitResult HitResult;
-    FVector Start = Camera->GetComponentLocation();
-    FVector End = Start + (Camera->GetForwardVector() * TraceDistance);
     FCollisionQueryParams Params;
     Params.AddIgnoredActor(this); 
+
+    // [중요] 패키징에서 레이저가 나가는지 눈으로 확인하기 위한 디버그 라인 (테스트 후 주석처리)
+    // DrawDebugLine(GetWorld(), Start, End, FColor::Red, false, 0.1f, 0, 2.0f);
 
     bool bHit = GetWorld()->LineTraceSingleByChannel(HitResult, Start, End, ECC_Visibility, Params);
     AActor* HitActor = HitResult.GetActor();
 
+    // --- 이하 로직은 기존과 동일하되, 안정성만 보강 ---
     APillar* HitPillar = Cast<APillar>(HitActor);
     bool bIsInterface = (HitActor && HitActor->Implements<UMagicInteractableInterface>());
 
-    // [케이스 1] 쓰러지지 않은 기둥 발견
+    // 1. 기둥 감지
     if (HitPillar && !HitPillar->bIsFallen)
     {
-       if (FocusedPillar != HitPillar)
-       {
-          if (HoveredActor)
-          {
-             if (IMagicInteractableInterface* Interface = Cast<IMagicInteractableInterface>(HoveredActor))
-                Interface->SetMageHighlight(false);
-             HoveredActor = nullptr;
-          }
-          if (FocusedPillar) FocusedPillar->PillarMesh->SetRenderCustomDepth(false);
+        if (FocusedPillar != HitPillar)
+        {
+            if (HoveredActor)
+            {
+                if (IMagicInteractableInterface* Iface = Cast<IMagicInteractableInterface>(HoveredActor))
+                    Iface->SetMageHighlight(false);
+                HoveredActor = nullptr;
+            }
+            if (FocusedPillar) FocusedPillar->PillarMesh->SetRenderCustomDepth(false);
 
-          HitPillar->PillarMesh->SetRenderCustomDepth(true);
-          HitPillar->PillarMesh->SetCustomDepthStencilValue(255);
-          FocusedPillar = HitPillar;
-       }
+            HitPillar->PillarMesh->SetRenderCustomDepth(true);
+            HitPillar->PillarMesh->SetCustomDepthStencilValue(255);
+            FocusedPillar = HitPillar;
+        }
     }
-    // [케이스 2] 마법 인터페이스 객체(보트 등) 발견
+    // 2. 보트, 공 등 인터페이스 객체 감지
     else if (bIsInterface)
     {
-       if (HoveredActor != HitActor)
-       {
-          if (FocusedPillar)
-          {
-             FocusedPillar->PillarMesh->SetRenderCustomDepth(false);
-             FocusedPillar = nullptr;
-          }
-          if (HoveredActor)
-          {
-             if (IMagicInteractableInterface* Iface = Cast<IMagicInteractableInterface>(HoveredActor))
-                Iface->SetMageHighlight(false);
-          }
-          if (IMagicInteractableInterface* Interface = Cast<IMagicInteractableInterface>(HitActor))
-          {
-             Interface->SetMageHighlight(true);
-          }
-          HoveredActor = HitActor;
-       }
+        if (HoveredActor != HitActor)
+        {
+            if (FocusedPillar)
+            {
+                FocusedPillar->PillarMesh->SetRenderCustomDepth(false);
+                FocusedPillar = nullptr;
+            }
+            if (HoveredActor)
+            {
+                if (IMagicInteractableInterface* Iface = Cast<IMagicInteractableInterface>(HoveredActor))
+                    Iface->SetMageHighlight(false);
+            }
+            if (IMagicInteractableInterface* Interface = Cast<IMagicInteractableInterface>(HitActor))
+            {
+                Interface->SetMageHighlight(true);
+            }
+            HoveredActor = HitActor;
+        }
     }
-    // [케이스 3] 허공
+    // 3. 아무것도 없음
     else
     {
-       if (FocusedPillar)
-       {
-          FocusedPillar->PillarMesh->SetRenderCustomDepth(false);
-          FocusedPillar = nullptr;
-       }
-       if (HoveredActor)
-       {
-          if (IMagicInteractableInterface* Interface = Cast<IMagicInteractableInterface>(HoveredActor))
-             Interface->SetMageHighlight(false);
-          HoveredActor = nullptr;
-       }
+        if (FocusedPillar)
+        {
+            FocusedPillar->PillarMesh->SetRenderCustomDepth(false);
+            FocusedPillar = nullptr;
+        }
+        if (HoveredActor)
+        {
+            if (IMagicInteractableInterface* Interface = Cast<IMagicInteractableInterface>(HoveredActor))
+                Interface->SetMageHighlight(false);
+            HoveredActor = nullptr;
+        }
     }
 }
 
@@ -688,7 +677,11 @@ void AMageCharacter::JobAbility()
 {
    if (GetWorld()->GetGameState<AArenaGameState>()) return;
     if (!CanAttack()) return;
-    if (!IsSkillUnlocked(1)) return;
+    if (!IsSkillUnlocked(1))
+    {
+       if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.f, FColor::Red, TEXT("[Error] Skill is Locked!"));
+       return;
+    }
     if (bIsDead) return;
 
     UAnimMontage* TargetMontage = nullptr;
@@ -702,6 +695,7 @@ void AMageCharacter::JobAbility()
     // [염력 모드 1] 기둥 조작
     if (FocusedPillar)
     {
+      
        if (TargetMontage && IsLocallyControlled())
        {
           PlayActionMontage(TargetMontage);
