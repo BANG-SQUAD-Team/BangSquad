@@ -8,6 +8,7 @@
 #include "Project_Bang_Squad/Character/StageBoss/AQTE_Trap.h"
 #include "Project_Bang_Squad/UI/Stage/Boss/RespawnCountWidget.h"
 #include "Project_Bang_Squad/UI/Stage/Boss/QTEWidget.h" // [복구] 기존 위젯 헤더
+#include "Project_Bang_Squad/UI/Enemy/ADQTEWidget.h"
 
 AStageBossPlayerController::AStageBossPlayerController()
 {
@@ -123,18 +124,39 @@ void AStageBossPlayerController::Client_ToggleIndividualQTEState_Implementation(
 		if (bIsActive)
 		{
 			if (IndividualQTE_IMC) Subsystem->AddMappingContext(IndividualQTE_IMC, 10);
+
+			// [추가] 위젯 생성 및 표시
+			if (ADQTEWidgetClass && !ADQTEWidgetInstance)
+			{
+				ADQTEWidgetInstance = CreateWidget<UADQTEWidget>(this, ADQTEWidgetClass);
+				if (ADQTEWidgetInstance)
+				{
+					ADQTEWidgetInstance->AddToViewport(100); // 우선순위를 높게 설정
+				}
+			}
 		}
 		else
 		{
 			if (IndividualQTE_IMC) Subsystem->RemoveMappingContext(IndividualQTE_IMC);
+
+			// [추가] 위젯 제거 및 메모리 해제
+			if (ADQTEWidgetInstance)
+			{
+				ADQTEWidgetInstance->RemoveFromParent();
+				ADQTEWidgetInstance = nullptr;
+			}
 		}
 	}
 
-	OnToggleIndividualQTEWidget(bIsActive);
+	OnToggleIndividualQTEWidget(bIsActive); // 기존 BP 이벤트도 유지 (필요 시 사용)
 }
-
 void AStageBossPlayerController::Client_UpdateIndividualQTEUI_Implementation(int32 CurrentCount, int32 MaxCount)
 {
+	if (ADQTEWidgetInstance)
+	{
+		ADQTEWidgetInstance->UpdateProgressBar(CurrentCount, MaxCount);
+	}
+
 	OnUpdateIndividualQTECount(CurrentCount, MaxCount);
 }
 

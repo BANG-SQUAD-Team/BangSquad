@@ -10,7 +10,8 @@
 class UQTEWidget;
 class UInputMappingContext;
 class UInputAction;
-class AQTE_Trap; // ���� ����
+class AQTE_Trap;
+class UADQTEWidget;
 
 UCLASS()
 class PROJECT_BANG_SQUAD_API AStageBossPlayerController : public AStagePlayerController
@@ -47,13 +48,18 @@ protected:
 	UFUNCTION(Server, Reliable)
 	void Server_SubmitQTEInput();
 
-	// [����] ���� QTE ���� �ν��Ͻ�
 	UPROPERTY()
 	TObjectPtr<UQTEWidget> QTEWidgetInstance;
 
 	// ==========================================
 	// [�ű�] Stage 2 ���� QTE (A/D ��Ÿ)
 	// ==========================================
+	UPROPERTY(EditDefaultsOnly, Category = "UI|IndividualQTE")
+	TSubclassOf<UADQTEWidget> ADQTEWidgetClass;
+
+	UPROPERTY()
+	TObjectPtr<UADQTEWidget> ADQTEWidgetInstance;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input|IndividualQTE")
 	TObjectPtr<UInputMappingContext> IndividualQTE_IMC;
 

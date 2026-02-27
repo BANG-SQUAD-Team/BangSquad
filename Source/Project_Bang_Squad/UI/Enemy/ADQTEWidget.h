@@ -18,6 +18,30 @@ public:
 	void UpdateProgressBar(int32 Current, int32 Max);
 
 protected:
+	virtual void NativeConstruct() override;
+
 	UPROPERTY(meta = (BindWidget))
 	class UProgressBar* ADQTEProgressBar;
+
+	UPROPERTY(meta = (BindWidget))
+	class UImage* ADQTEKeyImage;
+
+	/** [설정] A가 빨간색인 이미지 (RA.png) */
+	UPROPERTY(EditAnywhere, Category = "QTE|Resources")
+	class UTexture2D* Texture_A;
+
+	/** [설정] D가 빨간색인 이미지 (RD.jpg) */
+	UPROPERTY(EditAnywhere, Category = "QTE|Resources")
+	class UTexture2D* Texture_D;
+
+private:
+	FTimerHandle FlashTimerHandle;
+	bool bIsShowingA = true;
+
+	/** 이미지를 교체하는 내부 함수 */
+	void ToggleImage();
+
+public:
+	void StartImageFlashing();
+	void StopImageFlashing();
 };
