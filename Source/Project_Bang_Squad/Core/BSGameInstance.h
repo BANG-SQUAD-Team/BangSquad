@@ -226,7 +226,8 @@ public:
 			return Val;
 		}
 		UE_LOG(LogTemp, Warning, TEXT("📂 [GameInstance] No data for %s (Start 0 G)"), *PlayerKey);
-		return 1000;
+		return 0;
+		//return 1000;
 	}
 	
 	// =========================================================================
