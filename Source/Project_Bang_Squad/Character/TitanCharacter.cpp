@@ -1490,8 +1490,7 @@ void ATitanCharacter::RecoverCharacter(ACharacter* Victim)
        // 던져질 때 해제했던 물리/이동 제약 복구
        Victim->GetCharacterMovement()->BrakingDecelerationFalling = 1500.0f; 
        Victim->GetCharacterMovement()->GravityScale = 1.0f; 
-       Victim->GetCharacterMovement()->AirControl = 0.05f;  
-
+       Victim->GetCharacterMovement()->AirControl = 0.5f;  
        FVector FixLoc = Victim->GetActorLocation() + FVector(0.f, 0.f, 5.0f);
        Victim->SetActorLocation(FixLoc, false, nullptr, ETeleportType::TeleportPhysics);
        Victim->GetCharacterMovement()->SetMovementMode(MOVE_Walking);
