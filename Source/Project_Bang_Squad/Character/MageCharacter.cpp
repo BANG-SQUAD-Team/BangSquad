@@ -762,7 +762,12 @@ void AMageCharacter::JobAbility()
        bSuccess = true;
     }
     
-    if (bSuccess) Server_SetAuraActive(true);
+    if (bSuccess)
+    {
+       Server_SetAuraActive(true);
+       // 내가 스킬을 켰다는 걸 서버에 보고
+       Server_SyncJobState(bIsPillarMode, bIsBoatMode);
+    }
 }
 
 void AMageCharacter::EndJobAbility()
@@ -828,6 +833,11 @@ void AMageCharacter::EndJobAbility()
       SpringArm->bInheritPitch = true;
       SpringArm->bInheritYaw = true;
       SpringArm->bInheritRoll = true;
+   }
+   
+   if (IsLocallyControlled())
+   {
+      Server_SyncJobState(false, false);
    }
 }
 
@@ -936,7 +946,20 @@ float AMageCharacter::TakeDamage(float DamageAmount, FDamageEvent const& DamageE
    if (HasAuthority() && ActualDamage > 0.0f && (bIsPillarMode || bIsBoatMode))
    {
       EndJobAbility();
+      Client_ForceEndJobAbility();
    }
 
     return ActualDamage;
+}
+
+void AMageCharacter::Server_SyncJobState_Implementation(bool bPillar, bool bBoat)
+{
+   bIsPillarMode = bPillar;
+   bIsBoatMode = bBoat;
+}
+
+void AMageCharacter::Client_ForceEndJobAbility_Implementation()
+{
+   // 서버로부터 맞았다는 통보를 받으면, 클라이언트의 스킬과 카메라를 강제로 원래대로 되돌림
+   EndJobAbility();
 }

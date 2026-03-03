@@ -147,7 +147,7 @@ void ABaseCharacter::BeginPlay()
             UnlockedStageLevel = 0;
         }
        
-        if (MapName.Contains(TEXT("LobbyMap"))) UnlockedStageLevel = 3;
+        if (MapName.Contains(TEXT("Lobby"))) UnlockedStageLevel = 3;
     }
 
     // 내 화면(로컬)일 경우에만 머리 위 마커를 표시

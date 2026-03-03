@@ -61,7 +61,12 @@ public:
     UFUNCTION(Server, Reliable) void Server_TriggerPillarFall(APillar* TargetPillar);
     UFUNCTION(Server, Reliable) void Server_SetBoatRideState(AMagicBoat* Boat, bool bRiding);
     
-protected:
+    // 현재 조종 상태를 서버에 보고
+    UFUNCTION(Server, Reliable) void Server_SyncJobState(bool bPillar, bool bBoat);
+    
+    // 서버가 클라이언트에게 강제로 스킬을 끄라고 명령 (피격 시 카메라 원상복구됨)
+    UFUNCTION(Client, Reliable) void Client_ForceEndJobAbility();
+    
     // ====================================================================================
     // [Section 4] 라이프사이클 (Lifecycle)
     // ====================================================================================
