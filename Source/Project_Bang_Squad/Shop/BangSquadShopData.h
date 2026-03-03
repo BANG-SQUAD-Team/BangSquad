@@ -42,7 +42,6 @@ struct FShopItemData : public FTableRowBase
 	GENERATED_BODY()
 
 public:
-	// --- 기본 정보 ---
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Common Info")
 	FText ItemName = FText::GetEmpty();
 
@@ -55,7 +54,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Common Info")
 	EItemType ItemType = EItemType::None;
 
-	// 직업 제한 
+	// ★ 직업 제한 (이미 초기화되어 있음)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Requirement")
 	ECharacterJob RequiredJob = ECharacterJob::Common;
 
@@ -66,6 +65,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetic Info")
 	int32 Price = 0;
 
+	// --- 1. 부착형 장식 (투구 등) ---
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Visual - HeadGear")
 	UStaticMesh* StaticMesh = nullptr;
 
@@ -78,6 +78,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Visual - HeadGear")
 	FTransform AdjustTransform = FTransform::Identity;
 
+	// --- 2. 스킨형 (재질 변경) ---
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Visual - Skin")
 	UMaterialInterface* SkinMaterial = nullptr;
 };
