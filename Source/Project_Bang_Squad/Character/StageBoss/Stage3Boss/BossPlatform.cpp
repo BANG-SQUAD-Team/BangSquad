@@ -3,10 +3,16 @@
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/Character.h"
 #include "Kismet/GameplayStatics.h"
+// 🚨 [필수 추가] 네트워크 동기화를 위한 헤더
+#include "Net/UnrealNetwork.h" 
 
 ABossPlatform::ABossPlatform()
 {
 	PrimaryActorTick.bCanEverTick = true;
+
+	// 🚨 [핵심] 액터 자체를 네트워크에 복제하도록 켭니다.
+	bReplicates = true;
+	// 타임라인을 각자 재생할 것이므로 SetReplicateMovement(위치 강제 동기화)는 끕니다.
 
 	MeshComp = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MeshComp"));
 	RootComponent = MeshComp;
@@ -17,6 +23,14 @@ ABossPlatform::ABossPlatform()
 	TriggerBox->OnComponentEndOverlap.AddDynamic(this, &ABossPlatform::OnOverlapEnd);
 
 	MoveTimeline = CreateDefaultSubobject<UTimelineComponent>(TEXT("MoveTimeline"));
+}
+
+// 🚨 [필수 추가] 복제할 변수 등록
+void ABossPlatform::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME(ABossPlatform, bIsDown);
+	DOREPLIFETIME(ABossPlatform, bIsPermanentlyDown);
 }
 
 void ABossPlatform::BeginPlay()
@@ -39,23 +53,13 @@ void ABossPlatform::BeginPlay()
 	}
 }
 
-// [핵심 로직] 타임라인이 도는 동안 호출됨
 void ABossPlatform::HandleProgress(float Value)
 {
-	// 1. 기본 이동 위치 계산 (Lerp)
 	FVector TargetLoc = FMath::Lerp(InitialLocation, InitialLocation + FVector(0, 0, DownDepth), Value);
-
-	// 2. [물리 진동] 랜덤한 떨림 추가
-	// FMath::VRand()는 길이 1짜리 랜덤 벡터를 반환 -> Intensity를 곱해 강도 조절
 	FVector ShakeOffset = FMath::VRand() * ShakeIntensity;
-
-	// Z축 떨림은 제외하고 싶다면: ShakeOffset.Z = 0.0f; (선택사항)
-
-	// 3. 최종 위치 적용
 	SetActorLocation(TargetLoc + ShakeOffset);
 }
 
-// 이동이 끝나면 떨림을 멈추고 정확한 위치로 고정
 void ABossPlatform::OnMoveFinished()
 {
 	FVector FinalLoc;
@@ -70,7 +74,19 @@ void ABossPlatform::OnMoveFinished()
 	SetActorLocation(FinalLoc);
 }
 
+// =========================================================================
+// [네트워크 로직] 래퍼(Wrapper) 함수와 멀티캐스트 구현부
+// =========================================================================
+
 void ABossPlatform::SetWarning(bool bActive)
+{
+	if (HasAuthority()) // 서버에서만 호출 가능
+	{
+		Multicast_SetWarning(bActive);
+	}
+}
+
+void ABossPlatform::Multicast_SetWarning_Implementation(bool bActive)
 {
 	if (DynMaterial)
 	{
@@ -80,44 +96,62 @@ void ABossPlatform::SetWarning(bool bActive)
 
 void ABossPlatform::MoveDown(bool bPermanent)
 {
+	if (HasAuthority()) // 서버에서만 실행
+	{
+		Multicast_MoveDown(bPermanent);
+
+		// 타이머는 서버에서 '한 번만' 돌아가야 하므로 Multicast 바깥에 둡니다.
+		if (!bPermanent)
+		{
+			FTimerHandle ReturnTimer;
+			GetWorldTimerManager().SetTimer(ReturnTimer, this, &ABossPlatform::MoveUp, 7.0f, false);
+		}
+	}
+}
+
+void ABossPlatform::Multicast_MoveDown_Implementation(bool bPermanent)
+{
 	if (bIsPermanentlyDown) return;
 
 	bIsDown = true;
 	if (bPermanent) bIsPermanentlyDown = true;
 
-	SetWarning(false);
+	if (DynMaterial) DynMaterial->SetScalarParameterValue(FName("WarningAlpha"), 0.0f);
 
-	// [속도 제어] 빠르게 하강 (0.5초) -> PlayRate 2.0
 	MoveTimeline->SetPlayRate(2.0f);
-	MoveTimeline->Play();
-
-	if (!bPermanent)
-	{
-		// 7초 후 자동 복귀
-		FTimerHandle ReturnTimer;
-		GetWorldTimerManager().SetTimer(ReturnTimer, this, &ABossPlatform::MoveUp, 7.0f, false);
-	}
+	MoveTimeline->Play(); // 모든 클라이언트가 자기 컴퓨터에서 타임라인 재생!
 }
 
 void ABossPlatform::MoveUp()
 {
+	if (HasAuthority())
+	{
+		Multicast_MoveUp();
+	}
+}
+
+void ABossPlatform::Multicast_MoveUp_Implementation()
+{
 	if (bIsPermanentlyDown) return;
 
 	bIsDown = false;
-
-	// [속도 제어] 천천히 상승 (1.0초) -> PlayRate 1.0
 	MoveTimeline->SetPlayRate(1.0f);
-	MoveTimeline->Reverse();
+	MoveTimeline->Reverse(); // 모든 클라이언트 동시 상승!
 }
+
+// =========================================================================
+// [기타 로직]
+// =========================================================================
 
 void ABossPlatform::OnOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-	if (OtherActor && OtherActor->IsA(ACharacter::StaticClass()))
+	// 오버랩 처리는 보통 서버에서만 판정하는 것이 안전합니다.
+	if (HasAuthority() && OtherActor && OtherActor->IsA(ACharacter::StaticClass()))
 		OverlappingPlayers.Add(OtherActor);
 }
 
 void ABossPlatform::OnOverlapEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
 {
-	if (OtherActor)
+	if (HasAuthority() && OtherActor)
 		OverlappingPlayers.Remove(OtherActor);
 }

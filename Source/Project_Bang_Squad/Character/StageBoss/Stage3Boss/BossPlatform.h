@@ -14,15 +14,18 @@ public:
 	ABossPlatform();
 	virtual void BeginPlay() override;
 
-	// 명령 함수
+	// 명령 함수 (서버에서 호출하면 클라이언트로 전파됨)
 	void SetWarning(bool bActive);
-	void MoveDown(bool bPermanent); // 하강 (0.5초 + 진동)
-	void MoveUp(); // 상승 (1.0초 + 진동)
+	void MoveDown(bool bPermanent);
+	void MoveUp();
 
 	// 상태 확인
 	bool IsWalkable() const { return !bIsDown && !bIsPermanentlyDown; }
 	int32 GetPlayerCount() const { return OverlappingPlayers.Num(); }
 	int32 PlatformID = -1;
+
+	// [네트워크] 변수 동기화 필수 선언
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 protected:
 	UPROPERTY(VisibleAnywhere)
@@ -35,21 +38,35 @@ protected:
 	UTimelineComponent* MoveTimeline;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Timeline")
-	UCurveFloat* MovementCurve; // 0~1 값 (1초 길이 기준)
+	UCurveFloat* MovementCurve;
 
-	// [수정] 물리적 진동 강도 (cm 단위)
 	UPROPERTY(EditAnywhere, Category = "Effect")
 	float ShakeIntensity = 5.0f;
 
 	UPROPERTY()
 	UMaterialInstanceDynamic* DynMaterial;
 
+	// [네트워크] 늦게 접속한 유저를 위한 상태 변수 동기화
+	UPROPERTY(Replicated)
 	bool bIsDown = false;
+
+	UPROPERTY(Replicated)
 	bool bIsPermanentlyDown = false;
+
 	FVector InitialLocation;
 	float DownDepth = -500.0f;
 
 	TSet<AActor*> OverlappingPlayers;
+
+	// [네트워크] 멀티캐스트 함수 선언 (모든 클라이언트 동시 실행)
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_SetWarning(bool bActive);
+
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_MoveDown(bool bPermanent);
+
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_MoveUp();
 
 	UFUNCTION()
 	void OnOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
@@ -60,5 +77,5 @@ protected:
 	void HandleProgress(float Value);
 
 	UFUNCTION()
-	void OnMoveFinished(); // 이동 끝났을 때 정위치 보정용
+	void OnMoveFinished();
 };

@@ -1,5 +1,6 @@
 ﻿#include "Stage3BossAIController.h"
 #include "Stage3Boss.h"
+#include "Project_Bang_Squad/Character/Base/BaseCharacter.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/Character.h"
 #include "Navigation/PathFollowingComponent.h"
@@ -29,14 +30,9 @@ void AStage3BossAIController::DecideNextAction()
 		return;
 	}
 
-	// ==============================================================================
-	// [1] 진짜 '플레이어'만 타겟팅 (제자리 공격 버그의 진짜 원인 해결)
-	// ==============================================================================
 	AActor* Target = nullptr;
 	float MinDist = MAX_FLT;
 
-	// 왜 이렇게 짰는지: GetAllActorsOfClass(ACharacter)를 쓰면 맵의 투명 더미나 미니언을 타겟으로 잡아 
-	// 거리 0 판정으로 제자리 공격을 하는 버그가 생깁니다. 오직 '실제 접속한 플레이어'만 찾도록 이터레이터로 변경합니다.
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
 		APlayerController* PC = It->Get();
@@ -45,7 +41,10 @@ void AStage3BossAIController::DecideNextAction()
 			APawn* PlayerPawn = PC->GetPawn();
 			if (PlayerPawn->IsPendingKillPending()) continue;
 
-			// 유저님 요청대로 덩치 보정(-BossRadius)을 빼고 DataAsset 통제를 위해 순수 거리만 사용합니다.
+		
+			ABaseCharacter* BaseChar = Cast<ABaseCharacter>(PlayerPawn);
+			if (BaseChar && BaseChar->IsDead()) continue;
+
 			float D = Boss->GetDistanceTo(PlayerPawn);
 			if (D < MinDist)
 			{
@@ -61,26 +60,33 @@ void AStage3BossAIController::DecideNextAction()
 		return;
 	}
 
-	// ==============================================================================
-	// [2] DataAsset 사거리 가져오기 & 가중치 계산 (10초 룰 삭제)
-	// ==============================================================================
 	float AttackRange = BossData->AttackRange > 0.0f ? BossData->AttackRange : 300.0f;
 	float Time = GetWorld()->GetTimeSeconds();
 	TMap<EBoss3Skill, float> Weights;
 
-	// 거리가 사거리(AttackRange) 안쪽일 때만 평타(Basic) 가중치 부여
+	// ==============================================================================
+	// 🟢 [수정됨] 평타(Basic)도 데이터 에셋의 쿨타임을 철저하게 따르도록 변경!
+	// ==============================================================================
 	if (MinDist <= AttackRange)
 	{
-		// DataAsset에 Basic 설정이 있으면 그 가중치를 쓰고, 없으면 기본 100을 줍니다.
-		float BasicWeight = BossData->Stage3SkillConfigs.Contains(EBoss3Skill::Basic) ? BossData->Stage3SkillConfigs[EBoss3Skill::Basic].Weight : 100.0f;
-		Weights.Add(EBoss3Skill::Basic, BasicWeight);
+		float BasicCooldown = BossData->Stage3SkillConfigs.Contains(EBoss3Skill::Basic) ? BossData->Stage3SkillConfigs[EBoss3Skill::Basic].Cooldown : 2.0f; // 기본 2초
+		float LastBasicTime = LastSkillUseTimes.Contains(EBoss3Skill::Basic) ? LastSkillUseTimes[EBoss3Skill::Basic] : -1000.0f;
+
+		// 평타도 쿨타임이 지나야만 가중치에 추가됨
+		if (Time - LastBasicTime >= BasicCooldown)
+		{
+			float BasicWeight = BossData->Stage3SkillConfigs.Contains(EBoss3Skill::Basic) ? BossData->Stage3SkillConfigs[EBoss3Skill::Basic].Weight : 100.0f;
+			Weights.Add(EBoss3Skill::Basic, BasicWeight);
+		}
 	}
 
-	// 나머지 스킬들은 쿨타임만 돌았으면 무조건 가중치 추가 (즉시 맹공격)
+	// ==============================================================================
+	// 🟢 [수정됨] 특수 스킬 쿨타임 체크 (이제 Basic 제외 처리 없이 깔끔하게 체크)
+	// ==============================================================================
 	for (const auto& Pair : BossData->Stage3SkillConfigs)
 	{
 		EBoss3Skill SkillType = Pair.Key;
-		if (SkillType == EBoss3Skill::Basic) continue; // Basic은 거리 조건이 필요하므로 위에서 처리함
+		if (SkillType == EBoss3Skill::Basic) continue; // Basic은 거리 조건이 있으므로 위에서 처리 완료
 
 		const FBoss3SkillDetails& Config = Pair.Value;
 		float LastUseTime = LastSkillUseTimes.Contains(SkillType) ? LastSkillUseTimes[SkillType] : -1000.0f;
@@ -91,9 +97,7 @@ void AStage3BossAIController::DecideNextAction()
 		}
 	}
 
-	// ==============================================================================
-	// [3] 룰렛(랜덤 픽)
-	// ==============================================================================
+	// 룰렛(가중치 랜덤 픽) 실행
 	float TotalWeight = 0.0f;
 	for (const auto& Pair : Weights) TotalWeight += Pair.Value;
 
@@ -113,55 +117,52 @@ void AStage3BossAIController::DecideNextAction()
 	}
 
 	// ==============================================================================
-	// [4] 스킬 실행
+	// 🟢 [수정됨] 스킬 실행 후 딜레이 추가 (스킬 연사 방지)
 	// ==============================================================================
 	float Duration = 1.0f;
+	float PostSkillDelay = 1.5f; // 스킬을 쓴 후 최소 1.5초는 멍때리게 만듦 (숨고르기)
 
 	switch (Selected)
 	{
 	case EBoss3Skill::Basic:
-		StopMovement(); // 공격할 때는 미끄러지지 않게 이동을 확실히 멈춤
+		StopMovement();
 		if (IsValid(Target))
 		{
 			FVector Dir = (Target->GetActorLocation() - Boss->GetActorLocation()).GetSafeNormal();
 			Dir.Z = 0.0f;
 			Boss->SetActorRotation(Dir.Rotation());
 		}
-		Duration = Boss->Execute_BasicAttack();
+		Duration = Boss->Execute_BasicAttack() + PostSkillDelay; // 액션 시간에 딜레이 추가
 		LastSkillUseTimes.Add(EBoss3Skill::Basic, Time);
 		break;
 
 	case EBoss3Skill::Laser:
 		StopMovement();
-		Duration = Boss->Execute_Laser();
+		Duration = Boss->Execute_Laser() + PostSkillDelay;
 		LastSkillUseTimes.Add(EBoss3Skill::Laser, Time);
 		break;
 
 	case EBoss3Skill::Meteor:
 		StopMovement();
-		Duration = Boss->Execute_Meteor();
+		Duration = Boss->Execute_Meteor() + PostSkillDelay;
 		LastSkillUseTimes.Add(EBoss3Skill::Meteor, Time);
 		break;
 
 	case EBoss3Skill::Break:
 		StopMovement();
-		Duration = Boss->Execute_PlatformBreak();
+		Duration = Boss->Execute_PlatformBreak() + PostSkillDelay;
 		LastSkillUseTimes.Add(EBoss3Skill::Break, Time);
 		break;
 
 	case EBoss3Skill::Chase:
-		// [매우 중요한 최적화 팁] MoveToActor로 몇 초 동안 맹목적으로 쫓아가게 두지 않습니다!
-		// 0.25초마다 짧게 달리면서 거리를 계속 재고, DataAsset의 사거리에 닿는 즉시 
-		// 다음 틱에서 멈춰서 공격하게 만듭니다. (액션 RPG의 쫀득한 타격감의 비결)
 		MoveToActor(Target, 0.0f);
-		Duration = 0.25f;
+		Duration = 0.25f; // Chase는 계속 판단해야 하므로 딜레이 없음
 		break;
 	}
 
 	// 다음 액션 예약
-	GetWorldTimerManager().SetTimer(ActionTimer, this, &AStage3BossAIController::DecideNextAction, Duration + 0.1f, false);
+	GetWorldTimerManager().SetTimer(ActionTimer, this, &AStage3BossAIController::DecideNextAction, Duration, false);
 }
-
 
 
 

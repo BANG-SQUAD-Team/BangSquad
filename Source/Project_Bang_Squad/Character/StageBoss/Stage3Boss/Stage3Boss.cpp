@@ -5,12 +5,14 @@
 #include "Project_Bang_Squad/Character/StageBoss/Stage3Boss/PlatformManager.h"
 #include "Project_Bang_Squad/Character/StageBoss/Stage3Boss/BossPlatform.h"
 #include "Project_Bang_Squad/Character/Component/HealthComponent.h"
+#include "Project_Bang_Squad/Character/Base/BaseCharacter.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "Engine/DamageEvents.h"
 #include "DrawDebugHelpers.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Blueprint/UserWidget.h"
+
 #include "Project_Bang_Squad/Core/TrueDamageType.h"
 
 AStage3Boss::AStage3Boss()
@@ -369,6 +371,8 @@ void AStage3Boss::FindNearestPlayer()
 	for (AActor* P : Players)
 	{
 		if (P == this) continue;
+		ABaseCharacter* BaseChar = Cast<ABaseCharacter>(P);
+		if (BaseChar && BaseChar->IsDead()) continue;
 		float D = GetDistanceTo(P);
 		if (D < MinDist)
 		{
