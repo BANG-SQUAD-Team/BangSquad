@@ -113,6 +113,9 @@ void AStage2Boss::OnDeathStarted()
 
     if (!HasAuthority()) return;
 
+    Multicast_HideBossHP();
+    Multicast_ShowBossSubtitle(FText::FromString(TEXT("거미 여왕을 물리쳤습니다! 열린 포탈을 타고 다음 스테이지로 이동하세요!")), 5.0f);
+    
     // 포탈 활성화 로직
     if (TargetPortal)
     {
@@ -140,11 +143,14 @@ void AStage2Boss::CheckHealthPhase()
 		{
 			bPhase30Triggered = true;
 			ActiveSpawner = Phase30Spawner; // 30% 스포너 선택
+		    
+		    Multicast_ShowBossSubtitle(FText::FromString(TEXT("보스가 거미 떼를 소환합니다! 거미들을 모두 처치하세요!")), 4.0f);
 		}
 		else 
 		{
 			bPhase70Triggered = true;
 			ActiveSpawner = Phase70Spawner; // 70% 스포너 선택
+		    Multicast_ShowBossSubtitle(FText::FromString(TEXT("보스가 거미 떼를 소환합니다! 거미들을 모두 처치하세요!")), 4.0f);
 		}
 
 		bIsInvincible = true;
@@ -168,6 +174,8 @@ void AStage2Boss::CheckHealthPhase()
 	{
 		bPhase50Triggered = true;
 		bIsInvincible = true;
+	    
+	    Multicast_ShowBossSubtitle(FText::FromString(TEXT("보스가 치명적인 독 공격을 준비합니다! 인원을 분배해 안전지대로 흩어지세요!")), 5.0f);
 
 		// AI 정지 (PhaseWait 대기 상태로 전환)
 		if (auto* AI = Cast<AStage2SpiderAIController>(GetController()))
@@ -239,11 +247,13 @@ void AStage2Boss::HandleSplitPatternResult(bool bIsSuccess)
     {
         UE_LOG(LogTemp, Log, TEXT("50%% 인원 분배 패턴 성공!"));
         // TODO: 기획에 따라 보스가 잠시 기절(그로기)하는 로직을 넣어도 좋습니다.
+        Multicast_ShowBossSubtitle(FText::FromString(TEXT("패턴 파훼 성공! 보스를 공격하세요!")), 4.0f);
     }
     else
     {
         UE_LOG(LogTemp, Error, TEXT("50%% 인원 분배 패턴 실패! 전멸기 데미지 적용!"));
 
+        Multicast_ShowBossSubtitle(FText::FromString(TEXT("패턴 파훼 실패... 플레이어들이 치명적인 데미지를 입습니다!")), 4.0f);
         // ==========================================================
         // [실패 패널티: 전멸기 데미지 구현]
         // ==========================================================
@@ -272,7 +282,9 @@ void AStage2Boss::HandleSplitPatternResult(bool bIsSuccess)
 void AStage2Boss::CheckMinionsStatus()
 {
     bIsInvincible = false;
-
+    
+    Multicast_ShowBossSubtitle(FText::FromString(TEXT("거미 떼를 모두 처리했습니다! 보스의 무적이 해제됩니다!")), 4.0f);
+    
     if (GetMesh() && GetMesh()->GetAnimInstance() && SummonPhaseMontage)
     {
         Multicast_JumpMontageSection(FName("End"));
@@ -300,6 +312,8 @@ void AStage2Boss::CheckMinionsStatus()
 void AStage2Boss::PerformWebShot(AActor* Target)
 {
     if (!Target) return;
+    
+    Multicast_ShowBossSubtitle(FText::FromString(TEXT("보스가 거미줄을 내뱉습니다! 피하세요!")), 2.0f);
 
     // 조준 (타겟 바라보기)
     FVector Direction = (Target->GetActorLocation() - GetActorLocation()).GetSafeNormal();
@@ -379,7 +393,9 @@ void AStage2Boss::FireWebProjectile()
 
 void AStage2Boss::PerformSmashAttack(AActor* Target)
 {
+    Multicast_ShowBossSubtitle(FText::FromString(TEXT("강력한 내려찍기! 잡히면 동료에게 구출을 요청하세요!")), 3.0f);
     if (SmashMontage) Multicast_PlayBossMontage(SmashMontage);
+    
 }
 
 void AStage2Boss::StartQTEPattern(AActor* Target)
