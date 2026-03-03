@@ -483,6 +483,8 @@ void ABaseCharacter::OnDeath()
     if (bIsDead) return;
     bIsDead = true; 
     
+    Client_ShowDeathSubtitle(FText::FromString(TEXT("사망했습니다. [Tab] 키를 눌러 관전 전환이 가능합니다.")), 5.0f);
+    
     // 유저 입력 완전히 무시 (죽어서 못 움직임)
     if (Controller)
     {
@@ -1044,4 +1046,39 @@ bool ABaseCharacter::IsSkillUnlockedByRowName(FName RowName)
     static const FString ContextString(TEXT("CheckUnlockStatus"));
     FSkillData* Data = SkillDataTable->FindRow<FSkillData>(RowName, ContextString);
     return Data ? IsSkillUnlocked(Data->RequiredStage) : false;
+}
+
+void ABaseCharacter::Client_ShowDeathSubtitle_Implementation(const FText& Message, float Duration)
+{
+    // 1. 내 화면(로컬 플레이어 컨트롤러) 가져오기
+    APlayerController* PC = Cast<APlayerController>(GetController());
+    if (!PC || !PC->IsLocalController() || !SubtitleWidgetClass) return;
+    
+    // 2. 위젯 생성 및 화면에 띄우기
+    UUserWidget* SubtitleWidget = CreateWidget<UUserWidget>(PC, SubtitleWidgetClass);
+    if (SubtitleWidget)
+    {
+        SubtitleWidget->AddToViewport();
+        
+        // 3. 블루프린트의 ShowSubtitle 함수 호출
+        UFunction* ShowFunc = SubtitleWidget->FindFunction(FName("ShowSubtitle"));
+        if (ShowFunc)
+        {
+            struct { FText TextParams; } Params;
+            Params.TextParams = Message;
+            SubtitleWidget->ProcessEvent(ShowFunc, &Params);
+            
+        }
+        
+        // 4. 지정된 시간 뒤에 삭제
+        FTimerHandle RemoveTimer;
+        GetWorldTimerManager().SetTimer(RemoveTimer, [SubtitleWidget]()
+        {
+            if (IsValid(SubtitleWidget))
+            {
+                SubtitleWidget->RemoveFromViewport();
+            }
+        }, Duration, false);
+    }
+
 }

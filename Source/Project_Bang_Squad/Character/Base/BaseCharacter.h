@@ -307,6 +307,15 @@ protected:
     FTimerHandle RegenDelayTimer;
     FTimerHandle RegenTickTimer;
     FTimerHandle DeathTimerHandle;
+    
+    // 자막 UI 시스템
+    // 사망 시 띄울 자막 위젯 클래스
+    UPROPERTY(EditDefaultsOnly, Category = "UI|Subtitle")
+    TSubclassOf<class UUserWidget> SubtitleWidgetClass;
+    
+    // 죽은 플레이어 본인의 화면에만 자막을 띄우는 함수
+    UFUNCTION(Client, Reliable)
+    void Client_ShowDeathSubtitle(const FText& Message, float Duration);
 
     // --------------------------------------------------------------------------------
     // [8] 기타 유틸리티 및 설정 (Misc Settings)
@@ -340,4 +349,6 @@ private:
     float MaxSlideAccel = 230.0f; // 미끄러질 때 가속도
     
     float OriginalBrakingDeceleration = 0.0f; // 브레이크 수치 원상복구용 임시 변수
+
+
 };
