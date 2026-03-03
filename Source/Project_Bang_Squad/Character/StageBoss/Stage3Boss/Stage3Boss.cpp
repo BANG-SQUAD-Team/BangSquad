@@ -115,6 +115,8 @@ void AStage3Boss::OnHealthChanged(float CurrentHealth, float MaxHealth)
 		if (CurrentHealth <= 0.0f)
 		{
 			Multicast_HideBossHP();
+			
+			Multicast_ShowBossSubtitle(FText::FromString(TEXT("보스를 성공적으로 처치했습니다! BangSquad의 승리입니다!!")), 5.0f);
 			// TODO: 사망 몽타주, 레벨 클리어 로직 등 추가
 		}
 	}
@@ -154,6 +156,8 @@ float AStage3Boss::Execute_Laser()
 	// 1. 타겟 선정
 	FindNearestPlayer();
 	bIsFiringLaser = true;
+	
+	Multicast_ShowBossSubtitle(FText::FromString(TEXT("보스가 화염 레이저를 조준합니다! 레이저를 피해 도망치세요!!")), 3.0f);
 
 	// 2. 몽타주 재생
 	if (BossData && BossData->LaserMontage)
@@ -238,6 +242,8 @@ void AStage3Boss::ApplyLaserDamage()
 float AStage3Boss::Execute_Meteor()
 {
 	if (!PlatformManager || !BossData) return 2.0f;
+	
+	Multicast_ShowBossSubtitle(FText::FromString(TEXT("하늘에서 거대한 운석이 떨어집니다! 운석을 피해 도망치세요!")), 3.0f);
 
 	// 1. 몽타주 재생 (서버에서 실행 시 Multicast_PlayBossMontage를 통해 동기화)
 	Multicast_PlayBossMontage(BossData->MeteorMontage, FName("Cast"));
