@@ -29,7 +29,7 @@ void AStageBossPlayerController::BeginPlay()
 		}
 	}
 
-	if (RespawnCountWidgetClass)
+	if (IsLocalController() && RespawnCountWidgetClass)
 	{
 		RespawnCountWidget = CreateWidget<URespawnCountWidget>(this, RespawnCountWidgetClass);
 		if (RespawnCountWidget)
@@ -120,6 +120,8 @@ void AStageBossPlayerController::Server_ClearQTETrap()
 
 void AStageBossPlayerController::Client_ToggleIndividualQTEState_Implementation(bool bIsActive)
 {
+	if (!IsLocalController()) return;
+	
 	if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
 	{
 		if (bIsActive)
@@ -153,6 +155,8 @@ void AStageBossPlayerController::Client_ToggleIndividualQTEState_Implementation(
 }
 void AStageBossPlayerController::Client_UpdateIndividualQTEUI_Implementation(int32 CurrentCount, int32 MaxCount)
 {
+	if (!IsLocalController()) return;
+	
 	if (ADQTEWidgetInstance)
 	{
 		ADQTEWidgetInstance->UpdateProgressBar(CurrentCount, MaxCount);
@@ -184,6 +188,8 @@ void AStageBossPlayerController::Server_SubmitIndividualQTEInput_Implementation(
 
 void AStageBossPlayerController::Client_ToggleGroupQTEUI_Implementation(bool bShow)
 {
+	if (!IsLocalController()) return;
+	
 	if (bShow)
 	{
 		if (GQTEWidgetClass && !GQTEWidgetInstance)

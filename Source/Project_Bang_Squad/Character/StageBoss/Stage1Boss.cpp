@@ -82,42 +82,32 @@ void AStage1Boss::BeginPlay()
 	}, 1.0f, false);
 }
 
-// 보스 패턴 발동시 나오는 자막 코드
 void AStage1Boss::Multicast_ShowBossSubtitle_Implementation(const FText& Message, float Duration)
 {
-	// 로컬 플레이어인지 확인
-	APlayerController* PC = UGameplayStatics::GetPlayerController(GetWorld(), 0);
-	if (!PC || !PC->IsLocalPlayerController() || !BossSubtitleWidgetClass)
-	{
-		return;
-	}
-	
-	// 1. 위젯 생성
-	UUserWidget* SubtitleWidget = CreateWidget<UUserWidget>(PC, BossSubtitleWidgetClass);
+	// 무조건 내 모니터의 주인(0번)을 가져온다
+	APlayerController* LocalPC = UGameplayStatics::GetPlayerController(GetWorld(), 0);
+    
+	// 로컬 플레이어(사람)가 아니거나 위젯이 없으면 바로 컷!
+	if (!LocalPC || !LocalPC->IsLocalPlayerController() || !BossSubtitleWidgetClass) return;
+
+	UUserWidget* SubtitleWidget = CreateWidget<UUserWidget>(LocalPC, BossSubtitleWidgetClass);
 	if (SubtitleWidget)
 	{
-		// 2. 화면에 띄우기
 		SubtitleWidget->AddToViewport();
-		
-		// 3. 블루프린트에 만들어둔 ShowSubtitle 함수 호출
+
 		UFunction* ShowFunc = SubtitleWidget->FindFunction(FName("ShowSubtitle"));
 		if (ShowFunc)
 		{
-			// 넘겨줄 파라미터 구조체 포인터
 			struct { FText TextParams; } Params;
 			Params.TextParams = Message;
 			SubtitleWidget->ProcessEvent(ShowFunc, &Params);
 		}
-		
-		// 4. 지정된 시간 뒤에 화면에서 지우기
+
 		FTimerHandle RemoveTimer;
 		GetWorldTimerManager().SetTimer(RemoveTimer, [SubtitleWidget]()
-		{
-			if (IsValid(SubtitleWidget))
-			{
-				SubtitleWidget->RemoveFromParent();
-			}
-		}, Duration, false);
+		   {
+			  if (IsValid(SubtitleWidget)) SubtitleWidget->RemoveFromParent();
+		   }, Duration, false);
 	}
 }
 
@@ -744,52 +734,36 @@ void AStage1Boss::Multicast_ShowBossHP_Implementation(float MaxHP)
 {
 	// 이미 만들어졌거나, 위젯 클래스가 없으면 패스
 	if (!BossHPWidgetClass || ActiveBossHPWidget) return;
-
-	// 멀티플레이어 환경에서 내 화면(LocalController)을 확실하게 찾는 방법
-	APlayerController* LocalPC = nullptr;
-	for (FConstPlayerControllerIterator Iterator = GetWorld()->GetPlayerControllerIterator(); Iterator; ++Iterator)
-	{
-		APlayerController* PC = Iterator->Get();
-		if (PC && PC->IsLocalController())
-		{
-			LocalPC = PC;
-			break;
-		}
-	}
-
-	if (!LocalPC) return;
+	
+	APlayerController* LocalPC = UGameplayStatics::GetPlayerController(GetWorld(), 0);
     
-	// 찾아낸 내 화면에 위젯 생성
+	// 로컬 플레이어가 아니면 컷
+	if (!LocalPC || !LocalPC->IsLocalPlayerController()) return;
+
 	ActiveBossHPWidget = CreateWidget<UUserWidget>(LocalPC, BossHPWidgetClass);
 	if (ActiveBossHPWidget)
 	{
-		ActiveBossHPWidget->AddToViewport(); // 화면에 띄우기
-		
-		// 1. 보스 아이콘(이미지) 세팅
+		ActiveBossHPWidget->AddToViewport();
+
 		if (BossData && BossData->BossIcon)
 		{
 			UFunction* InitFunc = ActiveBossHPWidget->FindFunction(FName("InitBossUI"));
 			if (InitFunc)
 			{
-				struct { UTexture2D* IconParam;} InitParams;
+				struct { UTexture2D* IconParam; } InitParams;
 				InitParams.IconParam = BossData->BossIcon;
 				ActiveBossHPWidget->ProcessEvent(InitFunc, &InitParams);
 			}
 		}
-		
-		// ==========================================================
-		//  보스 이름 세팅 (방금 만든 SetBossName 호출)
-		// ==========================================================
+
 		UFunction* NameFunc = ActiveBossHPWidget->FindFunction(FName("SetBossName"));
 		if (NameFunc)
 		{
-			// 블루프린트에서 만든 입력 파라미터(Text)와 동일한 형태의 구조체
 			struct { FText NameParam; } NameStruct;
 			NameStruct.NameParam = BossData->BossName;
 			ActiveBossHPWidget->ProcessEvent(NameFunc, &NameStruct);
 		}
-       
-		// 초기 체력 세팅 (블루프린트의 UpdateHP 함수 호출)
+
 		UFunction* UpdateFunc = ActiveBossHPWidget->FindFunction(FName("UpdateHP"));
 		if (UpdateFunc)
 		{

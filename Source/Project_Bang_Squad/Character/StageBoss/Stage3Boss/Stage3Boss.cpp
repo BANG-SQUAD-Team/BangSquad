@@ -58,10 +58,28 @@ void AStage3Boss::BeginPlay()
 	}
 
 	// 3. UI 초기화 (모든 클라이언트)
-	if (UHealthComponent* HC = FindComponentByClass<UHealthComponent>())
+	FTimerHandle LocalUITimer;
+	TWeakObjectPtr<AStage3Boss> WeakThis = this;
+
+	// 1초 뒤에 UI를 띄우도록 설정하여, 클라이언트가 맵 로딩과 플레이어 빙의를 마칠 시간을 벌어줌
+	GetWorldTimerManager().SetTimer(LocalUITimer, [WeakThis]()
 	{
-		Multicast_ShowBossHP_Implementation(HC->MaxHealth);
-	}
+	   if (WeakThis.IsValid())
+	   {
+		  float InitialMaxHP = 100.0f;
+		  if (WeakThis->BossData) 
+		  {
+			  InitialMaxHP = WeakThis->BossData->MaxHealth;
+		  }
+		  else if (UHealthComponent* HC = WeakThis->FindComponentByClass<UHealthComponent>()) 
+		  {
+			  InitialMaxHP = HC->MaxHealth;
+		  }
+
+		  // 직접 내 화면에 UI 생성 (서버/클라 모두 각자 실행됨)
+		  WeakThis->Multicast_ShowBossHP_Implementation(InitialMaxHP);
+	   }
+	}, 1.0f, false);
 }
 
 void AStage3Boss::Tick(float DeltaTime)
@@ -390,7 +408,7 @@ void AStage3Boss::FindNearestPlayer()
 }
 
 // ==============================================================================
-// [UI Implementation] Stage 1 Boss와 동일한 UI 로직 복사
+// [UI Implementation]  UI 로직 
 // ==============================================================================
 
 void AStage3Boss::Multicast_ShowBossSubtitle_Implementation(const FText& Message, float Duration)
@@ -423,16 +441,11 @@ void AStage3Boss::Multicast_ShowBossHP_Implementation(float MaxHP)
 {
 	if (!BossHPWidgetClass || ActiveBossHPWidget) return;
 
-	APlayerController* LocalPC = nullptr;
-	for (FConstPlayerControllerIterator Iterator = GetWorld()->GetPlayerControllerIterator(); Iterator; ++Iterator)
-	{
-		APlayerController* PC = Iterator->Get();
-		if (PC && PC->IsLocalController())
-		{
-			LocalPC = PC;
-			break;
-		}
-	}
+	//  무조건 내 모니터의 주인(0번)을 가져온다
+	APlayerController* LocalPC = UGameplayStatics::GetPlayerController(GetWorld(), 0);
+    
+	// 혹시라도 로컬 플레이어가 아니면 컷
+	if (!LocalPC || !LocalPC->IsLocalPlayerController()) return;
 
 	if (!LocalPC) return;
 
