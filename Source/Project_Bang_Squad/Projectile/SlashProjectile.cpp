@@ -95,3 +95,21 @@ void ASlashProjectile::OnOverlap(UPrimitiveComponent* OverlappedComp, AActor* Ot
 		Destroy();
 	}
 }
+
+void ASlashProjectile::Destroyed()
+{
+	Super::Destroyed();
+
+	// 🟢 내가 파괴되는 순간, 내 위치에서 DestroyFX에 할당된 이펙트를 터뜨린다!
+	// (만약 블루프린트에서 아무것도 안 넣었으면 조용히 사라집니다)
+	if (DestroyFX)
+	{
+		UGameplayStatics::SpawnEmitterAtLocation(
+			GetWorld(),
+			DestroyFX,
+			GetActorLocation(),
+			FRotator::ZeroRotator,
+			FVector(1.0f) // 이펙트 크기
+		);
+	}
+}

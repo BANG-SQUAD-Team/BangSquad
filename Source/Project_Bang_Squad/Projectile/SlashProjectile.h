@@ -1,3 +1,4 @@
+
 #pragma once
 
 #include "CoreMinimal.h"
@@ -24,6 +25,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
 	float Damage = 30.0f;
 
+	// ?? [추가 1] 파괴될 때 실행될 함수
+	virtual void Destroyed() override;
+
+	// ?? [추가 2] 블루프린트에서 맘대로 끼워 넣을 수 있는 이펙트 변수
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FX")
+	class UParticleSystem* DestroyFX;
+
 protected:
 	// 판정용 박스 (가로로 넓게)
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
@@ -41,4 +49,5 @@ protected:
 	UFUNCTION()
 	void OnOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
 		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+
 };
