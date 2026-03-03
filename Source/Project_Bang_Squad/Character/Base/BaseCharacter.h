@@ -207,6 +207,9 @@ protected:
     UPROPERTY(VisibleAnywhere)
     class UWidgetComponent* ArenaHPBarWidget; // 아레나 모드용 플로팅 HP바
 
+    UPROPERTY()
+    class UMaterialInterface* DefaultSkinMaterial;
+
     // --------------------------------------------------------------------------------
     // [3] 데이터 테이블 (Data Tables)
     // --------------------------------------------------------------------------------

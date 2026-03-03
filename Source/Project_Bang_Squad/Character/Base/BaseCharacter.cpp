@@ -160,6 +160,11 @@ void ABaseCharacter::BeginPlay()
     // 약간의 지연 후 PlayerState 정보를 바탕으로 스킨/장비 로드 (서버 동기화 시간 확보)
     FTimerHandle TimerHandle;
     GetWorldTimerManager().SetTimer(TimerHandle, this, &ABaseCharacter::UpdateAppearanceFromPlayerState, 0.2f, false);
+
+    if (GetMesh())
+    {
+        DefaultSkinMaterial = GetMesh()->GetMaterial(0);
+    }
 }
 
 void ABaseCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -625,14 +630,26 @@ void ABaseCharacter::Landed(const FHitResult& Hit)
 
 void ABaseCharacter::EquipShopItem(const FShopItemData& ItemData)
 {
-    // 1. 새 아이템 장착 전 기존 장비 숨김
+    if (ItemData.StaticMesh == nullptr && ItemData.SkeletalMesh == nullptr)
+    {
+        if (HeadAccessoryComponent)
+        {
+            HeadAccessoryComponent->SetStaticMesh(nullptr);
+            HeadAccessoryComponent->SetVisibility(false);
+        }
+        if (HeadSkeletalComp)
+        {
+            HeadSkeletalComp->SetSkeletalMesh(nullptr);
+            HeadSkeletalComp->SetVisibility(false);
+        }
+        return; // 제거 로직 수행 후 종료
+    }
+
     if (HeadAccessoryComponent) HeadAccessoryComponent->SetVisibility(false);
     if (HeadSkeletalComp) HeadSkeletalComp->SetVisibility(false);
 
-    // 메이지는 지팡이에, 다른 직업은 캐릭터 몸에 아이템 부착
     USceneComponent* TargetParent = ItemAttachParent ? ItemAttachParent : GetMesh();
 
-    // 2. 뼈대가 있어 움직일 수 있는 스켈레탈 메쉬 장착 (망토 등)
     if (ItemData.SkeletalMesh != nullptr && HeadSkeletalComp)
     {
         HeadSkeletalComp->SetSkeletalMesh(ItemData.SkeletalMesh);
@@ -644,7 +661,6 @@ void ABaseCharacter::EquipShopItem(const FShopItemData& ItemData)
 
         HeadSkeletalComp->SetVisibility(true);
 
-        // 장비 고유 펄럭임 등 애니메이션 재생
         if (ItemData.IdleAnimation)
         {
             HeadSkeletalComp->SetAnimationMode(EAnimationMode::AnimationSingleNode);
@@ -655,7 +671,6 @@ void ABaseCharacter::EquipShopItem(const FShopItemData& ItemData)
             HeadSkeletalComp->Stop();
         }
     }
-    // 3. 고정된 스태틱 메쉬 장착 (투구, 안경 등)
     else if (ItemData.StaticMesh != nullptr && HeadAccessoryComponent)
     {
         HeadAccessoryComponent->SetStaticMesh(ItemData.StaticMesh);
@@ -681,26 +696,40 @@ void ABaseCharacter::Multicast_EquipShopItem_Implementation(const FShopItemData&
 
 void ABaseCharacter::EquipSkin(UMaterialInterface* NewSkin)
 {
-    // 캐릭터 메쉬의 0번 슬롯(보통 몸체) 머티리얼을 교체하여 스킨 적용
-    if (GetMesh() && NewSkin)
+    if (GetMesh())
     {
-        GetMesh()->SetMaterial(0, NewSkin);
+        UMaterialInterface* MaterialToApply = NewSkin ? NewSkin : DefaultSkinMaterial;
+
+        if (MaterialToApply)
+        {
+            GetMesh()->SetMaterial(0, MaterialToApply);
+        }
     }
 }
 
 void ABaseCharacter::UpdateAppearanceFromPlayerState()
 {
-    // PlayerState(서버가 관리하는 영구 정보)에서 유저가 저장해둔 스킨/아이템 ID를 꺼내와서 적용
     ABSPlayerState* PS = GetPlayerState<ABSPlayerState>();
     if (!PS) return;
 
-    if (!PS->CurrentEquippedHeadID.IsNone() && ItemDataTable)
+    // 머리 장식 처리
+    if (PS->CurrentEquippedHeadID.IsNone())
+    {
+        EquipShopItem(FShopItemData()); // 빈 데이터로 제거
+    }
+    else if (ItemDataTable)
     {
         FShopItemData* Data = ItemDataTable->FindRow<FShopItemData>(PS->CurrentEquippedHeadID, TEXT("EquipHead"));
         if (Data) EquipShopItem(*Data);
     }
 
-    if (!PS->CurrentEquippedSkinID.IsNone() && SkinDataTable)
+    // 스킨 처리
+    if (PS->CurrentEquippedSkinID.IsNone())
+    {
+        // ID가 없으면 nullptr을 넘겨서 EquipSkin 내부에서 Default로 복구하게 함
+        EquipSkin(nullptr);
+    }
+    else if (SkinDataTable)
     {
         FShopItemData* Data = SkinDataTable->FindRow<FShopItemData>(PS->CurrentEquippedSkinID, TEXT("EquipSkin"));
         if (Data) EquipSkin(Data->SkinMaterial);

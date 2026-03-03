@@ -227,7 +227,7 @@ void UShopMainWidget::OnSlotClicked(FName ItemID, const FShopItemData& SelectedI
         {
             bIsHeadSelected = false;
             SelectedHeadID = NAME_None;
-            // UpdateMannequinPreview(FShopItemData()); // 빈 데이터로 벗기기 필요
+            UpdateMannequinPreview(FShopItemData()); 
         }
         else
         {
@@ -459,22 +459,32 @@ void UShopMainWidget::HandleSellResult(bool bSuccess)
 {
     if (bSuccess)
     {
-        UE_LOG(LogTemp, Log, TEXT("판매 성공! UI 리스트를 갱신합니다."));
+       
+        if (SelectedSellData.ItemType == EItemType::HeadGear)
+        {
+            UpdateMannequinPreview(FShopItemData());
+        }
+        else if (SelectedSellData.ItemType == EItemType::Skin)
+        {
+            UpdateSkinPreview(FShopItemData());
+        }
 
-        // 1. 선택 상태 초기화
+        if (ABaseCharacter* MyChar = Cast<ABaseCharacter>(GetOwningPlayerPawn()))
+        {
+            FTimerHandle SyncTimer;
+            GetWorld()->GetTimerManager().SetTimer(SyncTimer, MyChar, &ABaseCharacter::UpdateAppearanceFromPlayerState, 0.2f, false);
+        }
+
         bIsHeadSelected = false;
         bIsSkinSelected = false;
         SelectedHeadID = NAME_None;
         SelectedSkinID = NAME_None;
         CurrentShopState = EShopState::Buying;
 
-        // 2. 버튼 상태 리셋
         if (Btn_Sell) Btn_Sell->SetIsEnabled(false);
 
-        // 3. 상점 리스트 재생성 (★ 이 과정에서 팔린 아이템의 체크 표시가 자연스럽게 사라집니다!)
         InitShopList();
 
-        // 4. 가격 텍스트 초기화
         UpdatePurchaseButtonState();
     }
 }
