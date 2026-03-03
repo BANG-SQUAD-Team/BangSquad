@@ -18,9 +18,16 @@ AWebProjectile::AWebProjectile()
 	// 1. 충돌체 설정
 	SphereComp = CreateDefaultSubobject<USphereComponent>(TEXT("SphereComp"));
 	SphereComp->InitSphereRadius(20.0f);
-	SphereComp->SetCollisionProfileName(TEXT("Projectile")); // 또는 BlockAllDynamic
+	SphereComp->SetCollisionProfileName(TEXT("Custom"));
+	SphereComp->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	SphereComp->SetCollisionResponseToAllChannels(ECR_Ignore); // 1. 일단 모든 것을 무시
 
-	// [중요] 생성자에서 바인딩하는 것이 정석입니다.
+	SphereComp->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);        // 2. 플레이어(Pawn)와는 충돌해서 고치 생성
+	SphereComp->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block); // 3. 바닥/기둥(WorldStatic)과 충돌해서 장판 생성
+
+	// ※ 플레이어의 검이나 투사체(보통 WorldDynamic)는 Ignore 상태이므로 허공에서 부딪히지 않고 통과합니다!
+	// =========================================================================
+
 	SphereComp->OnComponentHit.AddDynamic(this, &AWebProjectile::OnHit);
 	RootComponent = SphereComp;
 
