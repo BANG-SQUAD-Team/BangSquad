@@ -9,14 +9,14 @@
 #include "Project_Bang_Squad/Character/Enemy/EnemyNormal.h"
 #include "Project_Bang_Squad/Game/MiniGame/ArenaGameState.h"
 #include "Project_Bang_Squad/Character/MonsterBase/EnemyCharacterBase.h"
+#include "DrawDebugHelpers.h"
 
 
 AStrikerCharacter::AStrikerCharacter()
 {
 	bIsSlamming = false;
 
-	// 스트라이커 판정 박스 크기
-	HitBoxSize = FVector(40.0f, 40.0f, 40.0f);
+	HitBoxSize = FVector(60.0f, 60.0f, 60.0f);
 	
 		// 속도 기본값
 		if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
@@ -186,60 +186,69 @@ void AStrikerCharacter::StartMeleeTrace()
 
 void AStrikerCharacter::PerformMeleeTrace()
 {
-	FVector CurrentLoc;
-	FQuat CurrentRot;
+    FVector CurrentLoc;
+    FQuat CurrentRot;
 
     if (GetMesh() && GetMesh()->DoesSocketExist(MyAttackSocket))
     {
         CurrentLoc = GetMesh()->GetSocketLocation(MyAttackSocket);
+
+        // 보스몹 타격을 위해 판정 박스를 전방으로 살짝(50) 밀어줍니다.
+        CurrentLoc += GetActorForwardVector() * 50.0f;
+
         CurrentRot = GetMesh()->GetSocketQuaternion(MyAttackSocket);
     }
-	else
-	{
-		CurrentLoc = GetActorLocation() + GetActorForwardVector() * 100.f;
-		CurrentRot = GetActorQuat();
-	}
+    else
+    {
+        CurrentLoc = GetActorLocation() + GetActorForwardVector() * 100.f;
+        CurrentRot = GetActorQuat();
+    }
 
-	TArray<FHitResult> HitResults;
-	FCollisionQueryParams Params;
-	Params.AddIgnoredActor(this);
+    TArray<FHitResult> HitResults;
+    FCollisionQueryParams Params;
+    Params.AddIgnoredActor(this);
 
-	bool bHit = GetWorld()->SweepMultiByChannel(
-		HitResults,
-		LastHandLocation,
-		CurrentLoc,
-		CurrentRot,
-		ECC_Pawn,
-		FCollisionShape::MakeBox(HitBoxSize),
-		Params
-	);
+    FCollisionObjectQueryParams ObjectParams;
+    ObjectParams.AddObjectTypesToQuery(ECC_Pawn);      
+    ObjectParams.AddObjectTypesToQuery(ECC_WorldDynamic);  
+    ObjectParams.AddObjectTypesToQuery(ECC_PhysicsBody); 
 
-	if (bHit)
-	{
-		for (const FHitResult& Hit : HitResults)
-		{
-			AActor* HitActor = Hit.GetActor();
+    bool bHit = GetWorld()->SweepMultiByObjectType(
+        HitResults,
+        LastHandLocation,
+        CurrentLoc,
+        CurrentRot,
+        ObjectParams, 
+        FCollisionShape::MakeBox(HitBoxSize),
+        Params
+    );
+   
 
-			if (HitActor && HitActor != this && !SwingDamagedActors.Contains(HitActor))
-			{
-				// [팀킬 방지] Player 태그 체크
-				if (HitActor->ActorHasTag("Player")) continue;
+    if (bHit)
+    {
+        for (const FHitResult& Hit : HitResults)
+        {
+            AActor* HitActor = Hit.GetActor();
 
-				float Dmg = (CurrentSkillDamage > 0.0f) ? CurrentSkillDamage : 10.0f;
-				UGameplayStatics::ApplyDamage(
-					HitActor,
-					Dmg,
-					GetController(),
-					this,
-					UDamageType::StaticClass()
-				);
+            if (HitActor && HitActor != this && !SwingDamagedActors.Contains(HitActor))
+            {
+                if (HitActor->ActorHasTag("Player")) continue;
 
-				SwingDamagedActors.Add(HitActor);
-			}
-		}
-	}
+                float Dmg = (CurrentSkillDamage > 0.0f) ? CurrentSkillDamage : 10.0f;
+                UGameplayStatics::ApplyDamage(
+                    HitActor,
+                    Dmg,
+                    GetController(),
+                    this,
+                    UDamageType::StaticClass()
+                );
 
-	LastHandLocation = CurrentLoc;
+                SwingDamagedActors.Add(HitActor);
+            }
+        }
+    }
+
+    LastHandLocation = CurrentLoc;
 }
 
 void AStrikerCharacter::StopMeleeTrace()
