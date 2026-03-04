@@ -26,6 +26,11 @@ struct FBoss3SkillDetails
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
     float Weight = 50.0f;
+
+    // 🟢 [추가] 해당 스킬을 사용한 직후의 대기 시간 (스킬마다 개별 설정 가능!)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
+    float PostSkillDelay = 1.5f;
+
 };
 
 /**

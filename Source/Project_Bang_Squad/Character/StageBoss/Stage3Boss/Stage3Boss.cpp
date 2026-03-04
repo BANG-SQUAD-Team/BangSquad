@@ -20,7 +20,7 @@ AStage3Boss::AStage3Boss()
 	// 보스 덩치 설정
 	GetMesh()->SetRelativeScale3D(FVector(2.0f));
 	PrimaryActorTick.bCanEverTick = true;
-
+	GetCharacterMovement()->MaxWalkSpeed = 750.0f;
 	// HealthComponent가 없다면 생성 (보통 Base에 있으나 안전책)
 	if (!FindComponentByClass<UHealthComponent>())
 	{
@@ -40,8 +40,10 @@ void AStage3Boss::BeginPlay()
 			if (UHealthComponent* HC = FindComponentByClass<UHealthComponent>())
 			{
 				HC->SetMaxHealth(BossData->MaxHealth);
-				// 체력 변경 델리게이트 연결
 				HC->OnHealthChanged.AddDynamic(this, &AStage3Boss::OnHealthChanged);
+
+				// [수정됨] _Implementation 직접 호출 제거 및 서버에서 Multicast RPC 정식 호출
+				Multicast_ShowBossHP(HC->MaxHealth);
 			}
 		}
 
@@ -86,22 +88,25 @@ void AStage3Boss::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	// [레이저 회전 로직]
-	if (bIsFiringLaser)
+	// 왜 이렇게 짰는지: [기획 의도 보존 & 권한 분리] 
+	// 레이저를 플레이어가 피할 수 있도록 느리고 부드럽게 회전시킵니다.
+	// 트랜스폼(회전) 변경은 서버에서만 수행해야 엔진의 Movement Replication을 통해 클라이언트가 덜덜 떨리지 않고 부드럽게 동기화됩니다.
+	if (bIsFiringLaser && HasAuthority())
 	{
-		// 타겟이 없거나 죽었으면 리타겟팅
-		if (!LaserTargetActor || (LaserTargetActor && LaserTargetActor->IsPendingKillPending()))
+		// 타겟이 없거나, 언리얼5 표준 유효성 검사 실패 시, 혹은 타겟이 죽었을 때 리타겟팅
+		ABaseCharacter* TargetChar = Cast<ABaseCharacter>(LaserTargetActor);
+		if (!IsValid(LaserTargetActor) || (IsValid(TargetChar) && TargetChar->IsDead()))
 		{
 			FindNearestPlayer();
 		}
 
-		if (LaserTargetActor)
+		if (IsValid(LaserTargetActor))
 		{
 			FVector Dir = LaserTargetActor->GetActorLocation() - GetActorLocation();
-			Dir.Z = 0; // 높이는 무시하고 회전
+			Dir.Z = 0.0f; // 높이는 무시하고 Z축(Yaw) 회전만 적용
 			FRotator TargetRot = Dir.Rotation();
 
-			// 부드럽게 회전 (InterpSpeed 3.0)
+			// 기획 의도: 유저가 피할 수 있는 속도 (InterpSpeed 2.2f)
 			SetActorRotation(FMath::RInterpTo(GetActorRotation(), TargetRot, DeltaTime, 2.2f));
 		}
 	}
@@ -171,30 +176,34 @@ float AStage3Boss::Execute_BasicAttack()
 
 float AStage3Boss::Execute_Laser()
 {
-	// 1. 타겟 선정
+	// [안전성] 서버 권한 한 번 더 체크
+	if (!HasAuthority()) return 0.0f;
+
 	FindNearestPlayer();
 	bIsFiringLaser = true;
-	
+
 	Multicast_ShowBossSubtitle(FText::FromString(TEXT("보스가 화염 레이저를 조준합니다! 레이저를 피해 도망치세요!!")), 3.0f);
 
-	// 2. 몽타주 재생
 	if (BossData && BossData->LaserMontage)
 	{
 		Multicast_PlayBossMontage(BossData->LaserMontage);
 	}
 
-	// 3. 데미지 타이머 시작 (0.25초 간격)
 	GetWorldTimerManager().SetTimer(LaserDamageTimer, this, &AStage3Boss::ApplyLaserDamage, 1.0f, true, 1.66f);
 
-	// 4. 3초 후 종료 처리
+	// [수정됨] TWeakObjectPtr를 사용한 안전한 람다 캡처 (서버 크래시 방지)
+	TWeakObjectPtr<AStage3Boss> WeakThis(this);
 	FTimerHandle EndHandle;
-	GetWorldTimerManager().SetTimer(EndHandle, [this]()
+	GetWorldTimerManager().SetTimer(EndHandle, [WeakThis]()
 		{
-			bIsFiringLaser = false;
-			GetWorldTimerManager().ClearTimer(LaserDamageTimer);
-			if (GetMesh()->GetAnimInstance())
+			if (!WeakThis.IsValid()) return; // 보스가 죽거나 소멸했으면 실행 취소
+
+			WeakThis->bIsFiringLaser = false;
+			WeakThis->GetWorldTimerManager().ClearTimer(WeakThis->LaserDamageTimer);
+
+			if (WeakThis->GetMesh() && WeakThis->GetMesh()->GetAnimInstance())
 			{
-				GetMesh()->GetAnimInstance()->Montage_JumpToSection(FName("End"), BossData->LaserMontage);
+				WeakThis->GetMesh()->GetAnimInstance()->Montage_JumpToSection(FName("End"), WeakThis->BossData->LaserMontage);
 			}
 		}, 3.0f, false);
 
@@ -203,7 +212,6 @@ float AStage3Boss::Execute_Laser()
 
 void AStage3Boss::ApplyLaserDamage()
 {
-	// 1. 🚨 소켓 이름 유저님이 원래 쓰시던 걸로 다시 바꿔주세요!! (제가 멋대로 쓴 Spine_02 지우세요)
 	FName Ray = FName("Ray");
 	FVector Start = GetMesh()->GetSocketLocation(Ray);
 
@@ -221,7 +229,7 @@ void AStage3Boss::ApplyLaserDamage()
 	FVector BoxExtent = FVector(50.0f, 50.0f, 300.0f);
 
 	// =====================================================================
-	// 🚨 [바닥 관통 & BoxExtent 적용] 여기서부터 덮어씌우시면 됩니다.
+	// [바닥 관통 & BoxExtent 적용] 여기서부터 덮어씌우시면 됩니다.
 	// =====================================================================
 	FCollisionObjectQueryParams ObjectParams;
 	ObjectParams.AddObjectTypesToQuery(ECC_Pawn); // 오직 플레이어(Pawn)만 감지해서 바닥 긁힘 방지
@@ -259,109 +267,105 @@ void AStage3Boss::ApplyLaserDamage()
 
 float AStage3Boss::Execute_Meteor()
 {
-	if (!PlatformManager || !BossData) return 2.0f;
-	
-	Multicast_ShowBossSubtitle(FText::FromString(TEXT("하늘에서 거대한 운석이 떨어집니다! 운석을 피해 도망치세요!")), 3.0f);
+	// 왜 이렇게 짰는지: [권한 분리] 스킬의 시작과 타이머 관리는 무조건 서버에서 주도합니다.
+	if (!HasAuthority() || !PlatformManager || !BossData) return 2.0f;
 
-	// 1. 몽타주 재생 (서버에서 실행 시 Multicast_PlayBossMontage를 통해 동기화)
+	Multicast_ShowBossSubtitle(FText::FromString(TEXT("하늘에서 거대한 운석이 떨어집니다! 운석을 피해 도망치세요!")), 3.0f);
 	Multicast_PlayBossMontage(BossData->MeteorMontage, FName("Cast"));
 
-	// 2. 타겟 발판 선정 (매니저가 플레이어 위치를 고려해 16칸 중 선정)
 	TArray<ABossPlatform*> Targets = PlatformManager->GetPlatformsForMeteor();
 
-	// 3. 0.5초 뒤 경고(붉은 장판) 표시
 	FTimerHandle WarningTimer;
 	GetWorldTimerManager().SetTimer(WarningTimer, [Targets]()
 		{
-			for (ABossPlatform* P : Targets) if (P) P->SetWarning(true);
+			for (ABossPlatform* P : Targets) if (IsValid(P)) P->SetWarning(true);
 		}, 0.5f, false);
 
-	// 4. [핵심 추가] 1초 뒤 메테오 투사체 실제 스폰 (하늘에서 떨어지는 비주얼)
-	// 왜 이렇게 짰는지: 단순히 데미지만 주는 게 아니라, 유저가 하늘을 봤을 때 유성이 떨어지는 '공포감'을 주기 위해 실제 액터를 스폰합니다.
+	TWeakObjectPtr<AStage3Boss> WeakThis(this);
 	FTimerHandle SpawnTimer;
-	GetWorldTimerManager().SetTimer(SpawnTimer, [this, Targets]()
+	GetWorldTimerManager().SetTimer(SpawnTimer, [WeakThis, Targets]()
 		{
-			// 인덱스(i)를 활용하기 위해 range-based for 대신 일반 for문 사용
+			if (!WeakThis.IsValid() || !WeakThis->BossData) return;
+
 			for (int32 i = 0; i < Targets.Num(); ++i)
 			{
 				ABossPlatform* P = Targets[i];
-				if (P && BossData && BossData->MeteorProjectileClass)
+				if (IsValid(P) && WeakThis->BossData->MeteorProjectileClass)
 				{
-					// 각 메테오마다 i * 0.2초의 차이를 둡니다. (0초, 0.2초, 0.4초...)
 					float IndividualDelay = i * 0.2f;
 
 					FTimerHandle EachMeteorTimer;
-					GetWorldTimerManager().SetTimer(EachMeteorTimer, [this, P]()
+					WeakThis->GetWorldTimerManager().SetTimer(EachMeteorTimer, [WeakThis, P]()
 						{
-							if (!P || !BossData) return;
+							if (!WeakThis.IsValid() || !IsValid(P)) return;
 
-							// 1. 스폰 위치 계산 (높이 상향 및 사선 궤적 적용)
 							FVector TargetLoc = P->GetActorLocation();
-							FVector SpawnLoc = TargetLoc + FVector(0, 0, 5000.0f) + (GetActorForwardVector() * -1500.0f);
+
+							// 🟢 [수정 1] 높이를 3000 -> 6000으로 대폭 상승시켰습니다.
+							// 왜 이렇게 짰는지: 지난번에 추가한 AlwaysSpawn 옵션 덕분에, 천장 투명벽에 닿더라도 즉사하지 않고 무조건 스폰되어 아래로 떨어지게 됩니다.
+							FVector SpawnLoc = TargetLoc + FVector(0, 0, 6000.0f) + (WeakThis->GetActorForwardVector() * -1000.0f);
 							FRotator SpawnRot = (TargetLoc - SpawnLoc).Rotation();
 
 							FActorSpawnParameters Params;
-							Params.Instigator = this;
-							Params.Owner = this;
+							Params.Instigator = WeakThis.Get();
+							Params.Owner = WeakThis.Get();
+							Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
-							// 2. 메테오 스폰
-							GetWorld()->SpawnActor<AActor>(BossData->MeteorProjectileClass, SpawnLoc, SpawnRot, Params);
+							WeakThis->GetWorld()->SpawnActor<AActor>(WeakThis->BossData->MeteorProjectileClass, SpawnLoc, SpawnRot, Params);
+
+							// 🟢 [수정 2] 스폰 높이가 높아졌으므로, 땅에 닿기까지의 비행 시간(TravelTime)도 1.5 -> 2.0초 정도로 늘려줍니다.
+							// (만약 시각적으로 투사체가 땅에 닿기 전에 이펙트가 터진다면 이 시간을 조금 늘리고, 너무 늦게 터진다면 줄여주세요!)
+							float TravelTime = 2.0f;
+
+							FTimerHandle ImpactTimer;
+							WeakThis->GetWorldTimerManager().SetTimer(ImpactTimer, [WeakThis, P]()
+								{
+									if (WeakThis.IsValid() && IsValid(P))
+									{
+										// 🟢 [수정 3] 발판 하강(P->MoveDown) 코드 완전 삭제!
+										// 오직 비주얼(폭발 이펙트)과 장판의 데미지 판정만 작동하게 됩니다.
+										WeakThis->Multicast_SpawnMeteorFX(P->GetActorLocation());
+									}
+								}, TravelTime, false);
 
 						}, IndividualDelay, false);
 				}
 			}
 		}, 1.0f, false);
 
-	// 5. 3초 뒤 지면 충돌 및 발판 하강 처리
-	FTimerHandle ImpactTimer;
-	GetWorldTimerManager().SetTimer(ImpactTimer, [this, Targets]()
-		{
-			for (ABossPlatform* P : Targets)
-			{
-				if (P)
-				{
-					// 폭발 이펙트 재생 (Multicast)
-					Multicast_SpawnMeteorFX(P->GetActorLocation());
-
-					// 데미지 판정 및 발판 하강 명령
-					P->MoveDown(false);
-				}
-			}
-		}, 3.0f, false);
-
 	return 5.0f;
 }
 
 float AStage3Boss::Execute_PlatformBreak()
 {
-	if (!PlatformManager || !BossData) return 2.0f;
+	if (!HasAuthority() || !PlatformManager || !BossData) return 2.0f;
 
-	// [수정] 새로운 5가지 패턴 중 랜덤 선택 (Enum: 0 ~ 4)
 	EPlatformPattern Pat = (EPlatformPattern)FMath::RandRange(0, 4);
 	TArray<ABossPlatform*> Targets = PlatformManager->GetPlatformsForPattern(Pat);
 
-	// 경고 표시
 	for (ABossPlatform* P : Targets)
 	{
-		if (P) P->SetWarning(true);
+		if (IsValid(P)) P->SetWarning(true);
 	}
 
-	// 점프 몽타주
 	float Duration = 0.0f;
 	if (BossData->JumpAttackMontage)
 	{
-		Duration = PlayAnimMontage(BossData->JumpAttackMontage);
+		// [수정됨] 로컬 재생을 지우고 Multicast_ RPC를 사용하여 클라이언트도 점프 몽타주를 보게 변경
+		Multicast_PlayBossMontage(BossData->JumpAttackMontage);
+		Duration = BossData->JumpAttackMontage->GetPlayLength();
 	}
 
-	// 착지 타이밍(2.85초)에 도미노 하강 시작
-	// (기존의 순차 하강 로직 유지)
+	TWeakObjectPtr<AStage3Boss> WeakThis(this);
 	FTimerHandle LandTimer;
-	GetWorldTimerManager().SetTimer(LandTimer, [this, Targets]()
+	GetWorldTimerManager().SetTimer(LandTimer, [WeakThis, Targets]()
 		{
-			ProcessDominoDrop(Targets, 0);
+			if (WeakThis.IsValid())
+			{
+				WeakThis->ProcessDominoDrop(Targets, 0);
+			}
 		}, 2.85f, false);
 
-	// 자막 출력
 	Multicast_ShowBossSubtitle(FText::FromString(TEXT("보스가 발판을 무너뜨립니다!")), 3.0f);
 
 	return (Duration > 0.0f) ? Duration : 3.0f;
@@ -396,7 +400,10 @@ void AStage3Boss::FindNearestPlayer()
 	{
 		if (P == this) continue;
 		ABaseCharacter* BaseChar = Cast<ABaseCharacter>(P);
-		if (BaseChar && BaseChar->IsDead()) continue;
+
+		// [최적화] UE5 권장 사양: IsPendingKillPending() 대신 IsValid() 사용
+		if (!IsValid(BaseChar) || BaseChar->IsDead()) continue;
+
 		float D = GetDistanceTo(P);
 		if (D < MinDist)
 		{
@@ -406,7 +413,6 @@ void AStage3Boss::FindNearestPlayer()
 	}
 	LaserTargetActor = Nearest;
 }
-
 // ==============================================================================
 // [UI Implementation]  UI 로직 
 // ==============================================================================
