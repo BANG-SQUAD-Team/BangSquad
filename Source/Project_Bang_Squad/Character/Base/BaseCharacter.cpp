@@ -1076,7 +1076,7 @@ void ABaseCharacter::Client_ShowDeathSubtitle_Implementation(const FText& Messag
         {
             if (IsValid(SubtitleWidget))
             {
-                SubtitleWidget->RemoveFromViewport();
+                SubtitleWidget->RemoveFromParent();
             }
         }, Duration, false);
     }

@@ -150,7 +150,7 @@ void AWindZone::UpdateWarningUI(bool bShow)
     {
         if (WarningWidgetInstance && WarningWidgetInstance->IsInViewport())
         {
-            WarningWidgetInstance->RemoveFromViewport();
+            WarningWidgetInstance->RemoveFromParent();
         }
     }
 }
