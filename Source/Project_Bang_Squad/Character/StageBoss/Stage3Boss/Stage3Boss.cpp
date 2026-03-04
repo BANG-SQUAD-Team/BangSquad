@@ -301,9 +301,18 @@ float AStage3Boss::Execute_Meteor()
 
 							FVector TargetLoc = P->GetActorLocation();
 
-							// 🟢 [수정 1] 높이를 3000 -> 6000으로 대폭 상승시켰습니다.
-							// 왜 이렇게 짰는지: 지난번에 추가한 AlwaysSpawn 옵션 덕분에, 천장 투명벽에 닿더라도 즉사하지 않고 무조건 스폰되어 아래로 떨어지게 됩니다.
-							FVector SpawnLoc = TargetLoc + FVector(0, 0, 6000.0f) + (WeakThis->GetActorForwardVector() * -1000.0f);
+							// ====================================================================
+							// 🟢 [수직 낙하로 수정된 부분]
+							// ====================================================================
+
+							// [삭제된 기존 코드 (보스 등 뒤에서 대각선으로 날아오던 로직)]
+							// FVector SpawnLoc = TargetLoc + FVector(0, 0, 6000.0f) + (WeakThis->GetActorForwardVector() * -1000.0f);
+
+							// [새로운 코드 (완벽한 수직 스폰)]
+							// 왜 이렇게 짰는지: 보스의 방향 벡터를 곱하던 부분을 아예 지워서 발판 정중앙 위쪽에 스폰시킵니다.
+							FVector SpawnLoc = TargetLoc + FVector(0.0f, 0.0f, 6000.0f);
+
+							// 위치가 정확히 수직이므로, Rotation 값은 바닥을 향해 수직(-90도)으로 내리꽂히는 각도가 됩니다.
 							FRotator SpawnRot = (TargetLoc - SpawnLoc).Rotation();
 
 							FActorSpawnParameters Params;
@@ -322,7 +331,7 @@ float AStage3Boss::Execute_Meteor()
 								{
 									if (WeakThis.IsValid() && IsValid(P))
 									{
-										// 🟢 [수정 3] 발판 하강(P->MoveDown) 코드 완전 삭제!
+										// 🟢 [수정 3] 발판 하강(P->MoveDown) 코드 완전 삭제 유지!
 										// 오직 비주얼(폭발 이펙트)과 장판의 데미지 판정만 작동하게 됩니다.
 										WeakThis->Multicast_SpawnMeteorFX(P->GetActorLocation());
 									}

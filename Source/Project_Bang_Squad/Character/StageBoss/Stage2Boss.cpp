@@ -35,8 +35,18 @@ void AStage2Boss::BeginPlay()
     {
         HealthComponent->SetMaxHealth(BossData->MaxHealth);
 
-        // DataAsset에 설정된 게 있다면 가져오기
-        // (EnemyBossData에 해당 변수가 있어야 합니다)
+        // ==============================================================================
+        // 🟢 [속도 동기화 핵심 로직] 
+        // ==============================================================================
+        if (GetCharacterMovement())
+        {
+            // 1. 실제 이동 속도를 DataAsset 값으로 변경
+            GetCharacterMovement()->MaxWalkSpeed = BossData->WalkSpeed;
+
+            // 2. 부모(EnemyCharacterBase)가 피격 후 복구할 때 쓸 기본 속도도 덮어쓰기!
+            DefaultMaxWalkSpeed = BossData->WalkSpeed;
+        }
+
         if (BossData->WebProjectileClass)
             WebProjectileClass = BossData->WebProjectileClass;
 
@@ -46,33 +56,29 @@ void AStage2Boss::BeginPlay()
         if (BossData->QTEAttackMontage)
             SmashMontage = BossData->QTEAttackMontage;
     }
-    // [테스트용 임시 코드] 70% 페이즈를 이미 본 것처럼 처리해서 스킵!
-    //bPhase70Triggered = true;
-    
+
     if (HasAuthority())
     {
         if (HealthComponent)
         {
-            // 데미지를 입을 때마다 OnHealthChanged 함수가 자동으로 실행되도록 연결
             HealthComponent->OnHealthChanged.AddDynamic(this, &AStage2Boss::OnHealthChanged);
         }
     }
-    
+
     FTimerHandle LocalUITimer;
-    TWeakObjectPtr<AStage2Boss> WeakThis = this; 
+    TWeakObjectPtr<AStage2Boss> WeakThis = this;
 
     GetWorldTimerManager().SetTimer(LocalUITimer, [WeakThis]()
-    {
-        if (WeakThis.IsValid())
         {
-            float InitialMaxHP = 100.0f;
-            if (WeakThis->BossData) InitialMaxHP = WeakThis->BossData->MaxHealth;
-            else if (WeakThis->HealthComponent) InitialMaxHP = WeakThis->HealthComponent->MaxHealth;
+            if (WeakThis.IsValid())
+            {
+                float InitialMaxHP = 100.0f;
+                if (WeakThis->BossData) InitialMaxHP = WeakThis->BossData->MaxHealth;
+                else if (WeakThis->HealthComponent) InitialMaxHP = WeakThis->HealthComponent->MaxHealth;
 
-            // 직접 내 화면에 UI 생성
-            WeakThis->Multicast_ShowBossHP_Implementation(InitialMaxHP);
-        }
-    }, 1.0f, false);
+                WeakThis->Multicast_ShowBossHP(InitialMaxHP);
+            }
+        }, 1.0f, false);
 }
 
 void AStage2Boss::Tick(float DeltaTime)

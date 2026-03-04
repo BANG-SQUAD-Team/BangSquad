@@ -47,7 +47,7 @@ protected:
 	float RepathInterval = 0.3f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AI|Chase")
-	float StopChaseDistance = 2500.f;
+	float StopChaseDistance = 20000.f;
 
 	// ===== Attack =====
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AI|Attack")

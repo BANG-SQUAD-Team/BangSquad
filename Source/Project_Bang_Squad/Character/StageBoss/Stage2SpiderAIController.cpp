@@ -122,7 +122,7 @@ void AStage2SpiderAIController::Tick(float DeltaTime)
             {
                 // 평타 때리고 나면 -> 후퇴(Retreat) 시작
                 CurrentState = ESpiderPatternState::Retreat;
-                StateTimer = 2.0f; // 2초 동안 뒤로 도망감
+                StateTimer = 0.8f; // 2초 동안 뒤로 도망감
 
                 FRotator BackRot = SpiderBoss->GetActorRotation();
                 BackRot.Yaw += 180.0f;

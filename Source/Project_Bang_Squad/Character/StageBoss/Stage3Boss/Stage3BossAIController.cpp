@@ -61,10 +61,12 @@ void AStage3BossAIController::DecideNextAction()
 			if (IsValid(BaseChar) && BaseChar->IsDead()) continue;
 
 			// 🟢 [핵심 수정 2] 중심 간 거리(D)에서 보스와 플레이어의 캡슐 반지름을 빼서 실제 닿는 거리를 구함
-			float D = Boss->GetDistanceTo(PlayerPawn);
+			float D = FVector::Dist2D(Boss->GetActorLocation(), PlayerPawn->GetActorLocation());
+
 			float BossRadius = Boss->GetSimpleCollisionRadius();
 			float PlayerRadius = PlayerPawn->GetSimpleCollisionRadius();
 
+			// 이제 Z축 오차가 사라진 완벽한 '표면 간 거리'가 계산됩니다.
 			float RealDist = D - BossRadius - PlayerRadius;
 
 			// 가장 가까운 '표면 거리'를 가진 타겟을 선정

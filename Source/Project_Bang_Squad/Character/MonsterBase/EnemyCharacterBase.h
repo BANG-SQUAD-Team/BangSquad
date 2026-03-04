@@ -44,6 +44,7 @@ protected:
     virtual void OnDeathStarted();
     // 자식 클래스에서 오버라이드할 수 있는 체력 변경 알림 함수
     virtual void OnHPChanged(float CurrentHP, float MaxHP);
+    float DefaultMaxWalkSpeed = 0.f;
 
     // ===== HealthComponent Auto Bind =====
     UFUNCTION()
@@ -110,7 +111,6 @@ private:
     bool bIsHitReacting = false;
     bool bIsDead = false;
 
-    float DefaultMaxWalkSpeed = 0.f;
 
     FTimerHandle HitReactTimer;
     FTimerHandle DeathToRagdollTimer;
