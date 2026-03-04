@@ -192,6 +192,12 @@ private:
 	int32 SavedCheckpointIndex = 0;
 #pragma endregion
 
+#pragma region Cutscene Data
+public:
+	UPROPERTY(BlueprintReadWrite,EditAnywhere,Category = "BS|CutScene")
+	bool bIsStage1CutscenePlayed = false;
+#pragma endregion
+	
 public:
 	//UFUNCTION()
 	//FORCEINLINE EStageIndex GetCurrentStage() const { return CurrentStage; }

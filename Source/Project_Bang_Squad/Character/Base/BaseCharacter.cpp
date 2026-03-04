@@ -1070,6 +1070,8 @@ void ABaseCharacter::Client_ShowDeathSubtitle_Implementation(const FText& Messag
             
         }
         
+        TWeakObjectPtr<UUserWidget> WeakSubtitleWidget = SubtitleWidget;
+        
         // 4. 지정된 시간 뒤에 삭제
         FTimerHandle RemoveTimer;
         GetWorldTimerManager().SetTimer(RemoveTimer, [SubtitleWidget]()
