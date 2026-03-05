@@ -12,6 +12,9 @@
 #include "Components/WidgetComponent.h"
 #include "Navigation/PathFollowingComponent.h"
 #include "Project_Bang_Squad/Character/Component/HealthComponent.h"
+#include "Components/CapsuleComponent.h"
+
+
 
 AEnemyNormal::AEnemyNormal()
 {
@@ -172,7 +175,7 @@ void AEnemyNormal::UpdateMoveTo()
         {
             // 다 죽고 아무도 없다... (플레이어 전멸 상황)
             
-            // ✅ [수정] 타이머는 끄지 말고, 타겟 변수만 비우고 대기합니다.
+            // [수정] 타이머는 끄지 말고, 타겟 변수만 비우고 대기합니다.
             TargetPawn = nullptr;
             
             // 이동 멈춤
@@ -423,5 +426,10 @@ void AEnemyNormal::OnDeathStarted()
 	StopChase();
 	bIsAttacking = false;
 	DisableWeaponCollision();
-	SetLifeSpan(1.5f);
+	// [추가] 플레이어가 시체에 걸리지 않도록 캡슐 충돌 끄기
+	if (UCapsuleComponent* Capsule = GetCapsuleComponent())
+	{
+		Capsule->SetCollisionResponseToAllChannels(ECR_Ignore);
+	}
+	SetLifeSpan(0.7f);
 }
