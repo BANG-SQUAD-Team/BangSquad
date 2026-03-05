@@ -65,7 +65,7 @@ protected:
 	FTimerHandle QTETimerHandle;
 
 	UPROPERTY(EditDefaultsOnly, Category = "BS|BossRule")
-	int32 GoalQTECount = 40;
+	int32 GoalQTECount = 100;
 
 	UPROPERTY(EditDefaultsOnly, Category = "BS|BossRule")
 	float QTEDuration = 10.0f;

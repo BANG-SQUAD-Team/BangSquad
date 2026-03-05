@@ -42,7 +42,7 @@ protected:
 
     // [설계] 목표 횟수 (Data Asset 등으로 관리하면 더 좋음)
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "QTE|Logic")
-    int32 TargetTapCount = 100;
+    int32 TargetTapCount = 100;//QTE목표횟수 40에서 100으로 상향시킴
     
     // [비주얼 동기화] 서버에서 값이 복제될 때 클라이언트에서 실행될 함수
     UFUNCTION()
