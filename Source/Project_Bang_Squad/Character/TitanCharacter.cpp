@@ -98,17 +98,17 @@ void ATitanCharacter::Tick(float DeltaTime)
     // 로컬 플레이어 전용 로직
     if (IsLocallyControlled())
     {
-        FString GrabActorName = GrabbedActor ? *GrabbedActor->GetName() : TEXT("None");
+        //FString GrabActorName = GrabbedActor ? *GrabbedActor->GetName() : TEXT("None");
 
-        // 어떤 플래그가 True인지 색상으로 구분하여 표시
-        FString DebugMsg = FString::Printf(TEXT("[TITAN DEBUG]\nAttacking: %s\nGrabbing: %s\nCooldown: %s\nGrabbedTarget: %s"),
-            bIsAttacking ? TEXT("TRUE (RED)") : TEXT("False"),
-            bIsGrabbing ? TEXT("TRUE (RED)") : TEXT("False"),
-            bIsCooldown ? TEXT("TRUE (YELLOW)") : TEXT("False"),
-            *GrabActorName);
+        //// 어떤 플래그가 True인지 색상으로 구분하여 표시
+        //FString DebugMsg = FString::Printf(TEXT("[TITAN DEBUG]\nAttacking: %s\nGrabbing: %s\nCooldown: %s\nGrabbedTarget: %s"),
+        //    bIsAttacking ? TEXT("TRUE (RED)") : TEXT("False"),
+        //    bIsGrabbing ? TEXT("TRUE (RED)") : TEXT("False"),
+        //    bIsCooldown ? TEXT("TRUE (YELLOW)") : TEXT("False"),
+        //    *GrabActorName);
 
-        // 화면에 출력 (키: 1, 지속시간: 0.0f(매 프레임 갱신), 색상: Cyan)
-        GEngine->AddOnScreenDebugMessage(1, 0.0f, FColor::Cyan, DebugMsg);
+        //// 화면에 출력 (키: 1, 지속시간: 0.0f(매 프레임 갱신), 색상: Cyan)
+        //GEngine->AddOnScreenDebugMessage(1, 0.0f, FColor::Cyan, DebugMsg);
 
         // 1. 카메라 보간
         if (SpringArm)
