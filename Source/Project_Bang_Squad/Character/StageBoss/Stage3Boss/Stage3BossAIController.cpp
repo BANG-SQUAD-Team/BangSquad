@@ -208,3 +208,20 @@ void AStage3BossAIController::OnMoveCompleted(FAIRequestID RequestID, const FPat
 		GetWorldTimerManager().SetTimer(ActionTimer, this, &AStage3BossAIController::DecideNextAction, 0.1f, false);
 	}
 }
+
+void AStage3BossAIController::ForceActionTimerDelay(float Delay)
+{
+	if (!HasAuthority()) return;
+
+	// 1. 기존에 진행 중이던 모든 AI 스케줄(타이머)을 강제 취소합니다.
+	GetWorldTimerManager().ClearTimer(ActionTimer);
+
+	// 2. 만약 추격(Chase) 중이었다면 멈춰 세웁니다.
+	StopMovement();
+
+	// 3. 평타를 강제로 쳤으므로, 평타 쿨타임도 지금 시간으로 갱신해줍니다.
+	LastSkillUseTimes.Add(EBoss3Skill::Basic, GetWorld()->GetTimeSeconds());
+
+	// 4. 보스가 애니메이션을 다 끝낼 때까지 대기했다가, 다시 정상 패턴으로 복귀하게 만듭니다.
+	GetWorldTimerManager().SetTimer(ActionTimer, this, &AStage3BossAIController::DecideNextAction, Delay, false);
+}

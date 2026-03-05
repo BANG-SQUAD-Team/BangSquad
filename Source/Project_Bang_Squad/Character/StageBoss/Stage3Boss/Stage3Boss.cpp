@@ -6,6 +6,7 @@
 #include "Project_Bang_Squad/Character/StageBoss/Stage3Boss/BossPlatform.h"
 #include "Project_Bang_Squad/Character/Component/HealthComponent.h"
 #include "Project_Bang_Squad/Character/Base/BaseCharacter.h"
+#include "Project_Bang_Squad/Character/StageBoss/Stage3Boss/Stage3BossAIController.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "Engine/DamageEvents.h"
@@ -82,6 +83,11 @@ void AStage3Boss::BeginPlay()
 		  WeakThis->Multicast_ShowBossHP_Implementation(InitialMaxHP);
 	   }
 	}, 1.0f, false);
+
+	if (HasAuthority())
+	{
+		CheckAndHandleFalling();
+	}
 }
 
 void AStage3Boss::Tick(float DeltaTime)
@@ -109,6 +115,15 @@ void AStage3Boss::Tick(float DeltaTime)
 			// 기획 의도: 유저가 피할 수 있는 속도 (InterpSpeed 2.2f)
 			SetActorRotation(FMath::RInterpTo(GetActorRotation(), TargetRot, DeltaTime, 2.2f));
 		}
+	}
+	if (HasAuthority())
+	{
+		// =========================================================================
+		// 🟢 [디버그용] 보스의 현재 Z 높이를 화면 좌측 상단에 노란색으로 찍어봅니다!
+		// =========================================================================
+		GEngine->AddOnScreenDebugMessage(1, 0.0f, FColor::Yellow, FString::Printf(TEXT("보스 현재 높이(Z): %f / 임계점: %f"), GetActorLocation().Z, FallThresholdZ));
+
+		CheckAndHandleFalling();
 	}
 }
 
@@ -575,6 +590,45 @@ void AStage3Boss::DoMeleeHitCheck()
 
 				// (선택) 출혈 이펙트 등 멀티캐스트 호출 가능
 			}
+		}
+	}
+}
+
+void AStage3Boss::CheckAndHandleFalling()
+{
+	// 보스의 현재 높이가 마지노선보다 아래로 떨어졌다면
+	if (GetActorLocation().Z < FallThresholdZ)
+	{
+		FindNearestPlayer();
+		AActor* Target = LaserTargetActor;
+		if (!IsValid(Target)) return;
+
+		// 텔레포트 위치 계산 (플레이어 코앞 + 높이 보정)
+		FVector TeleportLoc = Target->GetActorLocation() + (Target->GetActorForwardVector() * 200.0f);
+		TeleportLoc.Z = Target->GetActorLocation().Z + 150.0f;
+		FRotator TeleportRot = (Target->GetActorLocation() - TeleportLoc).Rotation();
+		TeleportRot.Pitch = 0.0f;
+		TeleportRot.Roll = 0.0f;
+
+		// 순간이동!
+		SetActorLocationAndRotation(TeleportLoc, TeleportRot, false, nullptr, ETeleportType::TeleportPhysics);
+
+		if (GetCharacterMovement())
+		{
+			GetCharacterMovement()->Velocity = FVector::ZeroVector;
+		}
+
+		Multicast_ShowBossSubtitle(FText::FromString(TEXT("보스가 등 뒤로 순간이동했습니다!!")), 2.0f);
+
+		// =========================================================================
+		// 🟢 [수정됨] 강제 평타 실행 후, AI 컨트롤러의 스케줄을 동기화!
+		// =========================================================================
+		float AnimDuration = Execute_BasicAttack(); // 몽타주 길이 반환받음
+
+		if (AStage3BossAIController* AIController = Cast<AStage3BossAIController>(GetController()))
+		{
+			// AI 컨트롤러야, (애니메이션 길이 + 후딜레이 1.5초) 만큼 아무것도 하지 말고 대기해라!
+			AIController->ForceActionTimerDelay(AnimDuration + 1.5f);
 		}
 	}
 }

@@ -15,7 +15,7 @@ class PROJECT_BANG_SQUAD_API AStage3BossAIController : public AAIController
 
 public:
 	AStage3BossAIController();
-
+	void ForceActionTimerDelay(float Delay);
 protected:
 	virtual void OnPossess(APawn* InPawn) override;
 

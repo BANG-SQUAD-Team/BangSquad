@@ -32,7 +32,7 @@ protected:
     // 체력 변경 델리게이트
     UFUNCTION()
     void OnHealthChanged(float CurrentHealth, float MaxHealth);
-
+    void CheckAndHandleFalling();
 public:
     // --- Skills (AI 호출용) ---
     UFUNCTION(BlueprintCallable) float Execute_BasicAttack();
@@ -42,6 +42,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Boss|Combat")
     void DoMeleeHitCheck();
 
+    // [추가] 추락 감지 마지노선 높이 (맵에 맞춰 에디터에서 조절하세요)
+    UPROPERTY(EditAnywhere, Category = "Boss|Combat")
+    float FallThresholdZ = -1000.0f;
 
     // 레이저 타겟팅 헬퍼
     UFUNCTION(BlueprintCallable) void FindNearestPlayer();
@@ -102,4 +105,5 @@ protected:
 
     // 도미노 하강 재귀 함수
     UFUNCTION() void ProcessDominoDrop(const TArray<class ABossPlatform*>& Targets, int32 Index);
+
 };
