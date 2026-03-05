@@ -194,8 +194,17 @@ private:
 
 #pragma region Cutscene Data
 public:
-	UPROPERTY(BlueprintReadWrite,EditAnywhere,Category = "BS|CutScene")
+	// 스테이지 1 컷신 시청 여부
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "BS|CutScene")
 	bool bIsStage1CutscenePlayed = false;
+
+	// 스테이지 2 컷신 시청 여부
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "BS|CutScene")
+	bool bIsStage2CutscenePlayed = false;
+
+	// 스테이지 3 컷신 시청 여부
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "BS|CutScene")
+	bool bIsStage3CutscenePlayed = false;
 #pragma endregion
 	
 public:
