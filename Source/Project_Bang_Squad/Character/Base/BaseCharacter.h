@@ -339,6 +339,8 @@ protected:
     bool bJumpRestricted = false;
     bool bCanJump = true;
 
+    virtual void PossessedBy(AController* NewController) override;
+
 private:
     // --------------------------------------------------------------------------------
     // [9] 내부 숨김 로직 (Private Internals)

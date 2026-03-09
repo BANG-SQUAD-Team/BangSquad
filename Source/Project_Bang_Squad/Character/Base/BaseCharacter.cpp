@@ -819,6 +819,13 @@ void ABaseCharacter::OnRep_WindFloating()
     }
 }
 
+void ABaseCharacter::PossessedBy(AController* NewController)
+{
+    Super::PossessedBy(NewController);
+
+    SetActorRotation(FRotator(0.0f, GetActorRotation().Yaw, 0.0f), ETeleportType::TeleportPhysics);
+}
+
 void ABaseCharacter::ApplySlopeSlide(float DeltaTime)
 {
     // 아주 가파른 경사(예: 피라미드 외벽)를 밟으면 캐릭터가 미끄러지도록 하는 물리 연산
