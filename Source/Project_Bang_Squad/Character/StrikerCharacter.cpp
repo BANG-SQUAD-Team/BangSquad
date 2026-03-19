@@ -192,10 +192,7 @@ void AStrikerCharacter::PerformMeleeTrace()
     if (GetMesh() && GetMesh()->DoesSocketExist(MyAttackSocket))
     {
         CurrentLoc = GetMesh()->GetSocketLocation(MyAttackSocket);
-
-        // 보스몹 타격을 위해 판정 박스를 전방으로 살짝(50) 밀어줍니다.
         CurrentLoc += GetActorForwardVector() * 50.0f;
-
         CurrentRot = GetMesh()->GetSocketQuaternion(MyAttackSocket);
     }
     else
@@ -205,24 +202,36 @@ void AStrikerCharacter::PerformMeleeTrace()
     }
 
     TArray<FHitResult> HitResults;
-    FCollisionQueryParams Params;
-    Params.AddIgnoredActor(this);
+    TArray<AActor*> IgnoreActors;
+    IgnoreActors.Add(this);
 
-    FCollisionObjectQueryParams ObjectParams;
-    ObjectParams.AddObjectTypesToQuery(ECC_Pawn);      
-    ObjectParams.AddObjectTypesToQuery(ECC_WorldDynamic);  
-    ObjectParams.AddObjectTypesToQuery(ECC_PhysicsBody); 
+    // Kismet용 오브젝트 타입 배열 변환
+    TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;
+    ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_Pawn));
+    ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_WorldDynamic));
+    ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_PhysicsBody));
 
-    bool bHit = GetWorld()->SweepMultiByObjectType(
+    // ==============================================================
+    // [핵심] 엔진 내장 스윕 디버그 트레이스로 교체!
+    // (이전 위치부터 현재 위치까지 입체적인 박스 궤적을 쫙 그려줍니다)
+    // ==============================================================
+    bool bHit = UKismetSystemLibrary::BoxTraceMultiForObjects(
+        GetWorld(),
+        LastHandLocation,           // 시작점 (이전 프레임 손 위치)
+        CurrentLoc,                 // 끝점 (현재 프레임 손 위치)
+        HitBoxSize,                 // 무기 판정 크기
+        CurrentRot.Rotator(),       // 회전값
+        ObjectTypes,
+        false,
+        IgnoreActors,
+        EDrawDebugTrace::ForDuration, // ★ 여기서 잔상을 만들어줍니다!
         HitResults,
-        LastHandLocation,
-        CurrentLoc,
-        CurrentRot,
-        ObjectParams, 
-        FCollisionShape::MakeBox(HitBoxSize),
-        Params
+        true,
+        FLinearColor::Red,          // 빈 허공을 가를 때의 궤적 색상
+        FLinearColor::Green,        // 적을 맞췄을 때 궤적 색상
+        2.0f                        // 화면에 남아있을 시간 (2초)
     );
-   
+    // ==============================================================
 
     if (bHit)
     {
